@@ -1,0 +1,17 @@
+{
+    "Group": "com.duntale",
+    "Name": "ZSquad",
+    "Version": "1.0.0-SNAPSHOT",
+    "Description": "Z Land Escape Prototype",
+    "Authors": [
+        {
+            "Name": "Duntale Team"
+        }
+    ],
+    "Main": "com.duntale.zsquad.ZSquadPlugin",
+    "ServerVersion": "2026.02.18-f3b8fff95",
+    "Dependencies": {},
+    "OptionalDependencies": {},
+    "DisabledByDefault": false,
+    "IncludesAssetPack": true
+}
