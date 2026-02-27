@@ -61,7 +61,7 @@ public class CameraCommand extends CommandBase {
     private static ServerCameraSettings createBaseOverheadSettings(float distance, boolean camRelative, boolean clickMove) {
         ServerCameraSettings settings = new ServerCameraSettings();
         settings.positionLerpSpeed = 0.2F;
-        settings.rotationLerpSpeed = clickMove ? 1.0F : 0.2F;
+        settings.rotationLerpSpeed = clickMove ? 5.0F : 0.2F;
         settings.distance = distance;
         settings.displayCursor = true;
         settings.sendMouseMotion = true;
@@ -70,7 +70,11 @@ public class CameraCommand extends CommandBase {
         settings.positionDistanceOffsetType = PositionDistanceOffsetType.DistanceOffset;
         settings.rotationType = RotationType.Custom;
         settings.mouseInputType = MouseInputType.LookAtPlane;
-        settings.planeNormal = new Vector3f(0.0F, 1.0F, 0.0F);
+        // Click-to-move starts with planeNormal = (0,0,0) so the body doesn't
+        // auto-rotate to the cursor while idle. ClickToMoveManager toggles to
+        // (0,1,0) while the mouse is held down, enabling the LookAt path
+        // which doesn't snap the camera (unlike SetTransform → SetRotation).
+        settings.planeNormal = clickMove ? new Vector3f(0.0F, 0.0F, 0.0F) : new Vector3f(0.0F, 1.0F, 0.0F);
         // settings.applyLookType = ApplyLookType.Rotation;
         // settings.lookMultiplier = new Vector2f(0.0F, 0.0F);
         // settings.attachedToType = AttachedToType.None;
@@ -78,15 +82,9 @@ public class CameraCommand extends CommandBase {
         // settings.rotation = new Direction()
 
         if (clickMove) {
-            // Zero normal creates a degenerate plane: dot(rayDirection, (0,0,0)) = 0
-            // for any ray → Ray.Intersects(Plane) returns null → LookAt() never fires.
-            // This freezes LookOrientation on the client, preventing the body from
-            // tracking the mouse cursor. Click events are unaffected because they use
-            // MouseRaycast (world collision), not the plane intersection.
-            settings.planeNormal = new Vector3f(0.0F, 0.0F, 0.0F);
-
-            // Disable WASD movement entirely — only click-to-move controls the player
-            // settings.movementMultiplier = new Vector3f(0.0F, 0.0F, 0.0F);
+            // Click-to-move starts with planeNormal = (0,0,0). The
+            // ClickToMoveManager toggles to (0,1,0) on mouse-down so that
+            // LookAt tracks the cursor only while actively clicking/moving.
             settings.movementForceRotationType = MovementForceRotationType.Custom;
         } else if (camRelative) {
             settings.movementForceRotationType = MovementForceRotationType.CameraRotation;
@@ -163,13 +161,12 @@ public class CameraCommand extends CommandBase {
                                                 @Nonnull Ref<EntityStore> ref,
                                                 boolean clickMove,
                                                 boolean xray,
-                                                float cameraYaw,
-                                                float cameraPitch) {
+                                                float cameraYaw) {
         java.util.UUID uuid = playerRef.getUuid();
         ZSquadPlugin plugin = ZSquadPlugin.get();
 
         if (clickMove) {
-            plugin.getClickToMoveManager().enable(uuid, cameraPitch, store, ref);
+            plugin.getClickToMoveManager().enable(uuid, store, ref);
         } else {
             plugin.getClickToMoveManager().disable(uuid, store, ref);
         }
@@ -228,7 +225,7 @@ public class CameraCommand extends CommandBase {
 
             applyCamera(playerRef, settings);
             adjustMovementForMode(camRelative, store, ref, playerRef);
-            enableOptionalFeatures(playerRef, world, store, ref, clickMove, xray, 0.0F, (float) (-Math.PI / 2));
+            enableOptionalFeatures(playerRef, world, store, ref, clickMove, xray, 0.0F);
 
             StringBuilder info = new StringBuilder("Switched to Top-Down Camera (");
             info.append(camRelative ? "camera-rel" : "head-rel");
@@ -304,7 +301,7 @@ public class CameraCommand extends CommandBase {
 
             applyCamera(playerRef, settings);
             adjustMovementForMode(camRelative, store, ref, playerRef);
-            enableOptionalFeatures(playerRef, world, store, ref, clickMove, xray, yaw, ISO_PITCH);
+            enableOptionalFeatures(playerRef, world, store, ref, clickMove, xray, yaw);
 
             StringBuilder info = new StringBuilder("Switched to Isometric Camera (");
             info.append(angleKey.toUpperCase());

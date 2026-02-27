@@ -1,6 +1,6 @@
 plugins {
     id("java-library")
-    id("com.gradleup.shadow") version "8.3.0"
+    id("com.gradleup.shadow") version "9.3.0"
 }
 
 group = "com.duntale"
@@ -20,9 +20,9 @@ repositories {
 dependencies {
     compileOnly("com.hypixel.hytale:Server:2026.02.18-f3b8fff95")
     
-    // SQLite JDBC driver for persistence (if needed later)
-    implementation("org.xerial:sqlite-jdbc:3.44.1.0")
-    implementation("org.slf4j:slf4j-jdk14:2.0.9")
+    // SQLite JDBC driver
+    implementation("org.xerial:sqlite-jdbc:3.51.1.0")
+    implementation("org.slf4j:slf4j-jdk14:2.0.17")
 
     compileOnly("org.projectlombok:lombok:1.18.42")
     annotationProcessor("org.projectlombok:lombok:1.18.42")
@@ -38,6 +38,7 @@ tasks {
     shadowJar {
         archiveBaseName.set("ZSquad")
         archiveClassifier.set("")
+        mergeServiceFiles()
     }
 
     register<Copy>("deploy") {

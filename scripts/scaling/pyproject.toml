@@ -4,4 +4,6 @@ version = "0.1.0"
 description = "Asset parser and scaling generator for v3-zsquad dungeon progression"
 requires-python = ">=3.11"
 # No external dependencies — uses only stdlib (json, sqlite3, pathlib, math)
-dependencies = []
+dependencies = [
+    "rich>=14.3.3",
+]

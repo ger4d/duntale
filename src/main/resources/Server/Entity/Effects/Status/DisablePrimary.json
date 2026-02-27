@@ -1,0 +1,10 @@
+{
+	"Infinite": true,
+	"ApplicationEffects": {
+		"AbilityEffects": {
+			"Disabled": [
+				"Primary"
+			]
+		}
+	}
+}
