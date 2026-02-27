@@ -70,11 +70,9 @@ public class CameraCommand extends CommandBase {
         settings.positionDistanceOffsetType = PositionDistanceOffsetType.DistanceOffset;
         settings.rotationType = RotationType.Custom;
         settings.mouseInputType = MouseInputType.LookAtPlane;
-        // Click-to-move starts with planeNormal = (0,0,0) so the body doesn't
-        // auto-rotate to the cursor while idle. ClickToMoveManager toggles to
-        // (0,1,0) while the mouse is held down, enabling the LookAt path
-        // which doesn't snap the camera (unlike SetTransform → SetRotation).
-        settings.planeNormal = clickMove ? new Vector3f(0.0F, 0.0F, 0.0F) : new Vector3f(0.0F, 1.0F, 0.0F);
+        // planeNormal = (0,1,0): client automatically rotates player head/body
+        // toward the mouse position on the Y=0 ground plane.
+        settings.planeNormal = new Vector3f(0.0F, 1.0F, 0.0F);
         // settings.applyLookType = ApplyLookType.Rotation;
         // settings.lookMultiplier = new Vector2f(0.0F, 0.0F);
         // settings.attachedToType = AttachedToType.None;
@@ -82,9 +80,6 @@ public class CameraCommand extends CommandBase {
         // settings.rotation = new Direction()
 
         if (clickMove) {
-            // Click-to-move starts with planeNormal = (0,0,0). The
-            // ClickToMoveManager toggles to (0,1,0) on mouse-down so that
-            // LookAt tracks the cursor only while actively clicking/moving.
             settings.movementForceRotationType = MovementForceRotationType.Custom;
         } else if (camRelative) {
             settings.movementForceRotationType = MovementForceRotationType.CameraRotation;
