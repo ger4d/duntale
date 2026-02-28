@@ -71,6 +71,89 @@ Top-down / isometric camera with click-to-move body rotation, where the player's
 
 **Limitations**: Because the head always faces the mouse cursor (not the movement target), implementing click-to-move velocity requires computing the angle between `HeadRotation` (cursor direction) and the movement direction (toward the clicked position) to select the correct locomotion animation dynamically every time the mouse moves.
 
+### Problem 7: Movement doesn't work — player stays in place
+**Root cause**: Three interacting bugs:
+
+1. **`Velocity.set()` is server-only**: Setting the `Velocity` component's velocity field modifies a server-side variable that is never applied to player position. The client is authoritative — it sends position via `ClientMovement` packets that overwrite `TransformComponent`. `Velocity.set()` only works for NPC entities whose position is calculated server-side.
+
+2. **`MovementStatesComponent` overwritten by client each tick**: The client sends its own `MovementStates` based on WASD input (`_wishDirection`). Without keyboard input, `_wishDirection` is zero, so the client sends `idle=true`, `running=false` — overwriting our server-side flags. Remote viewers briefly see running (from our flags) then immediately see idle (from client's next tick).
+
+3. **Local player animation driven by WASD, not server states**: `UpdateMovementAnimation()` (Entity.cs L3709) checks `_wishDirection` to decide animations. Without WASD input, it always picks "Idle" regardless of `MovementStates`. Only `AnimationSlot.Movement` (slot 0) can suppress this — other animation slots do NOT block `UpdateMovementAnimation()`.
+
+**Solution**: Three-part fix:
+- **Movement**: Send `ChangeVelocity` packets directly to the client via `PlayerRef.getPacketHandler().writeNoCache()` with `VelocityConfig(groundResistance=1.0)` for no-decay persistent velocity. Uses protocol `VelocityConfig` (public fields) instead of going through `Velocity.addInstruction` → `PlayerVelocityInstructionSystem` (which requires splitvelocity `VelocityConfig` with private fields).
+- **Local animation**: `AnimationUtils.playAnimation(ref, AnimationSlot.Movement, "Run", sendToSelf=true, store)` — slot 0 suppresses client's `UpdateMovementAnimation()`, and `sendToSelf=true` ensures the local player sees the Run animation.
+- **Remote animation**: `MovementStatesComponent` flags still set for remote viewers (they receive `ServerMovementStates` and use them directly since `GetRelativeMovementStates()` returns server-sent states for remote entities).
+- **On arrival**: Zero-velocity `ChangeVelocity` packet + `AnimationUtils.stopAnimation(AnimationSlot.Movement)` + reset `MovementStatesComponent` to idle.
+
+### Problem 7a: VelocityConfig private fields (splitvelocity vs protocol)
+**Root cause**: `Velocity.addInstruction()` takes `com.hypixel.hytale.server.core.modules.splitvelocity.VelocityConfig` which has **private fields with no setters** — only a no-arg constructor with defaults (groundResistance=0.82). The protocol version (`com.hypixel.hytale.protocol.VelocityConfig`) has **public fields** and a full constructor.
+
+**Solution**: Bypass `Velocity.addInstruction()` entirely. Send `ChangeVelocity` packets directly to the player's packet handler using the protocol `VelocityConfig`:
+```java
+playerRef.getPacketHandler().writeNoCache(
+    new ChangeVelocity(vx, 0.0F, vz, ChangeVelocityType.Set, NO_DECAY_CONFIG)
+);
+```
+
+### Problem 7b: AnimationSlot.Movement doesn't work — use AnimationSlot.Status
+**Root cause**: Initial implementation used `AnimationSlot.Movement` (slot 0) based on the theory that it would suppress the client's `UpdateMovementAnimation()`. In practice, `AnimationSlot.Status` works for overriding the local player's animation, while `.Movement` does not.
+
+**Solution**: Use `AnimationSlot.Status` for both `playAnimation` and `stopAnimation`:
+```java
+AnimationUtils.playAnimation(ref, AnimationSlot.Status, "Run", true, store);
+AnimationUtils.stopAnimation(ref, AnimationSlot.Status, true, store);
+```
+
+### Problem 8: HeadRotation is horizontal with planeNormal=(0,1,0) — ground-plane intersection fails
+**Root cause**: With `mouseInputType=LookAtPlane` and `planeNormal=(0,1,0)`, HeadRotation does **not** point from the eye toward the cursor's ground position. Instead, pitch is always ~0 (horizontal), and yaw encodes only the XZ direction toward the cursor. The direction vector has `dir.y ≈ 0`, making ground-plane intersection impossible (`t = (groundY - eye.y) / dir.y` → infinity).
+
+**Debug evidence** (from `TargetUtil.getLook()` + `DebugUtils` visualization):
+```
+pitch=-0.000 yaw=-2.452 roll=0.000 | dir=(0.637, 0.000, 0.771) | eye=(167.0, 62.6, 23.9)
+```
+
+The direction is purely horizontal — HeadRotation gives direction but NOT distance to the cursor.
+
+**Implications**:
+- `TargetUtil.getTargetBlock(ref, ...)` shoots horizontally and hits walls — wrong for top-down.
+- `TargetUtil.getLook()` cannot reconstruct cursor world position — only the direction.
+- Ground-plane intersection approach is not viable.
+
+**Solution**: Use the cursor offset approach (see Problem 9).
+
+### Problem 9: Hold-click continuous movement with stationary mouse
+**Root cause**: Mouse motion events only fire when the mouse actually moves. While holding click with a stationary mouse, the player moves, the camera follows, but the cursor's **world position** shifts — and no events fire to update the target. The player walks to the original target and stops, instead of continuing toward where the cursor now points.
+
+**Key insight**: With a follow camera and stationary mouse, the **offset from player to cursor in world space is constant** — the camera moves with the player, and the cursor stays at the same screen position:
+```
+cursor_world = player_pos + constant_offset
+```
+
+**Solution**: Cursor offset approach:
+1. On mouse event (click or drag), compute and store `offsetXZ = targetBlockCenter - playerPos`
+2. On tick while button is held, recompute target as `currentPlayerPos + storedOffset`
+3. If recomputed target is over void (no solid block at foot level), skip the update — player continues to the last valid target
+4. On mouse release, clear `leftButtonHeld` but do NOT stop movement — player walks to last target until arrival
+
+This gives the correct behavior: hold-click makes the player walk continuously toward where the cursor points, even as the camera follows.
+
+### Problem 10: Only "Run" animation plays — no backward animation
+**Root cause**: `startAnimation()` always played `"Run"` regardless of whether the player's body was facing the movement direction or away from it. The boolean `animationPlaying` flag didn't track *which* animation was active.
+
+**Key insight**: The player's body yaw comes from `TransformComponent.getRotation().getYaw()`. Using Hytale's convention (from `Transform.getDirection()`), the body forward vector is:
+```
+forwardX = -sin(yaw)
+forwardZ = -cos(yaw)
+```
+Compute the dot product of the forward vector with the movement direction `(dx, dz)`. If `dot >= 0`, the player is facing within ±90° of the movement direction → play `"Run"`. If `dot < 0`, the player is facing away → play `"RunBackward"`.
+
+**Solution**:
+- Added `chooseAnimation(transform, dx, dz)` — computes body-forward dot movement-direction, returns `"Run"` or `"RunBackward"`
+- Replaced `boolean animationPlaying` with `@Nullable String currentAnimation` in `PlayerState` to track which animation is active
+- Added `updateAnimation(state, store, ref, animName)` — if desired animation differs from current, stops the old and starts the new; same animation is a no-op
+- Both `tickMovement()` (per-tick) and `updateTarget()` (on click/drag) call `chooseAnimation → updateAnimation`, so the animation updates dynamically as the player turns
+
 ---
 
 ## Animation Selection Reference
@@ -137,19 +220,17 @@ There are **no dedicated strafe animations** — lateral movement reuses forward
 
 ### Click-to-Move Implications
 
-For our click-to-move implementation, we only need to manage `MovementStates` flags on the server (via `MovementStatesComponent`) — the client handles all animation selection automatically.
+For our click-to-move implementation, we use:
+1. **`ChangeVelocity` packet** (id 163) sent directly to the client — controls actual movement
+2. **`AnimationSlot.Status`** with `playAnimation("Run", sendToSelf=true)` — overrides local player animation
+3. **`MovementStatesComponent`** — syncs animation flags to remote viewers only
+4. **Cursor offset** — stored on click/drag, reapplied each tick as `playerPos + offset` for hold-click movement
 
-**Verified**: Remote entities receive `MovementStates` via `ServerMovementStates` (parsed by `ClientMovementStatesProtocolHelper.Parse` from network packets). `GetRelativeMovementStates()` is virtual — local player overrides with client-predicted states, remote entities use server-sent states directly. **Flags alone trigger animation even with zero position delta** (entity "runs in place"). Animation speed for remote entities uses asset-defined values only (no velocity-based scaling).
+The client's local animation is driven by `_wishDirection` (WASD input). Without keyboard input, it always shows "Idle" regardless of server-set `MovementStates`. `AnimationSlot.Status` overrides this.
 
-**Components needed**:
-- `MovementStatesComponent` (component 10) — for animation flag sync
-- `TransformComponent` (component 9) — for actual position movement
+**Key insight**: `Velocity.set()` modifies the server-side velocity field which is NEVER applied to player position (only used for NPCs). The client is authoritative for player position — it sends position in `ClientMovement` packets that overwrite the server's `TransformComponent`. To move a player, we must send a `ChangeVelocity` packet which the client applies in its local physics simulation.
 
-The key flags to set are:
-- `running = true` (default movement), or `walking = true` for slow approach
-- `idle = false`, `horizontalIdle = false` while moving
-- `onGround = true`
-- The client will pick forward/backward animation based on the angle between velocity and `LookOrientation` (which tracks the cursor).
+**VelocityConfig**: Without a config (null), velocity is a one-shot impulse that decays with default resistance (0.82/tick). With `VelocityConfig(groundResistance=1.0)`, velocity persists until explicitly stopped with a zero-velocity instruction.
 ---
 
 ## Key Client/Server Code References
@@ -179,10 +260,16 @@ The key flags to set are:
 | `StabSelector.java` | Uses `HeadRotation` for thrust projection |
 | `AOECircleSelector.java` | Rotates offset by `HeadRotation.getRotation().getYaw()` |
 | `DamageEntityInteraction.java` | Uses `HeadRotation` for knockback direction |
+| `PlayerVelocityInstructionSystem.java` | Drains `Velocity.getInstructions()`, sends `ChangeVelocity` packets to client, clears list |
+| `Velocity.java` | `addInstruction(vec, config, type)` uses splitvelocity `VelocityConfig` (private fields) |
+| `ChangeVelocity.java` (protocol) | Packet 163, uses protocol `VelocityConfig` (public fields), sent via `writeNoCache()` |
+| `AnimationUtils.java` | `playAnimation(ref, slot, animId, sendToSelf, store)` / `stopAnimation(ref, slot, sendToSelf, store)` — use `AnimationSlot.Status` |
+| `TargetUtil.java` | `getLook(ref, store)` → `Transform` with eye position + HeadRotation direction; `getTargetBlock(ref, dist, store)` → 3D block raycast (NOT suitable for top-down) |
+| `DebugUtils.java` | `addSphere()`, `addLine()`, `addArrow()` — server-to-all-clients debug shapes |
 
 ---
 
-## Current State (2026-02-27)
+## Current State (2026-02-28)
 
 ### Working
 - Top-down and isometric camera views (`/camera topdown`, `/camera iso`)
@@ -192,7 +279,16 @@ The key flags to set are:
 - No Belly/multi-node TargetNodes issues (all normalized to `["Head"]`)
 - Camera-relative and head-relative WASD movement modes
 - Block occlusion (xray) support
-- Left-click particle feedback
+- **Click-to-move**: left-click sets target, player moves toward it at 8 b/s via `ChangeVelocity` packets (persistent velocity with `VelocityConfig(groundResistance=1.0)`)
+- **Drag-to-move**: holding left button while moving mouse continuously updates target (`PlayerMouseMotionEvent` + `sendMouseMotion = true`); velocity direction re-sent only when angle changes >0.1 rad
+- **Hold-click continuous movement**: stores XZ cursor offset on click/drag; on each tick while button held, recomputes target as `playerPos + offset`. Validates target is over solid ground (skips void). Gives smooth continuous walking toward cursor with follow camera.
+- **Mouse release does NOT stop movement**: player continues to last valid target until arrival
+- **Wall detection**: clicks on blocks above player Y probe 4 cardinal neighbours at foot level for walkable ground
+- **Run / RunBackward animation**: dynamically selects `"Run"` or `"RunBackward"` based on dot product of body forward vector `(-sin(yaw), -cos(yaw))` and movement direction — switches within ±90° threshold. Uses `AnimationSlot.Status` with `sendToSelf=true`; `MovementStatesComponent` flags for remote viewers
+- **Arrival stop**: zero-velocity `ChangeVelocity` + `stopAnimation(AnimationSlot.Status)` + states reset to idle when within 1 block of target
+- **Clean disable**: `disable()` sends stop velocity + stops animation if player was moving
+- **Player-only particles**: `ParticleUtil.spawnParticleEffect` with `Collections.singletonList(ref)` — only visible to the clicking player
+- **Click-only particles**: particles spawn on left-click press only, not during mouse drag
 - No teleportId desync issues (teleport packets removed entirely)
 
 ### Known Issues
@@ -206,25 +302,29 @@ The key flags to set are:
 
   **Why cancelling `PlayerMouseButtonEvent` does NOT help**: `InteractionModule.doMouseInteraction()` dispatch is fire-and-forget — `isCancelled()` is never checked. The `activeSlot` check runs **before** event dispatch.
 
+### Important Anti-Patterns (DON'T USE)
+- `Velocity.set()` — server-only, never applied to player position
+- `Velocity.addInstruction()` — requires splitvelocity `VelocityConfig` with private fields
+- `AnimationSlot.Movement` — doesn't work for click-to-move, use `.Status`
+- `MovementStatesComponent` alone — client overwrites from WASD each tick
+- `TargetUtil.getTargetBlock(ref, ...)` — 3D block raycast from HeadRotation, shoots horizontally with `planeNormal=(0,1,0)`, hits walls instead of ground
+- `TargetUtil.getLook()` for cursor position — HeadRotation gives XZ direction only (pitch≈0), cannot compute distance to cursor
+- Ground-plane intersection via `getLook()` — `dir.y ≈ 0` makes `t` infinite
+- Stopping movement on mouse release — walk-to-arrival is the intended behavior
+
 ### Not Yet Implemented / To Restore
-- Click-to-move pathfinding / velocity (movement toward clicked position)
-- Run/Walk animations triggered by movement (MovementStates flags — verified sufficient, see Animation section)
-- Directional speed multipliers (forward/backward/strafe)
+- **Wall face-aware resolution**: Currently probes 4 cardinal neighbours blindly when click hits a wall. Corner walls may resolve to perpendicular ground instead of the face-aligned ground the player intended. Enhancement: use the clicked face normal to prioritize the correct neighbour.
+- Directional speed multipliers (forward/backward)
 - DisablePrimary entity effect (prevent accidental ground attacks)
 - Selective entity attack (attack on click when cursor is over enemy)
-- Drag-to-move (hold mouse to continuously move)
+- Pathfinding / obstacle avoidance
 - Packet filters (if needed)
 
-### Known Constants (from prior implementation)
+### Active Constants
 ```
-ARRIVAL_THRESHOLD = 1.0
-DIRECTION_CHANGE_THRESHOLD = 0.05
-BACKWARD_ANGLE_THRESHOLD = 120°
-FORWARD_ANGLE_THRESHOLD = 60°
-MOVE_SPEED = 8.0
-FORWARD_MULTIPLIER = 1.0
-SIDE_MULTIPLIER = 0.8
-BACKWARD_MULTIPLIER = 0.65
+ARRIVAL_THRESHOLD = 1.0  (stop distance)
+MOVE_SPEED = 8.0         (blocks/second)
+FOLLOW_YAW_RANGE = ±1 rad (~57°)
 ```
 
 ### Asset: DisablePrimary.json
@@ -232,3 +332,7 @@ Already exists at `src/main/resources/Server/Entity/Effects/Status/DisablePrimar
 ```json
 {"Infinite": true, "ApplicationEffects": {"AbilityEffects": {"Disabled": ["Primary"]}}}
 ```
+
+
+### Future Notes:
+- If side strafing like is desired, we can dynamically

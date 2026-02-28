@@ -3,7 +3,7 @@ package com.duntale.zsquad.command;
 import com.duntale.zsquad.ZSquadPlugin;
 import com.hypixel.hytale.component.Ref;
 import com.hypixel.hytale.component.Store;
-import com.hypixel.hytale.protocol.ApplyLookType;
+import com.hypixel.hytale.logger.HytaleLogger;
 import com.hypixel.hytale.protocol.ClientCameraView;
 import com.hypixel.hytale.protocol.Position;
 import com.hypixel.hytale.protocol.Direction;
@@ -14,25 +14,40 @@ import com.hypixel.hytale.protocol.PositionDistanceOffsetType;
 import com.hypixel.hytale.protocol.RotationType;
 import com.hypixel.hytale.protocol.ServerCameraSettings;
 import com.hypixel.hytale.protocol.Vector3f;
-import com.hypixel.hytale.protocol.Vector2f;
-import com.hypixel.hytale.protocol.AttachedToType;
 import com.hypixel.hytale.protocol.packets.camera.SetServerCamera;
 import com.hypixel.hytale.server.core.Message;
+import com.hypixel.hytale.server.core.asset.type.entityeffect.config.EntityEffect;
 import com.hypixel.hytale.server.core.command.system.CommandContext;
 import com.hypixel.hytale.server.core.command.system.arguments.system.FlagArg;
 import com.hypixel.hytale.server.core.command.system.arguments.system.OptionalArg;
 import com.hypixel.hytale.server.core.command.system.arguments.types.ArgTypes;
 import com.hypixel.hytale.server.core.command.system.basecommands.AbstractPlayerCommand;
 import com.hypixel.hytale.server.core.command.system.basecommands.CommandBase;
+import com.hypixel.hytale.server.core.entity.effect.EffectControllerComponent;
 import com.hypixel.hytale.server.core.entity.entities.player.movement.MovementManager;
 import com.hypixel.hytale.server.core.universe.PlayerRef;
 import com.hypixel.hytale.server.core.universe.world.World;
 import com.hypixel.hytale.server.core.universe.world.storage.EntityStore;
 
 import javax.annotation.Nonnull;
+import javax.annotation.Nullable;
 import java.util.Map;
+import java.util.UUID;
 
+/**
+ * Camera control command with top-down, isometric, and first-person sub-commands.
+ *
+ * <p>Provides overhead camera views with optional click-to-move, camera-relative
+ * movement, and block occlusion (xray) features.
+ *
+ * @since 1.0.0
+ */
 public class CameraCommand extends CommandBase {
+
+    private static final HytaleLogger LOGGER = HytaleLogger.forEnclosingClass();
+
+    /** Asset key for the DisablePrimary entity effect (disables hit/swing/shot). */
+    private static final String DISABLE_PRIMARY_EFFECT_KEY = "DisablePrimary";
 
     public CameraCommand() {
         super("camera", "Toggle camera view");
@@ -46,7 +61,9 @@ public class CameraCommand extends CommandBase {
          context.sendMessage(Message.raw("Usage: /camera <topdown|iso|fps> [--camrel] [--clickmove] [--xray]"));
     }
 
-    // ── Shared camera configuration ──────────────────────────────────────
+    // ============================================
+    // Shared camera configuration
+    // ============================================
 
     /**
      * Creates the common overhead camera settings shared by top-down and isometric views.
@@ -73,11 +90,6 @@ public class CameraCommand extends CommandBase {
         // planeNormal = (0,1,0): client automatically rotates player head/body
         // toward the mouse position on the Y=0 ground plane.
         settings.planeNormal = new Vector3f(0.0F, 1.0F, 0.0F);
-        // settings.applyLookType = ApplyLookType.Rotation;
-        // settings.lookMultiplier = new Vector2f(0.0F, 0.0F);
-        // settings.attachedToType = AttachedToType.None;
-        // settings.position = new Position(150, 80, 20);
-        // settings.rotation = new Direction()
 
         if (clickMove) {
             settings.movementForceRotationType = MovementForceRotationType.Custom;
@@ -149,6 +161,7 @@ public class CameraCommand extends CommandBase {
 
     /**
      * Configures optional features (click-to-move, xray) for a player entering overhead mode.
+     * Always applies the DisablePrimary effect to prevent accidental hits in overhead views.
      */
     private static void enableOptionalFeatures(@Nonnull PlayerRef playerRef,
                                                 @Nonnull World world,
@@ -156,9 +169,14 @@ public class CameraCommand extends CommandBase {
                                                 @Nonnull Ref<EntityStore> ref,
                                                 boolean clickMove,
                                                 boolean xray,
-                                                float cameraYaw) {
-        java.util.UUID uuid = playerRef.getUuid();
+                                                float cameraYaw,
+                                                float cameraPitch,
+                                                float cameraDistance) {
+        UUID uuid = playerRef.getUuid();
         ZSquadPlugin plugin = ZSquadPlugin.get();
+
+        // Disable primary interaction in all overhead camera modes
+        applyDisablePrimary(store, ref);
 
         if (clickMove) {
             plugin.getClickToMoveManager().enable(uuid, store, ref);
@@ -167,7 +185,7 @@ public class CameraCommand extends CommandBase {
         }
 
         if (xray) {
-            plugin.getBlockOcclusionManager().enable(uuid, cameraYaw);
+            plugin.getBlockOcclusionManager().enable(uuid, cameraYaw, cameraPitch, cameraDistance);
         } else {
             plugin.getBlockOcclusionManager().disable(uuid, world);
         }
@@ -175,17 +193,53 @@ public class CameraCommand extends CommandBase {
 
     /**
      * Disables all optional features for a player (used on FPS reset).
+     * Removes the DisablePrimary effect if active.
      */
     private static void disableAllFeatures(@Nonnull PlayerRef playerRef, @Nonnull World world,
                                             @Nonnull Store<EntityStore> store,
                                             @Nonnull Ref<EntityStore> ref) {
-        java.util.UUID uuid = playerRef.getUuid();
+        UUID uuid = playerRef.getUuid();
         ZSquadPlugin plugin = ZSquadPlugin.get();
         plugin.getClickToMoveManager().disable(uuid, store, ref);
         plugin.getBlockOcclusionManager().disable(uuid, world);
+        removeDisablePrimary(store, ref);
     }
 
-    // ── Top-Down ─────────────────────────────────────────────────────────
+    /**
+     * Applies the DisablePrimary entity effect to prevent primary interaction (hit/swing/shot).
+     * The effect is configured as infinite in the asset JSON and persists until explicitly removed.
+     */
+    private static void applyDisablePrimary(@Nonnull Store<EntityStore> store,
+                                             @Nonnull Ref<EntityStore> ref) {
+        EntityEffect effect = EntityEffect.getAssetMap().getAsset(DISABLE_PRIMARY_EFFECT_KEY);
+        if (effect == null) {
+            LOGGER.atWarning().log("DisablePrimary EntityEffect asset not found");
+            return;
+        }
+
+        EffectControllerComponent ecc = store.getComponent(ref, EffectControllerComponent.getComponentType());
+        if (ecc == null) return;
+
+        ecc.addEffect(ref, effect, store);
+    }
+
+    /**
+     * Removes the DisablePrimary entity effect, restoring primary interaction.
+     */
+    private static void removeDisablePrimary(@Nonnull Store<EntityStore> store,
+                                              @Nonnull Ref<EntityStore> ref) {
+        int effectIndex = EntityEffect.getAssetMap().getIndex(DISABLE_PRIMARY_EFFECT_KEY);
+        if (effectIndex < 0) return;
+
+        EffectControllerComponent ecc = store.getComponent(ref, EffectControllerComponent.getComponentType());
+        if (ecc == null) return;
+
+        ecc.removeEffect(ref, effectIndex, store);
+    }
+
+    // ============================================
+    // Top-Down
+    // ============================================
 
     private static class TopDownSubCommand extends AbstractPlayerCommand {
 
@@ -220,7 +274,8 @@ public class CameraCommand extends CommandBase {
 
             applyCamera(playerRef, settings);
             adjustMovementForMode(camRelative, store, ref, playerRef);
-            enableOptionalFeatures(playerRef, world, store, ref, clickMove, xray, 0.0F);
+            enableOptionalFeatures(playerRef, world, store, ref, clickMove, xray,
+                    0.0F, (float) (-Math.PI / 2), distance);
 
             StringBuilder info = new StringBuilder("Switched to Top-Down Camera (");
             info.append(camRelative ? "camera-rel" : "head-rel");
@@ -231,7 +286,9 @@ public class CameraCommand extends CommandBase {
         }
     }
 
-    // ── Isometric ────────────────────────────────────────────────────────
+    // ============================================
+    // Isometric
+    // ============================================
 
     private static class IsoSubCommand extends AbstractPlayerCommand {
 
@@ -296,7 +353,8 @@ public class CameraCommand extends CommandBase {
 
             applyCamera(playerRef, settings);
             adjustMovementForMode(camRelative, store, ref, playerRef);
-            enableOptionalFeatures(playerRef, world, store, ref, clickMove, xray, yaw);
+            enableOptionalFeatures(playerRef, world, store, ref, clickMove, xray,
+                    yaw, ISO_PITCH, distance);
 
             StringBuilder info = new StringBuilder("Switched to Isometric Camera (");
             info.append(angleKey.toUpperCase());
@@ -309,7 +367,9 @@ public class CameraCommand extends CommandBase {
         }
     }
 
-    // ── First Person Reset ───────────────────────────────────────────────
+    // ============================================
+    // First Person Reset
+    // ============================================
 
     private static class FirstPersonSubCommand extends AbstractPlayerCommand {
         public FirstPersonSubCommand() {
