@@ -32,6 +32,8 @@ public class ScalingDataCache {
     private final ConcurrentHashMap<String, MonsterScaledData> monsterCache = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<String, Float> weaponMultCache = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<String, Float> armorDrCache = new ConcurrentHashMap<>();
+    private final ConcurrentHashMap<String, WeaponBaseRow> weaponBaseCache = new ConcurrentHashMap<>();
+    private final ConcurrentHashMap<String, ArmorBaseRow> armorBaseCache = new ConcurrentHashMap<>();
 
     @Nullable
     private Connection connection;
@@ -141,6 +143,46 @@ public class ScalingDataCache {
         float dr = withJdbcClassLoader(() -> queryArmorDR(armorId, level));
         armorDrCache.put(key, dr);
         return dr;
+    }
+
+    /**
+     * Retrieves the base data for a single weapon by its asset ID.
+     *
+     * @param weaponId the weapon asset ID (e.g. "Weapon_Sword_Cobalt")
+     * @return the base row, or {@code null} if not found
+     */
+    @Nullable
+    public WeaponBaseRow getWeaponBase(@Nonnull String weaponId) {
+        WeaponBaseRow cached = weaponBaseCache.get(weaponId);
+        if (cached != null) {
+            return cached;
+        }
+
+        WeaponBaseRow row = withJdbcClassLoader(() -> queryWeaponBase(weaponId));
+        if (row != null) {
+            weaponBaseCache.put(weaponId, row);
+        }
+        return row;
+    }
+
+    /**
+     * Retrieves the base data for a single armor piece by its asset ID.
+     *
+     * @param armorId the armor asset ID (e.g. "Armor_Chest_Cobalt")
+     * @return the base row, or {@code null} if not found
+     */
+    @Nullable
+    public ArmorBaseRow getArmorBase(@Nonnull String armorId) {
+        ArmorBaseRow cached = armorBaseCache.get(armorId);
+        if (cached != null) {
+            return cached;
+        }
+
+        ArmorBaseRow row = withJdbcClassLoader(() -> queryArmorBase(armorId));
+        if (row != null) {
+            armorBaseCache.put(armorId, row);
+        }
+        return row;
     }
 
     // ── Sort column whitelists (user-friendly name → SQL column) ────
@@ -423,6 +465,8 @@ public class ScalingDataCache {
         monsterCache.clear();
         weaponMultCache.clear();
         armorDrCache.clear();
+        weaponBaseCache.clear();
+        armorBaseCache.clear();
 
         if (connection != null) {
             try {
@@ -508,6 +552,66 @@ public class ScalingDataCache {
         }
 
         return 0.0f;
+    }
+
+    @Nullable
+    private WeaponBaseRow queryWeaponBase(@Nonnull String weaponId) {
+        if (connection == null) {
+            return null;
+        }
+
+        try (PreparedStatement stmt = connection.prepareStatement(
+                "SELECT name, family, quality, item_level, base_damage FROM weapons_base WHERE weapon_id = ?")) {
+            stmt.setString(1, weaponId);
+
+            try (ResultSet rs = stmt.executeQuery()) {
+                if (rs.next()) {
+                    return new WeaponBaseRow(
+                            rs.getString("name"),
+                            rs.getString("family"),
+                            rs.getString("quality"),
+                            rs.getInt("item_level"),
+                            rs.getFloat("base_damage")
+                    );
+                }
+            }
+        } catch (SQLException e) {
+            LOGGER.at(Level.WARNING).log("Failed to query weapon base for %s: %s", weaponId, e.getMessage());
+        }
+
+        return null;
+    }
+
+    @Nullable
+    private ArmorBaseRow queryArmorBase(@Nonnull String armorId) {
+        if (connection == null) {
+            return null;
+        }
+
+        try (PreparedStatement stmt = connection.prepareStatement(
+                "SELECT name, slot, quality, item_level, phys_resist, proj_resist, health_bonus, special " +
+                        "FROM armor_base WHERE armor_id = ?")) {
+            stmt.setString(1, armorId);
+
+            try (ResultSet rs = stmt.executeQuery()) {
+                if (rs.next()) {
+                    return new ArmorBaseRow(
+                            rs.getString("name"),
+                            rs.getString("slot"),
+                            rs.getString("quality"),
+                            rs.getInt("item_level"),
+                            rs.getFloat("phys_resist"),
+                            rs.getFloat("proj_resist"),
+                            rs.getInt("health_bonus"),
+                            rs.getString("special")
+                    );
+                }
+            }
+        } catch (SQLException e) {
+            LOGGER.at(Level.WARNING).log("Failed to query armor base for %s: %s", armorId, e.getMessage());
+        }
+
+        return null;
     }
 
     /**

@@ -3,6 +3,7 @@ package com.duntale.zsquad;
 import com.duntale.zsquad.camera.BlockOcclusionManager;
 import com.duntale.zsquad.camera.ClickToMoveManager;
 import com.duntale.zsquad.camera.ClickToMoveTickSystem;
+import com.duntale.zsquad.command.DGiveCommand;
 import com.duntale.zsquad.command.DListCommand;
 import com.duntale.zsquad.command.DSpawnCommand;
 import com.duntale.zsquad.progression.CombatScalingSystem;
@@ -112,6 +113,10 @@ public class ZSquadPlugin extends JavaPlugin {
         this.getCommandRegistry().registerCommand(new com.duntale.zsquad.command.WeaponCommand());
         this.getCommandRegistry().registerCommand(new DSpawnCommand(leveledNpcSpawner, scalingDataCache));
         this.getCommandRegistry().registerCommand(new DListCommand(scalingDataCache));
+        this.getCommandRegistry().registerCommand(new DGiveCommand(scalingDataCache));
+
+        // ── DynamicTooltipsLib integration (optional dependency) ──
+        registerTooltipProvider();
     }
 
     @Override
@@ -126,6 +131,25 @@ public class ZSquadPlugin extends JavaPlugin {
         }
         if (npcLevelRegistry != null) {
             npcLevelRegistry.clear();
+        }
+    }
+
+    /**
+     * Registers the gear scaling tooltip provider with DynamicTooltipsLib if available.
+     * Guarded so that the plugin works even without the optional dependency.
+     */
+    private void registerTooltipProvider() {
+        try {
+            var api = org.herolias.tooltips.api.DynamicTooltipsApiProvider.get();
+            if (api != null) {
+                api.registerProvider(
+                        new com.duntale.zsquad.progression.GearScalingTooltipProvider(scalingDataCache));
+                LOGGER.atInfo().log("Registered GearScalingTooltipProvider with DynamicTooltipsLib");
+            } else {
+                LOGGER.atInfo().log("DynamicTooltipsLib not available — tooltip overrides disabled");
+            }
+        } catch (NoClassDefFoundError e) {
+            LOGGER.atInfo().log("DynamicTooltipsLib not loaded — tooltip overrides disabled");
         }
     }
 }
