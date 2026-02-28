@@ -19,6 +19,7 @@ repositories {
 
 dependencies {
     compileOnly("com.hypixel.hytale:Server:2026.02.18-f3b8fff95")
+    compileOnly(files("../DynamicTooltipsLib/build/libs/DynamicTooltipsLib-1.5.1.jar"))
     
     // SQLite JDBC driver
     implementation("org.xerial:sqlite-jdbc:3.51.1.0")

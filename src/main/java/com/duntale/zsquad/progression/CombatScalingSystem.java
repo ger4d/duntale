@@ -10,7 +10,12 @@ import com.hypixel.hytale.component.dependency.Order;
 import com.hypixel.hytale.component.dependency.SystemGroupDependency;
 import com.hypixel.hytale.component.query.Query;
 import com.hypixel.hytale.logger.HytaleLogger;
+import com.hypixel.hytale.server.core.entity.EntityUtils;
+import com.hypixel.hytale.server.core.entity.LivingEntity;
 import com.hypixel.hytale.server.core.entity.UUIDComponent;
+import com.hypixel.hytale.server.core.inventory.Inventory;
+import com.hypixel.hytale.server.core.inventory.ItemStack;
+import com.hypixel.hytale.server.core.inventory.container.ItemContainer;
 import com.hypixel.hytale.server.core.modules.entity.AllLegacyLivingEntityTypesQuery;
 import com.hypixel.hytale.server.core.modules.entity.damage.Damage;
 import com.hypixel.hytale.server.core.modules.entity.damage.DamageEventSystem;
@@ -42,6 +47,9 @@ import java.util.logging.Level;
 public class CombatScalingSystem extends DamageEventSystem {
 
     private static final HytaleLogger LOGGER = HytaleLogger.forEnclosingClass();
+
+    /** Maximum combined armor DR — hard cap at 65%. */
+    private static final float MAX_ARMOR_DR = 0.65f;
 
     @Nonnull
     private static final Query<EntityStore> QUERY = AllLegacyLivingEntityTypesQuery.INSTANCE;
@@ -97,37 +105,125 @@ public class CombatScalingSystem extends DamageEventSystem {
 
         Ref<EntityStore> targetRef = archetypeChunk.getReferenceTo(index);
 
-        // ── Case 1: NPC attacker → scale outgoing damage ────────────
+        // ── Case 1: NPC attacker → Player target ────────────────────
+        //   a) Scale NPC outgoing damage by its level multiplier.
+        //   b) Reduce damage by the player's leveled armor DR.
         NPCEntity attackerNpc = store.getComponent(attackerRef, NPCEntity.getComponentType());
         if (attackerNpc != null) {
             UUIDComponent attackerUuid = store.getComponent(attackerRef, UUIDComponent.getComponentType());
             if (attackerUuid != null) {
                 NpcLevelRegistry.NpcLevelData data = npcLevelRegistry.get(attackerUuid.getUuid());
                 if (data != null) {
-                    float newAmount = damage.getAmount() * data.damageMultiplier();
-                    damage.setAmount(Math.min(newAmount, 500f));
+                    float amount = damage.getAmount() * data.damageMultiplier();
+                    amount = Math.min(amount, 500f);
+
+                    // Apply player's leveled armor DR
+                    float armorDr = computePlayerArmorDR(targetRef, commandBuffer);
+                    if (armorDr > 0f) {
+                        amount *= (1f - armorDr);
+                    }
+
+                    damage.setAmount(Math.max(amount, 0f));
                 }
             }
             return;
         }
 
-        // ── Case 2: Player attacker → NPC target, scale weapon damage
+        // ── Case 2: Player attacker → NPC target ────────────────────
+        //   Scale damage by the player's held weapon level multiplier × variance.
         NPCEntity targetNpc = store.getComponent(targetRef, NPCEntity.getComponentType());
         if (targetNpc != null) {
-            UUIDComponent targetUuid = store.getComponent(targetRef, UUIDComponent.getComponentType());
-            if (targetUuid != null) {
-                NpcLevelRegistry.NpcLevelData targetData = npcLevelRegistry.get(targetUuid.getUuid());
-                if (targetData != null) {
-                    // For now, apply a base weapon scaling based on the NPC's level
-                    // This can be enhanced to read weapon metadata when gear leveling is fully implemented
-                    int npcLevel = targetData.level();
-                    float weaponMult = scalingCache.getWeaponMultiplier("Default_Weapon", npcLevel);
-                    if (weaponMult > 1.0f) {
-                        damage.setAmount(damage.getAmount() * weaponMult);
-                    }
-                }
+            float weaponMult = computePlayerWeaponMult(attackerRef, commandBuffer);
+            if (weaponMult > 0f) {
+                damage.setAmount(damage.getAmount() * weaponMult);
             }
         }
+    }
+
+    /**
+     * Computes the weapon damage multiplier from the attacker's held item.
+     *
+     * <p>If the held item has {@code zsquad_weapon_level} metadata, the multiplier
+     * is looked up from the scaling DB for that weapon at that level, then scaled
+     * by the item's variance. If the item has no level metadata, returns {@code 0}
+     * (no scaling applied).
+     *
+     * @param attackerRef     the attacker entity reference
+     * @param commandBuffer   the command buffer for entity access
+     * @return the weapon multiplier (including variance), or {@code 0} if no leveled weapon
+     */
+    private float computePlayerWeaponMult(@Nonnull Ref<EntityStore> attackerRef,
+                                          @Nonnull CommandBuffer<EntityStore> commandBuffer) {
+        if (!(EntityUtils.getEntity(attackerRef, commandBuffer) instanceof LivingEntity attacker)) {
+            return 0f;
+        }
+
+        Inventory inventory = attacker.getInventory();
+        ItemStack heldItem = inventory.getItemInHand();
+        if (ItemStack.isEmpty(heldItem)) {
+            return 0f;
+        }
+
+        Integer weaponLevel = GearLevelService.getWeaponLevel(heldItem);
+        if (weaponLevel == null) {
+            return 0f;
+        }
+
+        String weaponId = heldItem.getItem().getId();
+        float mult = scalingCache.getWeaponMultiplier(weaponId, weaponLevel);
+
+        Float variance = GearLevelService.getWeaponVariance(heldItem);
+        if (variance != null) {
+            mult *= variance;
+        }
+
+        return mult;
+    }
+
+    /**
+     * Computes the combined armor damage reduction from all leveled armor pieces
+     * worn by the target entity.
+     *
+     * <p>Each armor piece with {@code zsquad_armor_level} metadata contributes its
+     * DR value (from the scaling DB) scaled by the piece's variance. The values are
+     * combined additively, capped at 0.65 (65%).
+     *
+     * @param targetRef     the target entity reference
+     * @param commandBuffer the command buffer for entity access
+     * @return the combined DR (0.0–0.65), or {@code 0} if no leveled armor
+     */
+    private float computePlayerArmorDR(@Nonnull Ref<EntityStore> targetRef,
+                                       @Nonnull CommandBuffer<EntityStore> commandBuffer) {
+        if (!(EntityUtils.getEntity(targetRef, commandBuffer) instanceof LivingEntity target)) {
+            return 0f;
+        }
+
+        ItemContainer armorContainer = target.getInventory().getArmor();
+        float totalDr = 0f;
+
+        for (short slot = 0; slot < armorContainer.getCapacity(); slot++) {
+            ItemStack piece = armorContainer.getItemStack(slot);
+            if (ItemStack.isEmpty(piece)) {
+                continue;
+            }
+
+            Integer armorLevel = GearLevelService.getArmorLevel(piece);
+            if (armorLevel == null) {
+                continue;
+            }
+
+            String armorId = piece.getItem().getId();
+            float dr = scalingCache.getArmorDR(armorId, armorLevel);
+
+            Float variance = GearLevelService.getArmorVariance(piece);
+            if (variance != null) {
+                dr *= variance;
+            }
+
+            totalDr += dr;
+        }
+
+        return Math.min(totalDr, MAX_ARMOR_DR);
     }
 
     /**

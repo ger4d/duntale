@@ -1,6 +1,7 @@
 package com.duntale.zsquad;
 
 import com.duntale.zsquad.camera.BlockOcclusionManager;
+import com.duntale.zsquad.camera.ClickToMoveKnockbackSystem;
 import com.duntale.zsquad.camera.ClickToMoveManager;
 import com.duntale.zsquad.camera.ClickToMoveTickSystem;
 import com.duntale.zsquad.command.DGiveCommand;
@@ -106,6 +107,7 @@ public class ZSquadPlugin extends JavaPlugin {
         // Register ECS systems
         this.getEntityStoreRegistry().registerSystem(new ClickToMoveTickSystem(this.clickToMoveManager));
         this.getEntityStoreRegistry().registerSystem(new CombatScalingSystem(npcLevelRegistry, scalingDataCache));
+        this.getEntityStoreRegistry().registerSystem(new ClickToMoveKnockbackSystem(this.clickToMoveManager));
 
         // Command registration
         this.getCommandRegistry().registerCommand(new com.duntale.zsquad.command.SpawnCommand());

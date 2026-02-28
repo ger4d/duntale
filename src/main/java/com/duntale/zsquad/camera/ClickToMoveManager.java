@@ -22,12 +22,20 @@ import com.hypixel.hytale.server.core.asset.type.model.config.camera.CameraAxis;
 import com.hypixel.hytale.server.core.asset.type.model.config.camera.CameraSettings;
 import com.hypixel.hytale.server.core.entity.AnimationUtils;
 import com.hypixel.hytale.server.core.entity.Entity;
+import com.hypixel.hytale.server.core.entity.InteractionChain;
+import com.hypixel.hytale.server.core.entity.InteractionContext;
+import com.hypixel.hytale.server.core.entity.InteractionManager;
 import com.hypixel.hytale.server.core.entity.movement.MovementStatesComponent;
 import com.hypixel.hytale.server.core.event.events.player.PlayerMouseButtonEvent;
 import com.hypixel.hytale.server.core.event.events.player.PlayerMouseMotionEvent;
 import com.hypixel.hytale.server.core.modules.entity.component.ModelComponent;
+import com.hypixel.hytale.server.core.modules.entity.component.BoundingBox;
 import com.hypixel.hytale.server.core.modules.entity.component.TransformComponent;
+import com.hypixel.hytale.server.core.modules.entity.tracker.NetworkId;
+import com.hypixel.hytale.server.core.modules.interaction.InteractionModule;
+import com.hypixel.hytale.server.core.modules.interaction.interaction.config.RootInteraction;
 import com.hypixel.hytale.server.core.modules.entity.player.PlayerSkinComponent;
+import com.hypixel.hytale.protocol.InteractionType;
 import com.hypixel.hytale.protocol.VelocityConfig;
 import com.hypixel.hytale.protocol.packets.entities.ChangeVelocity;
 import com.hypixel.hytale.server.core.universe.PlayerRef;
@@ -36,9 +44,22 @@ import com.hypixel.hytale.server.core.universe.world.ParticleUtil;
 import com.hypixel.hytale.server.core.universe.world.World;
 import com.hypixel.hytale.server.core.universe.world.chunk.WorldChunk;
 import com.hypixel.hytale.server.core.universe.world.storage.EntityStore;
+import com.hypixel.hytale.server.core.util.TargetUtil;
+
+import com.hypixel.hytale.protocol.SoundCategory;
+import com.hypixel.hytale.protocol.packets.entities.PlayAnimation;
+import com.hypixel.hytale.protocol.packets.interface_.Page;
+import com.hypixel.hytale.protocol.packets.interface_.SetPage;
+import com.hypixel.hytale.protocol.packets.world.PlaySoundEvent2D;
+import com.hypixel.hytale.server.core.asset.type.soundevent.config.SoundEvent;
+import com.hypixel.hytale.server.core.entity.entities.Player;
+import com.hypixel.hytale.server.core.io.adapter.PacketAdapters;
+import com.hypixel.hytale.server.core.io.adapter.PlayerPacketFilter;
+import com.hypixel.hytale.server.core.io.adapter.PlayerPacketWatcher;
 
 import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -157,6 +178,23 @@ public class ClickToMoveManager {
     /** Squared attack range for cheaper distance checks. */
     private static final double ATTACK_RANGE_SQ = ATTACK_RANGE * ATTACK_RANGE;
 
+    /**
+     * Minimum interval between server-forced attack chains (nanoseconds).
+     * Prevents wasteful {@link InteractionContext} / {@link InteractionChain}
+     * allocation on every mouse event. The engine's own {@code isOnCooldown()}
+     * handles real weapon cooldowns, but this avoids the object creation overhead.
+     */
+    private static final long ATTACK_THROTTLE_NS = 400_000_000L; // 300 ms
+
+    /**
+     * Search radius (in blocks) for the wall-occlusion entity fallback. When a
+     * click hits a wall block (the client's camera-to-cursor raycast is blocked
+     * by a wall before reaching an entity), entities within this radius of the
+     * wall block are considered as potential targets. Kept small to avoid false
+     * positives on distant entities.
+     */
+    private static final double WALL_ENTITY_SEARCH_RADIUS = 5.0;
+
     // ============================================
     // Per-player State
     // ============================================
@@ -206,6 +244,24 @@ public class ClickToMoveManager {
          * invalid or the player clicks on empty ground.
          */
         @Nullable volatile Ref<EntityStore> targetEntity;
+
+        /**
+         * {@link System#nanoTime()} of the last successful {@code triggerAttack()} call.
+         * Used together with {@link #ATTACK_THROTTLE_NS} to avoid wasteful
+         * InteractionContext / InteractionChain allocation on every mouse event.
+         */
+        long lastAttackNanos;
+
+        /**
+         * The last server-sent {@link Page} for this player, tracked via an outbound
+         * {@link SetPage} watcher. Used to suppress CTM input while a built-in page
+         * (e.g. Bench) is open.
+         *
+         * <p><b>Limitation</b>: Client-toggled pages (Inventory, Map) are opened
+         * entirely client-side — the server receives no notification, so this field
+         * will NOT reflect those pages.</p>
+         */
+        @Nonnull volatile Page activePage = Page.None;
     }
 
     // ============================================
@@ -227,6 +283,82 @@ public class ClickToMoveManager {
         this.eventRegistry.enable();
         this.eventRegistry.register(PlayerMouseButtonEvent.class, this::onMouseButton);
         this.eventRegistry.register(PlayerMouseMotionEvent.class, this::onMouseMotion);
+
+        // Drop outbound Hurt animations for CTM players so they don't cancel
+        // the Run animation on AnimationSlot.Status. The hurt sound (normally
+        // carried by keyframe SFX in the animation) is sent manually instead.
+        PacketAdapters.registerOutbound((PlayerPacketFilter) this::filterHurtAnimation);
+
+        // Track server-sent pages (Bench, Custom, etc.) so we can suppress CTM
+        // input while a page is open.  Note: client-toggled pages (Inventory, Map)
+        // bypass the server entirely and are NOT visible here.
+        PacketAdapters.registerOutbound((PlayerPacketWatcher) (playerRef, packet) -> {
+            if (packet instanceof SetPage setPage) {
+                PlayerState state = players.get(playerRef.getUuid());
+                if (state != null) {
+                    state.activePage = setPage.page;
+                }
+            }
+        });
+    }
+
+    /**
+     * Lazily-resolved sound event index for {@code SFX_Player_Hurt}.
+     * <p>0 = not yet resolved, -1 = resolution failed, >0 = valid index.</p>
+     */
+    private int hurtSoundIndex;
+
+    /**
+     * Outbound packet filter that drops Hurt animations targeting a CTM player's
+     * own entity and replaces them with a manual {@link PlaySoundEvent2D} so the
+     * player still gets audio feedback.
+     *
+     * @return {@code true} to drop the packet, {@code false} to let it through
+     */
+    private boolean filterHurtAnimation(@Nonnull PlayerRef playerRef, @Nonnull Object packet) {
+        if (!(packet instanceof PlayAnimation pa)) return false;
+        if (pa.slot != AnimationSlot.Status) return false;
+        if (pa.animationId == null || !pa.animationId.startsWith("Hurt")) return false;
+        if (!players.containsKey(playerRef.getUuid())) return false;
+
+        // Only drop the animation if it targets the player's OWN entity.
+        // pa.entityId is the network ID of the animated entity; playerRef is
+        // the packet recipient.  Other entities (NPCs, other players) keep theirs.
+        Ref<EntityStore> ref = playerRef.getReference();
+        if (ref == null || !ref.isValid()) return false;
+        NetworkId networkId = ref.getStore().getComponent(ref, NetworkId.getComponentType());
+        if (networkId == null || networkId.getId() != pa.entityId) return false;
+
+        LOGGER.atInfo().log("[CTM] Dropping Hurt animation '%s' for %s (entityId=%d)",
+                pa.animationId, playerRef.getUsername(), pa.entityId);
+
+        sendHurtSound(playerRef);
+        return true;
+    }
+
+    /**
+     * Sends the {@code SFX_Player_Hurt} sound to the given player.  The sound
+     * index is resolved lazily on first call because the asset map may not be
+     * fully populated during plugin {@code setup()}.
+     */
+    private void sendHurtSound(@Nonnull PlayerRef playerRef) {
+        if (hurtSoundIndex == 0) {
+            int idx = SoundEvent.getAssetMap().getIndex("SFX_Player_Hurt");
+            if (idx == Integer.MIN_VALUE) {
+                LOGGER.atWarning().log("[CTM] SFX_Player_Hurt not found in SoundEvent asset map");
+                hurtSoundIndex = -1;
+                return;
+            }
+            LOGGER.atInfo().log("[CTM] Resolved SFX_Player_Hurt → index %d", idx);
+            hurtSoundIndex = idx;
+        }
+        if (hurtSoundIndex > 0) {
+            playerRef.getPacketHandler().writeNoCache(
+                    new PlaySoundEvent2D(hurtSoundIndex, SoundCategory.SFX, 1.0F, 1.0F)
+            );
+            LOGGER.atInfo().log("[CTM] Sent hurt sound (index=%d) to %s",
+                    hurtSoundIndex, playerRef.getUsername());
+        }
     }
 
     // ============================================
@@ -357,7 +489,8 @@ public class ClickToMoveManager {
                 double entityDistSq = edx * edx + edz * edz;
 
                 if (entityDistSq <= ATTACK_RANGE_SQ) {
-                    LOGGER.atInfo().log("[CTM] Attacking (entity within range %.1f)", Math.sqrt(entityDistSq));
+                    triggerAttack(state, store, ref);
+                    state.targetEntity = null;
                     stopMovement(state, store, ref, playerRef);
                     return;
                 }
@@ -426,6 +559,9 @@ public class ClickToMoveManager {
         PlayerState state = players.get(uuid);
         if (state == null) return;
 
+        // Suppress CTM input while any UI page is open
+        if (isPageOpen(state, store, ref)) return;
+
         // Only process motion when left button is held (drag-to-move)
         if (!isLeftButtonHeld(event)) return;
 
@@ -447,6 +583,9 @@ public class ClickToMoveManager {
         PlayerState state = players.get(uuid);
         if (state == null) return;
 
+        // Suppress CTM input while any UI page is open
+        if (isPageOpen(state, store, ref)) return;
+
         if (event.getMouseButton().mouseButtonType != MouseButtonType.Left) return;
 
         if (event.getMouseButton().state == MouseButtonState.Released) {
@@ -461,6 +600,18 @@ public class ClickToMoveManager {
         state.leftButtonHeld = true;
         Ref<EntityStore> targetEntityRef = resolveTargetEntity(event.getTargetEntity(), ref);
         Vector3i targetBlock = event.getTargetBlock();
+
+        // Wall occlusion fallback: in isometric view, the client's camera-to-cursor
+        // raycast may hit a wall before reaching an entity behind it. When the click
+        // hits a wall block (target Y > player foot level) and no entity was reported,
+        // search for entities near the wall using the spatial index.
+        if (targetEntityRef == null && targetBlock != null) {
+            TransformComponent tc = store.getComponent(ref, TransformComponent.getComponentType());
+            if (tc != null && targetBlock.getY() > MathUtil.floor(tc.getPosition().y) - 1) {
+                targetEntityRef = findNearbyEntityFallback(store, ref, targetBlock);
+            }
+        }
+
         // Click → update target, store offset, and spawn particle
         updateTarget(state, store, ref, playerRef, targetBlock, targetEntityRef, true);
     }
@@ -479,6 +630,34 @@ public class ClickToMoveManager {
     }
 
     /**
+     * Returns {@code true} when a UI page is open for the given player, meaning
+     * CTM input should be suppressed.
+     *
+     * <p>Checks two sources:</p>
+     * <ol>
+     *   <li><b>Server-sent built-in pages</b> (Bench, etc.) tracked via the
+     *       outbound {@link SetPage} watcher stored in
+     *       {@link PlayerState#activePage}.</li>
+     *   <li><b>Custom pages</b> (RespawnPage, shop UIs, etc.) via
+     *       {@link Player#getPageManager()} → {@code getCustomPage() != null}.</li>
+     * </ol>
+     *
+     * <p><b>Limitation</b>: Client-toggled pages (Inventory, Map) are opened
+     * entirely client-side; the server receives no notification, so they are
+     * invisible to this check.</p>
+     */
+    private boolean isPageOpen(@Nonnull PlayerState state,
+                               @Nonnull Store<EntityStore> store,
+                               @Nonnull Ref<EntityStore> ref) {
+        // Server-opened built-in pages (e.g. Bench via OpenPageInteraction)
+        if (state.activePage != Page.None) return true;
+
+        // Custom pages (RespawnPage, shop UIs, etc.)
+        Player player = store.getComponent(ref, Player.getComponentType());
+        return player != null && player.getPageManager().getCustomPage() != null;
+    }
+
+    /**
      * Extracts and validates the entity reference from a mouse event's target entity.
      * Returns {@code null} if the target entity is null, invalid, or is the player themselves.
      *
@@ -494,6 +673,62 @@ public class ClickToMoveManager {
         if (entityRef == null || !entityRef.isValid()) return null;
         if (entityRef.equals(playerRef)) return null;
         return entityRef;
+    }
+
+    /**
+     * Fallback entity detection for wall occlusion. When the client's camera-to-cursor
+     * raycast hits a wall before reaching an entity behind it, {@code targetEntity} is
+     * {@code null}. This method searches for entities near the wall block position using
+     * the engine's spatial index and returns the closest non-self entity with a bounding
+     * box, or {@code null} if none found.
+     *
+     * <p>Only called on click events (not drag) to avoid per-frame spatial queries.</p>
+     *
+     * @param store       entity store (used as ComponentAccessor for spatial queries)
+     * @param playerRef   the player's entity reference (excluded from results)
+     * @param targetBlock the block the client's raycast hit (the wall)
+     * @return the closest targetable entity near the wall, or {@code null}
+     */
+    @Nullable
+    private static Ref<EntityStore> findNearbyEntityFallback(
+            @Nonnull Store<EntityStore> store,
+            @Nonnull Ref<EntityStore> playerRef,
+            @Nonnull Vector3i targetBlock) {
+        Vector3d searchCenter = new Vector3d(
+                targetBlock.getX() + 0.5,
+                targetBlock.getY() + 0.5,
+                targetBlock.getZ() + 0.5);
+
+        List<Ref<EntityStore>> nearby = TargetUtil.getAllEntitiesInSphere(
+                searchCenter, WALL_ENTITY_SEARCH_RADIUS, store);
+
+        Ref<EntityStore> closest = null;
+        double closestDistSq = Double.MAX_VALUE;
+
+        for (Ref<EntityStore> entityRef : nearby) {
+            if (entityRef == null || !entityRef.isValid()) continue;
+            if (entityRef.equals(playerRef)) continue;
+
+            // Only consider entities with a bounding box (targetable entities)
+            BoundingBox bb = store.getComponent(entityRef, BoundingBox.getComponentType());
+            if (bb == null) continue;
+
+            TransformComponent tc = store.getComponent(entityRef, TransformComponent.getComponentType());
+            if (tc == null) continue;
+
+            Vector3d ePos = tc.getPosition();
+            double dx = ePos.x - searchCenter.x;
+            double dy = ePos.y - searchCenter.y;
+            double dz = ePos.z - searchCenter.z;
+            double distSq = dx * dx + dy * dy + dz * dz;
+
+            if (distSq < closestDistSq) {
+                closestDistSq = distSq;
+                closest = entityRef;
+            }
+        }
+
+        return closest;
     }
 
     // ============================================
@@ -553,7 +788,16 @@ public class ClickToMoveManager {
 
                 if (entityDistSq <= ATTACK_RANGE_SQ) {
                     // In attack range → stop movement and attack
-                    LOGGER.atInfo().log("[CTM] Attacking (entity within range %.1f)", Math.sqrt(entityDistSq));
+                    triggerAttack(state, store, ref);
+                    state.targetEntity = null;
+                    stopMovement(state, store, ref, playerRef);
+                    return;
+                }
+
+                // Out of range → check if weapon is ranged
+                if (isRangedWeapon(store, ref)) {
+                    // Ranged weapons fire immediately from current position
+                    triggerAttack(state, store, ref);
                     state.targetEntity = null;
                     stopMovement(state, store, ref, playerRef);
                     return;
@@ -694,6 +938,85 @@ public class ClickToMoveManager {
             updateAnimation(state, store, ref, chooseAnimation(transform, dx, dz));
             setMovingStates(store, ref);
         }
+    }
+
+    // ============================================
+    // Attack Helpers
+    // ============================================
+
+    /**
+     * Triggers the player's Primary interaction chain server-side using
+     * {@link InteractionManager#queueExecuteChain}. The chain executes on the
+     * next {@code InteractionManager.tick()} and syncs to the client via
+     * {@code SyncInteractionChains} (negative chainId = server-initiated).
+     *
+     * <p>This bypasses the client's {@code DisablePrimary} effect gate because
+     * the chain is initiated server-side. The client still receives the sync
+     * packet and plays the weapon-specific animation (swing, thrust, etc.).</p>
+     *
+     * <p>A lightweight time-based throttle ({@link #ATTACK_THROTTLE_NS}) prevents
+     * wasteful {@link InteractionContext} / {@link InteractionChain} allocation on
+     * every mouse event. The engine's own {@code isOnCooldown()} handles real weapon
+     * cooldowns, but this avoids object creation overhead.</p>
+     *
+     * @param state per-player state (for throttle tracking)
+     * @param store entity store (used as {@code ComponentAccessor})
+     * @param ref   player entity reference
+     */
+    private static void triggerAttack(@Nonnull PlayerState state,
+                                       @Nonnull Store<EntityStore> store,
+                                       @Nonnull Ref<EntityStore> ref) {
+        long now = System.nanoTime();
+        if (now - state.lastAttackNanos < ATTACK_THROTTLE_NS) return;
+        state.lastAttackNanos = now;
+        InteractionManager im = store.getComponent(
+                ref, InteractionModule.get().getInteractionManagerComponent());
+        if (im == null) return;
+
+        InteractionContext ctx = InteractionContext.forInteraction(
+                im, ref, InteractionType.Primary, store);
+        String rootId = ctx.getRootInteractionId(InteractionType.Primary);
+        if (rootId == null) {
+            LOGGER.atWarning().log("[CTM] No Primary interaction for held item");
+            return;
+        }
+
+        RootInteraction root = RootInteraction.getAssetMap().getAsset(rootId);
+        if (root == null) {
+            LOGGER.atWarning().log("[CTM] RootInteraction asset not found: %s", rootId);
+            return;
+        }
+
+        InteractionChain chain = im.initChain(InteractionType.Primary, ctx, root, false);
+        im.queueExecuteChain(chain);
+    }
+
+    /**
+     * Checks whether the player's currently held item has a ranged Primary attack.
+     * Reads the {@code Tags.Attack} field from the item's {@link RootInteraction}
+     * and checks for {@code "Ranged"}.
+     *
+     * @param store entity store
+     * @param ref   player entity reference
+     * @return {@code true} if the Primary interaction is tagged as ranged
+     */
+    private static boolean isRangedWeapon(@Nonnull Store<EntityStore> store,
+                                           @Nonnull Ref<EntityStore> ref) {
+        InteractionManager im = store.getComponent(
+                ref, InteractionModule.get().getInteractionManagerComponent());
+        if (im == null) return false;
+
+        InteractionContext ctx = InteractionContext.forInteraction(
+                im, ref, InteractionType.Primary, store);
+        String rootId = ctx.getRootInteractionId(InteractionType.Primary);
+        if (rootId == null) return false;
+
+        RootInteraction root = RootInteraction.getAssetMap().getAsset(rootId);
+        if (root == null) return false;
+
+        Map<String, String[]> rawTags = root.getData().getRawTags();
+        String[] attackTags = rawTags.get("Attack");
+        return attackTags != null && Arrays.asList(attackTags).contains("Ranged");
     }
 
     /**

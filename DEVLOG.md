@@ -156,6 +156,51 @@ Compute the dot product of the forward vector with the movement direction `(dx, 
 
 ---
 
+### Problem 11: Entity click detection — spatial queries approach (failed)
+
+**Goal**: Detect when the player clicks on an entity (NPC/mob) during click-to-move, to support attack targeting.
+
+**First attempt — server-side spatial queries**:
+Used `EntityModule.get().getNetworkSendableSpatialResourceType()` → `SpatialStructure.collect()` to gather entities near the cursor position each tick, then checked bounding box intersection with a cursor ray. This detected entities but was unreliable/buggy in practice — inconsistent hit detection, false positives, and missed clicks.
+
+**Solution — event-based `getTargetEntity()`**:
+Both `PlayerMouseButtonEvent` and `PlayerMouseMotionEvent` provide `getTargetEntity()` which returns the `Entity` under the cursor (client-authoritative ray hit). This is accurate and consistent because the client already does precise entity picking.
+
+- Added `resolveTargetEntity(Entity, Ref)` helper — extracts a valid `Ref<EntityStore>` from the event entity, excluding null, invalid refs, and self-targeting
+- Added `@Nullable volatile Ref<EntityStore> targetEntity` field in `PlayerState`
+- Both `onMouseButton` and `onMouseMotion` extract the entity ref and pass it to `updateTarget()`
+- On click/motion: if entity exists and is within attack range → stop movement + log "Attacking"; if out of range → store entity ref, begin movement toward entity position
+
+**Limitation**: `getTargetEntity()` only fires on click or mouse motion events. During held-click stationary movement (no mouse motion), no new entity detection occurs. Handled by storing `targetEntity` in `PlayerState` and checking range each tick in `tickMovement()`.
+
+---
+
+### Problem 12: Clicking on entity doesn't start movement
+
+**Symptom**: Clicking on an entity that is out of attack range does not move the player toward it.
+
+**Root cause**: `updateTarget()` had `if (targetBlock == null) return;` at the top of the method. When clicking on an entity floating above ground (or when the ray hits the entity but not a block), `targetBlock` is null and the method bails out before ever checking the entity ref.
+
+**Solution**: Moved entity targeting logic BEFORE the null-block guard. The method now:
+1. Checks entity targeting first (independent of targetBlock)
+2. If entity found → handles it and returns
+3. Only then checks `if (targetBlock == null) return;` for ground targeting
+
+---
+
+### Problem 13: DisablePrimary effect — preventing accidental attacks in click-to-move
+
+**Goal**: When click-to-move is enabled, left-click should move the player, not trigger the primary attack ability. Need to suppress the "Primary" ability.
+
+**Solution**: Used the `DisablePrimary.json` EntityEffect asset (already exists at `Server/Entity/Effects/Status/DisablePrimary.json`) which sets `AbilityEffects.Disabled: ["Primary"]` with `Infinite: true`.
+
+- Added `applyDisablePrimary(store, ref)` in `CameraCommand` — loads the effect via `EntityEffect.getAssetMap().getAsset("DisablePrimary")`, then calls `EffectControllerComponent.addEffect(ref, effect, store)`
+- Added `removeDisablePrimary(store, ref)` — gets the effect index via `EntityEffect.getAssetMap().getIndex("DisablePrimary")`, then calls `ecc.removeEffect(ref, effectIndex, store)`
+- `enableOptionalFeatures()` applies the effect when clickMove is enabled
+- `disableAllFeatures()` removes the effect on camera reset
+
+---
+
 ## Animation Selection Reference
 
 Animation selection is **entirely client-side** (`Entity.UpdateMovementAnimation()` in Entity.cs L3709-L4090). The server sends `MovementStates` boolean flags; the client maps those flags + velocity direction to animation keys.
@@ -269,6 +314,174 @@ The client's local animation is driven by `_wishDirection` (WASD input). Without
 
 ---
 
+### Problem 14: BlockOcclusionManager — iterative algorithm redesign
+
+**Goal**: Remove structural wall/ceiling blocks between the camera and the player so the player is visible in overhead camera modes. Only replace "structural" blocks (walls, ceilings, pillars) — not decoratives (torches, furniture, plants, rubble).
+
+**Phase 1 — Wall block whitelist**:
+Created `scripts/extract_wall_blocks.py` to parse all 7 dungeon-gen theme JSONs (`Crypt`, `Hive`, `Mine`, `Arcane`, `Temple_Dark`, `Volcanic`, `Mushroom`). Extracts structural palette keys: `PrimaryWall`, `SecondaryWall`, `Ceiling`, `PillarBase`, `PillarMiddle`, `DecayVariants`, `Stairs`, `Slab`, `AccentBlock`. Excludes: `Floor` (below player), `OvergrowthBlocks` (thin/transparent), `RubbleBlocks` (floor-level), `Fluids`, `Lights`, `Props`. Produces 47 unique asset keys stored in `WALL_BLOCK_KEYS`. Lazy-resolved to integer block IDs via `BlockType.getAssetMap().getIndex(key)` on first use.
+
+**Phase 2 — 3D ray + radius (failed)**:
+Computed camera 3D position from `(yaw, pitch, distance)`, then traced a single ray from camera to player. At each Y level, computed the XZ intercept and cleared a radius around it. **Problem**: uniform `RAY_CLEAR_RADIUS=2` at all Y levels caused clearing behind the player at low Y — because near the player the ray intercept and player position nearly coincide, so the radius extends beyond the player in the wrong direction.
+
+**Phase 3 — Parallel 9-ray cast (partially worked)**:
+Cast 9 parallel rays (center + 8 adjacent open tiles). Each ray's camera origin was offset by the same XZ displacement as its target to simulate orthographic projection. Used entry/exit AABB at each Y slab to catch all blocks diagonal rays pass through. **Problem**: still missed some wall blocks visible through the debug lines. The 3D ray approach was fundamentally fragile for the isometric angle — small rounding at block boundaries caused misses.
+
+**Phase 4 — 2D floor-plane DDA (current solution)**:
+Key insight: dungeon walls are uniform vertical columns. Instead of tracing 3D rays, project the camera direction onto the XZ plane and perform a 2D DDA (Amanatides–Woo) voxel traversal. For each tile the ray visits, check the block at `playerY` (foot level). If it's a wall block, clear the entire column from `playerY` to `playerY + WALL_CLEAR_HEIGHT` (4 blocks).
+
+9 rays: 1 center (player tile) + up to 8 adjacent tiles (skipped if they contain wall blocks at foot/head level). Direction: `(sin(yaw), cos(yaw))` normalized — the camera-facing direction projected on XZ. Max cast distance: 20 blocks.
+
+**Anti-flicker fix**: tick 1 replaces walls with barrier blocks; tick 2's DDA reads barriers (not walls) → doesn't include them → restores → tick 3 sees walls again. Fixed by treating barriers (`replaceId`) as walls in the DDA check: `wallIds.contains(blockId) || blockId == replaceId`. Also increased tick interval from 250ms to 500ms (chunk needs time to commit block writes).
+
+**Replacement block**: Uses `"Barrier"` (solid but invisible) instead of air — prevents lighting recalculation artifacts and entity fall-through.
+
+---
+
+### DisablePrimary — always active in overhead camera modes
+
+**Change**: Previously `applyDisablePrimary()` was only called when `clickMove` was enabled. Changed to always apply in `enableOptionalFeatures()` for ANY overhead camera mode (topdown/iso), regardless of click-to-move state. Prevents accidental primary attacks (hit/swing/shot) in all overhead views. Removed on `/camera fps` reset via `disableAllFeatures()`.
+
+---
+
+### Weapon Family Research — Ranged vs Melee Classification
+
+**Finding**: There is no direct `isRanged` flag on weapon items. The best signal is `Tags.Family` in the weapon JSON (`item.getData().getRawTags().get("Family")`).
+
+**Classification by family**:
+| Category | Families |
+|----------|----------|
+| **Ranged** | Bow, Crossbow, Gun, Bomb, Spellbook |
+| **Hybrid** (melee + ranged) | Staff, Wand, Spear |
+| **Melee** | Sword, Longsword, Axe, Club, Dagger, Mace, Stick |
+
+**Other signals considered**: Damage type (`"Projectile"` vs `"Physical"` in `BaseDamage`) — deeply nested, some weapons have both. `PlayerAnimationsId` — indirect. `ItemWeapon.java` — only holds `StatModifiers`, `EntityStatsToClear`, `RenderDualWielded` — no range/type info.
+
+**Recommended approach**: `Set<String> RANGED_FAMILIES = Set.of("Bow", "Crossbow", "Gun", "Bomb", "Spellbook")` + `HYBRID_FAMILIES = Set.of("Staff", "Wand", "Spear")`. Check held weapon family in `ClickToMoveManager` to decide melee range check vs ranged behavior.
+
+---
+
+### Problem 15: Server-forced attacks — DisablePrimary bypass
+
+**Goal**: DisablePrimary (client-side only) blocks client-initiated attacks. Server needs to force attacks when click-to-move detects an entity in range.
+
+**Key discovery**: DisablePrimary is CLIENT-SIDE ONLY enforcement. The server's `syncStart()` never checks `AbilityEffects.disabled`. Server can force interaction chains via `InteractionManager.startChain()` / `queueExecuteChain()` which bypass all client validation.
+
+**Approach**: Keep DisablePrimary permanently active in overhead camera modes. When the server detects a click on an entity in range → force attack via `InteractionManager.queueExecuteChain()`. This is the same code path as `/interaction run Primary`.
+
+**Implementation**: `triggerAttack()` in `ClickToMoveManager`:
+1. Get `InteractionManager` component from entity
+2. Create `InteractionContext.forInteraction(im, ref, InteractionType.Primary, store)`
+3. Resolve `RootInteraction` asset from the context's root interaction ID
+4. `im.initChain()` → `im.queueExecuteChain()` — queues for next `InteractionManager.tick()`
+5. Client receives `SyncInteractionChains` packet (negative chainId = server-initiated) and plays weapon animation
+
+**Ranged weapon detection**: `isRangedWeapon()` checks `RootInteraction.getData().getRawTags().get("Attack")` for `"Ranged"` tag. Ranged weapons fire immediately without walking to target.
+
+**Limitation**: `queueExecuteChain()` fires instantly even for weapons with charge gates. Held-click during server-forced chain skips the charge phase.
+
+---
+
+### Problem 16: Attack fires on every mouse motion (no cooldown)
+
+**Symptom**: With mouse continuously moving over an entity, `triggerAttack()` was called on every `PlayerMouseMotionEvent` frame — multiple times per tick.
+
+**Analysis**: The engine's `executeChain0()` already checks `isOnCooldown()` and silently rejects chains on cooldown. So only the first call per weapon cooldown actually fires. But the overhead of creating `InteractionContext`, resolving `RootInteraction`, and allocating `InteractionChain` on every mouse frame was wasteful.
+
+**Solution**: Added `lastAttackNanos` to `PlayerState` and a 400ms time-based throttle (`ATTACK_THROTTLE_NS`) in `triggerAttack()`. Returns early if less than 400ms since last call. This drastically reduces object allocation while the engine's built-in cooldown handles the actual weapon timing (data-driven via `RootInteraction.getCooldown()`, default 350ms for Primary/Secondary).
+
+---
+
+### Problem 17: Hurt animation overrides Run animation (stutter-walk)
+
+**Symptom**: When the player takes damage while walking, the "Hurt" animation plays on `AnimationSlot.Status` — the same slot used for our "Run"/"RunBackward" click-to-move animation. This cancels the Run animation, causing the player to briefly appear idle before the next tick re-applies Run.
+
+**Root cause**: The engine's damage feedback system sends `PlayAnimation` packets with `animationId` starting with "Hurt" on `AnimationSlot.Status`. In normal FPS mode this is fine (movement uses `AnimationSlot.Movement`), but click-to-move uses Status because Movement is client-controlled.
+
+**Solution**: Registered `PacketAdapters.registerOutbound(PlayerPacketFilter)` in the `ClickToMoveManager` constructor. The filter drops outbound `PlayAnimation` packets where:
+- `packet instanceof PlayAnimation pa`
+- `pa.slot == AnimationSlot.Status`
+- `pa.animationId != null && pa.animationId.startsWith("Hurt")`
+- Player is in CTM mode (`players.containsKey(playerRef.getUuid())`)
+
+This preserves the damage number/sound feedback while preventing the animation slot conflict.
+
+---
+
+### Problem 18: Excessive knockback in isometric mode
+
+**Symptom**: When the player takes melee damage in overhead camera mode, knockback launches them across the arena — far more than in normal FPS mode.
+
+**Root cause**: `HackKnockbackValues.PLAYER_KNOCKBACK_SCALE = 25.0f` (public static) applies a 25× multiplier to all player knockback. In FPS mode the player can counteract this with WASD, but click-to-move has no such input.
+
+**Solution**: Created `ClickToMoveKnockbackSystem extends DamageEventSystem` registered in the `FilterDamage` group. For players in CTM mode, adds a `0.08×` modifier to the `KnockbackComponent` via `kb.addModifier(0.08)`. The engine's 25× multiplier × 0.08 = 2× effective knockback — a noticeable push without launching the player.
+
+The system follows the same pattern as `CombatScalingSystem`: `AllLegacyLivingEntityTypesQuery`, `SystemGroupDependency<>(Order.BEFORE, DamageModule.get().getFilterDamageGroup())`.
+
+---
+
+### Problem 19: Click-to-move targeting through walls (wall occlusion)
+
+**Symptom**: In isometric/top-down camera mode, clicking on a monster that is partially behind a wall does nothing — the player walks to the wall base instead of targeting the entity.
+
+**Root cause**: The client's camera-to-cursor raycast hits the wall block before reaching the entity behind it. The server receives `targetEntity = null` and `targetBlock = wall block`. The existing wall-click logic (`ty > playerFootY`) probes cardinal neighbours for walkable ground, unaware that an entity may be just behind the wall.
+
+**Solution**: Added a server-side spatial query fallback in `onMouseButton`. When a click hits a wall block (target Y > player foot level) and no entity was reported by the client:
+
+1. `findNearbyEntityFallback()` uses `TargetUtil.getAllEntitiesInSphere()` to search for entities within `WALL_ENTITY_SEARCH_RADIUS = 3.0` blocks of the wall block position.
+2. Filters: excludes self, requires `BoundingBox` component (only targetable entities).
+3. Returns the closest qualifying entity.
+4. If found, the entity ref is passed to `updateTarget()` which handles it identically to a direct entity click (attack if in range, walk toward if not).
+
+Only runs on click events (not drag/motion) to avoid per-frame spatial queries. The radius is kept small (3 blocks) to avoid false positives on distant entities.
+
+---
+
+### Problem 20: Missing hurt sound when dropping Hurt animation packets
+
+**Symptom**: After adding the outbound Hurt animation filter (Problem 17), the player no longer hears the damage sound when hit. The hurt sound normally plays via a client-side keyframe SFX event embedded in the Hurt animation.
+
+**Root cause**: The Hurt animation's `.json` keyframes trigger `SFX_Player_Hurt` on the client as an animation event. Dropping the `PlayAnimation` packet prevents the client from ever reaching that keyframe. The engine's `DamageSystems.ApplySoundEffects` sends impact sounds from `Damage.IMPACT_SOUND_EFFECT` / `PLAYER_IMPACT_SOUND_EFFECT` metadata, but weapon damage configs have **no sound events configured** — only `WorldParticles` and `CameraEffect`. So the only damage sound is embedded in the animation itself.
+
+**Solution**: When the filter drops a Hurt animation packet, manually send `PlaySoundEvent2D(hurtSoundIndex, SoundCategory.SFX, 1.0, 1.0)` to the player. Sound index is lazily resolved from `SoundEvent.getAssetMap().getIndex("SFX_Player_Hurt")` on first use (asset map may not be populated during `setup()`). Returns `Integer.MIN_VALUE` on not-found (not `0` — important gotcha).
+
+**Entity ID validation**: `PlayAnimation.entityId` is the network ID of the entity being animated, NOT the packet recipient. Without checking `entityId`, the filter would drop Hurt animations for nearby NPCs/players being displayed to the CTM player. Added `NetworkId` component lookup to verify `networkId.getId() == pa.entityId` — only drop the animation if it targets the player's own entity.
+
+**Refactored** the inline lambda into private methods: `filterHurtAnimation()` (the packet filter) and `sendHurtSound()` (lazy resolution + packet send).
+
+---
+
+### Problem 21: CTM movement during open UI pages
+
+**Goal**: Suppress click-to-move input when a UI page is open (e.g. RespawnPage, Bench).
+
+**Research findings**:
+
+| Page Type | Server visibility | Detection method |
+|---|---|---|
+| **Custom pages** (RespawnPage, shop UIs) | Full | `Player.getPageManager().getCustomPage() != null` |
+| **Server-opened built-in** (Bench, etc.) | Full | Track outbound `SetPage` packets via `PacketAdapters.registerOutbound(PlayerPacketWatcher)` |
+| **Map** | Partial | `WorldMapTracker.clientHasWorldMapVisible` (private field, no getter — setter only) |
+| **Inventory** | **None** | Opened entirely client-side via Tab keybind. No server notification. `Page.Inventory` is never referenced in server code. |
+
+**Key discoveries**:
+- `SetPage` is `ToClientPacket` only — the client cannot send page state to the server.
+- `CustomPageEvent.Dismiss` exists for custom pages only — not for built-in page closes.
+- Built-in page closes (Escape/Tab) are handled entirely client-side with zero server notification.
+- `PageManager` does NOT store the current built-in `Page` — only tracks `customPage`.
+- `Page.Inventory` has zero references in the entire server codebase — it exists only in the `Page` enum.
+- Keybinds are hardcoded in the client binary, not configurable server-side.
+
+**Implementation**: Hybrid approach:
+1. Added `volatile Page activePage` to `PlayerState` (tracked via outbound `SetPage` watcher)
+2. Registered `PacketAdapters.registerOutbound(PlayerPacketWatcher)` to intercept `SetPage` packets and update `state.activePage`
+3. Added `isPageOpen(state, store, ref)` helper — checks `state.activePage != Page.None` (built-in pages) AND `player.getPageManager().getCustomPage() != null` (custom pages)
+4. Both `onMouseButton()` and `onMouseMotion()` call `isPageOpen()` and return early if any page is active
+
+**Limitation**: Client-toggled pages (Inventory, Map) cannot be detected server-side.
+
+---
+
 ## Current State (2026-02-28)
 
 ### Working
@@ -278,18 +491,28 @@ The client's local animation is driven by `_wishDirection` (WASD input). Without
 - Item animations don't override AngleRange (all set to `{Min: -1, Max: 1}`)
 - No Belly/multi-node TargetNodes issues (all normalized to `["Head"]`)
 - Camera-relative and head-relative WASD movement modes
-- Block occlusion (xray) support
+- **Block occlusion (xray)**: 2D floor-plane DDA raycast with 9 parallel rays (center + 8 adjacent). Detects wall blocks at `playerY` via Amanatides–Woo traversal, clears entire column (4 blocks high). Only replaces structural blocks from the 47-key whitelist (extracted from dungeon-gen themes). Barrier blocks used as replacement. Anti-flicker via barrier-aware DDA + 500ms tick interval
 - **Click-to-move**: left-click sets target, player moves toward it at 8 b/s via `ChangeVelocity` packets (persistent velocity with `VelocityConfig(groundResistance=1.0)`)
 - **Drag-to-move**: holding left button while moving mouse continuously updates target (`PlayerMouseMotionEvent` + `sendMouseMotion = true`); velocity direction re-sent only when angle changes >0.1 rad
 - **Hold-click continuous movement**: stores XZ cursor offset on click/drag; on each tick while button held, recomputes target as `playerPos + offset`. Validates target is over solid ground (skips void). Gives smooth continuous walking toward cursor with follow camera.
 - **Mouse release does NOT stop movement**: player continues to last valid target until arrival
-- **Wall detection**: clicks on blocks above player Y probe 4 cardinal neighbours at foot level for walkable ground
+- **Wall detection**: clicks on blocks above player Y probe 4 cardinal neighbours at foot level for walkable ground; also searches nearby entities via spatial index to handle wall occlusion (entity behind wall)
 - **Run / RunBackward animation**: dynamically selects `"Run"` or `"RunBackward"` based on dot product of body forward vector `(-sin(yaw), -cos(yaw))` and movement direction — switches within ±90° threshold. Uses `AnimationSlot.Status` with `sendToSelf=true`; `MovementStatesComponent` flags for remote viewers
 - **Arrival stop**: zero-velocity `ChangeVelocity` + `stopAnimation(AnimationSlot.Status)` + states reset to idle when within 1 block of target
 - **Clean disable**: `disable()` sends stop velocity + stops animation if player was moving
 - **Player-only particles**: `ParticleUtil.spawnParticleEffect` with `Collections.singletonList(ref)` — only visible to the clicking player
 - **Click-only particles**: particles spawn on left-click press only, not during mouse drag
 - No teleportId desync issues (teleport packets removed entirely)
+- **DisablePrimary effect**: `CameraCommand` applies the `DisablePrimary.json` EntityEffect in ALL overhead camera modes (topdown/iso), not just click-to-move. Prevents accidental primary ability triggers (hit/swing/shot). Removed on `/camera fps` reset.
+- **Entity click targeting**: `getTargetEntity()` from `PlayerMouseButtonEvent`/`PlayerMouseMotionEvent` detects entities under the cursor. If within attack range (3.0 blocks) → stop movement + trigger attack. If out of range → walk toward entity.
+- **Entity tracking during movement**: `targetEntity` ref stored in `PlayerState`. Each tick in `tickMovement()`, if an entity target exists, its position is re-queried and the target updated — allows tracking moving entities. If entity becomes invalid (despawned/unloaded), the ref is cleared and the player walks to the last known position.
+- **Server-forced attacks**: `triggerAttack()` uses `InteractionManager.queueExecuteChain()` to initiate the player's Primary interaction chain server-side. The chain executes on the next `InteractionManager.tick()` and syncs to the client via `SyncInteractionChains` (negative chainId = server-initiated). Bypasses the client's `DisablePrimary` gate because the chain originates server-side.
+- **Ranged weapon detection**: `isRangedWeapon()` checks `RootInteraction.getData().getRawTags().get("Attack")` for `"Ranged"`. Ranged weapons fire immediately from the player's current position (no walk-to-target).
+- **Attack cooldown throttle**: 400 ms time-based throttle (`ATTACK_THROTTLE_NS`) prevents wasteful `InteractionContext`/`InteractionChain` allocation on every mouse event. The engine's own `isOnCooldown()` in `executeChain0()` handles real weapon cooldowns (data-driven via `RootInteraction.getCooldown()`, default 350ms for Primary/Secondary from `InteractionTypeUtils.DEFAULT_COOLDOWN`); the throttle just avoids object creation overhead.
+- **Hurt animation filter**: `PacketAdapters.registerOutbound()` drops outbound `PlayAnimation` packets with `animationId` starting with "Hurt" on `AnimationSlot.Status` for players in CTM mode. Validates `PlayAnimation.entityId` matches the player's own `NetworkId` — only drops Hurt animations for the player's own entity, not for nearby NPCs/players. Prevents the engine's hurt feedback from cancelling the `Run`/`RunBackward` animation.
+- **Hurt sound replacement**: When the Hurt animation is dropped, manually sends `PlaySoundEvent2D` with `SFX_Player_Hurt` to the player. Sound index lazily resolved from `SoundEvent.getAssetMap()` on first intercept (handles `Integer.MIN_VALUE` not-found sentinel). Extracted into private methods `filterHurtAnimation()` and `sendHurtSound()`.
+- **Knockback clamping**: `ClickToMoveKnockbackSystem` (extends `DamageEventSystem`, FilterDamage group) adds a `0.08×` modifier to `KnockbackComponent` for CTM players. The engine's `HackKnockbackValues.PLAYER_KNOCKBACK_SCALE = 25×` makes knockback extreme in isometric mode; `25 × 0.08 = 2×` effective knockback gives a gentle push.
+- **Page-aware input suppression**: CTM input (both click and drag) is suppressed while a UI page is open. Checks custom pages via `PageManager.getCustomPage()` and server-opened built-in pages via an outbound `SetPage` packet watcher. Limitation: client-toggled pages (Inventory, Map) are invisible to the server.
 
 ### Known Issues
 - **"Failed check getActiveSlot: X != Y"** — Only occurs when our custom camera (topdown/iso) is active; never with the default FPS camera. The check is a server-side validation in `InteractionModule.doMouseInteraction()` (InteractionModule.java L358-364): the client's `MouseInteraction` packet includes its `activeSlot`, and the server compares it against `playerComponent.getInventory().getActiveHotbarSlot()`. On mismatch, the interaction is rejected and the debug message appears in chat.
@@ -311,20 +534,26 @@ The client's local animation is driven by `_wishDirection` (WASD input). Without
 - `TargetUtil.getLook()` for cursor position — HeadRotation gives XZ direction only (pitch≈0), cannot compute distance to cursor
 - Ground-plane intersection via `getLook()` — `dir.y ≈ 0` makes `t` infinite
 - Stopping movement on mouse release — walk-to-arrival is the intended behavior
+- `SpatialStructure.collect()` for cursor-entity detection — unreliable for precise cursor-aim hit detection; use `getTargetEntity()` from mouse events instead. However, **spatial queries work well as a proximity fallback** (e.g. `TargetUtil.getAllEntitiesInSphere()` for wall occlusion fallback)
 
 ### Not Yet Implemented / To Restore
 - **Wall face-aware resolution**: Currently probes 4 cardinal neighbours blindly when click hits a wall. Corner walls may resolve to perpendicular ground instead of the face-aligned ground the player intended. Enhancement: use the clicked face normal to prioritize the correct neighbour.
 - Directional speed multipliers (forward/backward)
-- DisablePrimary entity effect (prevent accidental ground attacks)
-- Selective entity attack (attack on click when cursor is over enemy)
+- **Charged attack support**: `queueExecuteChain()` fires instantly even for weapons with charge gates (e.g. sword charged thrust). Held-click during a server-forced chain skips the charge phase. Acceptable for auto-attack but may need special handling for deliberate charged abilities.
 - Pathfinding / obstacle avoidance
-- Packet filters (if needed)
 
 ### Active Constants
 ```
-ARRIVAL_THRESHOLD = 1.0  (stop distance)
-MOVE_SPEED = 8.0         (blocks/second)
-FOLLOW_YAW_RANGE = ±1 rad (~57°)
+ARRIVAL_THRESHOLD = 1.0       (stop distance)
+MOVE_SPEED = 8.0              (blocks/second)
+FOLLOW_YAW_RANGE = ±1 rad    (~57°)
+ATTACK_RANGE = 3.0            (entity attack range, blocks — melee only)
+ATTACK_THROTTLE_NS = 400ms    (minimum interval between server-forced attacks)
+KNOCKBACK_MODIFIER = 0.08     (CTM knockback reduction: 25× engine × 0.08 = 2× effective)
+WALL_ENTITY_SEARCH_RADIUS=3.0 (spatial fallback radius for wall-occluded entities)
+WALL_CLEAR_HEIGHT = 4         (blocks above playerY to clear per wall column)
+MAX_CAST_DISTANCE = 20        (2D DDA max ray length, blocks)
+TICK_INTERVAL_MS = 500        (BOM tick rate)
 ```
 
 ### Asset: DisablePrimary.json

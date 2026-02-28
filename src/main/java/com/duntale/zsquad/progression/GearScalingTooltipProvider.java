@@ -99,7 +99,7 @@ public class GearScalingTooltipProvider implements TooltipProvider {
         if (base != null) {
             float scaledDmg = base.baseDamage() * damageMult * variance;
             builder.addLine(
-                    colorTag(COLOR_GRAY, "Damage: ") +
+                    colorTag(COLOR_GRAY, "Power: ") +
                     colorTag(COLOR_YELLOW, String.format("%.1f", scaledDmg))
             );
 
