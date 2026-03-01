@@ -7,13 +7,20 @@ import com.duntale.zsquad.camera.ClickToMoveTickSystem;
 import com.duntale.zsquad.command.DGiveCommand;
 import com.duntale.zsquad.command.DListCommand;
 import com.duntale.zsquad.command.DSpawnCommand;
+import com.duntale.zsquad.loot.LootTableRegistry;
+import com.duntale.zsquad.loot.NpcLootSystem;
 import com.duntale.zsquad.progression.CombatScalingSystem;
 import com.duntale.zsquad.progression.LeveledNpcSpawner;
 import com.duntale.zsquad.progression.NpcLevelRegistry;
 import com.duntale.zsquad.progression.ScalingDataCache;
+import com.hypixel.hytale.component.Ref;
 import com.hypixel.hytale.logger.HytaleLogger;
 import com.hypixel.hytale.server.core.plugin.JavaPlugin;
 import com.hypixel.hytale.server.core.plugin.JavaPluginInit;
+import com.hypixel.hytale.server.core.universe.PlayerRef;
+import com.hypixel.hytale.server.core.universe.Universe;
+import com.hypixel.hytale.server.core.universe.world.World;
+import com.hypixel.hytale.server.core.universe.world.storage.EntityStore;
 
 import javax.annotation.Nonnull;
 
@@ -29,6 +36,9 @@ public class ZSquadPlugin extends JavaPlugin {
     private ScalingDataCache scalingDataCache;
     private NpcLevelRegistry npcLevelRegistry;
     private LeveledNpcSpawner leveledNpcSpawner;
+
+    // Loot system
+    private LootTableRegistry lootTableRegistry;
 
     public ZSquadPlugin(@Nonnull JavaPluginInit init) {
         super(init);
@@ -89,9 +99,19 @@ public class ZSquadPlugin extends JavaPlugin {
         return leveledNpcSpawner;
     }
 
+    /**
+     * Returns the loot table registry.
+     *
+     * @return the loot table registry
+     */
+    @Nonnull
+    public LootTableRegistry getLootTableRegistry() {
+        return lootTableRegistry;
+    }
+
     @Override
     protected void setup() {
-        LOGGER.at(java.util.logging.Level.INFO).log("ZSquad Plugin Setting Up...");
+        LOGGER.atInfo().log("ZSquad Plugin Setting Up...");
 
         // Initialize managers
         this.clickToMoveManager = new ClickToMoveManager();
@@ -104,10 +124,14 @@ public class ZSquadPlugin extends JavaPlugin {
         this.npcLevelRegistry = new NpcLevelRegistry();
         this.leveledNpcSpawner = new LeveledNpcSpawner(scalingDataCache, npcLevelRegistry);
 
+        // ── Loot System ──────────────────────────────────────────────
+        this.lootTableRegistry = new LootTableRegistry();
+
         // Register ECS systems
         this.getEntityStoreRegistry().registerSystem(new ClickToMoveTickSystem(this.clickToMoveManager));
         this.getEntityStoreRegistry().registerSystem(new CombatScalingSystem(npcLevelRegistry, scalingDataCache));
         this.getEntityStoreRegistry().registerSystem(new ClickToMoveKnockbackSystem(this.clickToMoveManager));
+        this.getEntityStoreRegistry().registerSystem(new NpcLootSystem(lootTableRegistry, npcLevelRegistry));
 
         // Command registration
         this.getCommandRegistry().registerCommand(new com.duntale.zsquad.command.SpawnCommand());
@@ -123,11 +147,27 @@ public class ZSquadPlugin extends JavaPlugin {
 
     @Override
     protected void start() {
-        LOGGER.at(java.util.logging.Level.INFO).log("ZSquad Plugin Started!");
+        LOGGER.atInfo().log("ZSquad Plugin Started!");
     }
 
     @Override
     protected void shutdown() {
+        if (clickToMoveManager != null) {
+            clickToMoveManager.shutdown();
+        }
+        if (blockOcclusionManager != null) {
+            // Retrieve world from any online player; if no players remain the
+            // daemon thread has nothing to restore, so shutdown without world.
+            PlayerRef anyPlayer = Universe.get()
+                    .getPlayers().stream().findFirst().orElse(null);
+            if (anyPlayer != null) {
+                Ref<EntityStore> ref = anyPlayer.getReference();
+                if (ref != null && ref.isValid()) {
+                    World world = ref.getStore().getExternalData().getWorld();
+                    blockOcclusionManager.shutdown(world);
+                }
+            }
+        }
         if (scalingDataCache != null) {
             scalingDataCache.shutdown();
         }

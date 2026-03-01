@@ -165,6 +165,7 @@ public class LeveledNpcSpawner {
         // ── 2. Register in NpcLevelRegistry ──────────────────────────
         UUIDComponent uuidComp = store.getComponent(ref, UUIDComponent.getComponentType());
         if (uuidComp != null) {
+            LOGGER.atInfo().log("Registerd NPC %s", uuidComp);
             UUID uuid = uuidComp.getUuid();
             levelRegistry.register(uuid, new NpcLevelRegistry.NpcLevelData(
                     level, elite, roleName, damageMult
