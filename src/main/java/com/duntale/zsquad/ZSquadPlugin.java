@@ -7,6 +7,8 @@ import com.duntale.zsquad.camera.ClickToMoveTickSystem;
 import com.duntale.zsquad.command.DGiveCommand;
 import com.duntale.zsquad.command.DListCommand;
 import com.duntale.zsquad.command.DSpawnCommand;
+import com.duntale.zsquad.loot.LootEntry;
+import com.duntale.zsquad.loot.LootTable;
 import com.duntale.zsquad.loot.LootTableRegistry;
 import com.duntale.zsquad.loot.NpcLootSystem;
 import com.duntale.zsquad.progression.CombatScalingSystem;
@@ -23,6 +25,7 @@ import com.hypixel.hytale.server.core.universe.world.World;
 import com.hypixel.hytale.server.core.universe.world.storage.EntityStore;
 
 import javax.annotation.Nonnull;
+import java.util.List;
 
 public class ZSquadPlugin extends JavaPlugin {
 
@@ -126,6 +129,7 @@ public class ZSquadPlugin extends JavaPlugin {
 
         // ── Loot System ──────────────────────────────────────────────
         this.lootTableRegistry = new LootTableRegistry();
+        registerLootTables();
 
         // Register ECS systems
         this.getEntityStoreRegistry().registerSystem(new ClickToMoveTickSystem(this.clickToMoveManager));
@@ -174,6 +178,22 @@ public class ZSquadPlugin extends JavaPlugin {
         if (npcLevelRegistry != null) {
             npcLevelRegistry.clear();
         }
+    }
+
+    /**
+     * Populates the {@link LootTableRegistry} with drop tables for each NPC role.
+     *
+     * <p>Each table defines weighted entries that may be level-gated.
+     * Adjust entries, weights, quantities, and roll counts here.
+     */
+    private void registerLootTables() {
+        // Example: Trork_Grunt drops 1–3 gold coins (always) or 1 iron ingot (Lv.5+)
+        lootTableRegistry.register("Trork_Grunt", new LootTable(List.of(
+                new LootEntry("Common:Gold_Coin", 1, 3, 10.0),
+                new LootEntry("Common:Iron_Ingot", 1, 1, 3.0, 5, null)
+        ), 1));
+
+        LOGGER.atInfo().log("Registered %d custom loot tables", lootTableRegistry.size());
     }
 
     /**

@@ -92,10 +92,7 @@ public class NpcLootSystem extends DeathSystems.OnDeathSystem {
             @Nonnull Store<EntityStore> store,
             @Nonnull CommandBuffer<EntityStore> commandBuffer
     ) {
-        // ── 1. Suppress default NPC drops ────────────────────────────
-        component.setItemsLossMode(DeathConfig.ItemsLossMode.NONE);
-
-        // ── 2. Look up the NPC's level data ──────────────────────────
+        // ── 1. Look up the NPC's level data ──────────────────────────
         UUIDComponent uuidComponent = store.getComponent(ref, UUIDComponent.getComponentType());
         if (uuidComponent == null) {
             return;
@@ -104,13 +101,17 @@ public class NpcLootSystem extends DeathSystems.OnDeathSystem {
         UUID uuid = uuidComponent.getUuid();
         NpcLevelRegistry.NpcLevelData levelData = npcLevelRegistry.get(uuid);
         if (levelData == null) {
-            // Untracked NPC — no custom loot, default drops already suppressed
+            // Untracked NPC — leave default drops untouched
             return;
         }
+
+        // ── 2. Suppress default NPC drops for all tracked NPCs ──────
+        component.setItemsLossMode(DeathConfig.ItemsLossMode.NONE);
 
         // ── 3. Look up the loot table for this NPC role ──────────────
         LootTable lootTable = lootTableRegistry.get(levelData.npcId());
         if (lootTable == null) {
+            // No custom table — default drops already suppressed, nothing else to do
             return;
         }
 

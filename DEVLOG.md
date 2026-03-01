@@ -482,6 +482,33 @@ Only runs on click events (not drag/motion) to avoid per-frame spatial queries. 
 
 ---
 
+### Problem 22: Block interaction (bench/chest) via click-to-move
+
+**Goal**: When a player left-clicks on an interactable block (bench, chest, or any block with a `Use` interaction), walk toward it and trigger the `InteractionType.Use` chain when within range (3 blocks).
+
+**Research findings**:
+- Hytale uses `InteractionType.Use` (ordinal 5, F key) for block interactions — NOT `Secondary`/right-click.
+- Empty-hand Use chain: `Simple → UseBlock → UseEntity → BreakBlock`. `UseBlockInteraction` reads `blockType.getInteractions().get(InteractionType.Use)` to find the block's own interaction (e.g. `OpenContainerInteraction` for benches).
+- `BlockType.getInteractions()` returns `Map<InteractionType, String>` — maps interaction types to root interaction IDs. `BlockType.bench` auto-registers `interactions.put(InteractionType.Use, bench.getRootInteraction().getId())` during codec `afterDecode`.
+- Server-forced chains via `queueExecuteChain()` do NOT auto-populate `Interaction.TARGET_BLOCK` on the meta store — only the client's `syncStart` packet handler does. Must be set manually.
+- `World.getBaseBlock(BlockPosition)` resolves multi-block structures (filler blocks) to their base position.
+- `InteractionManager.initChain()` has a 6-parameter overload: `(type, ctx, root, entityId, blockPosition, forceRemoteSync)` that passes `blockPosition` into `InteractionChainData` for client synchronization.
+
+**Implementation**:
+1. **`PlayerState`**: Added `@Nullable volatile Vector3i targetInteractBlock` — parallel to `targetEntity`, tracks a pending block-interaction walk.
+2. **`TargetResolver.isInteractableBlock(store, x, y, z)`**: Checks `blockType.getInteractions().containsKey(InteractionType.Use)`.
+3. **`AttackHandler.tryBlockInteraction(state, store, ref, blockPos, throttleNs)`**: Creates `InteractionContext` for `InteractionType.Use`, resolves root interaction, manually sets `Interaction.TARGET_BLOCK` (base position via `getBaseBlock`) and `Interaction.TARGET_BLOCK_RAW` (raw position) on the meta store, then calls `initChain` (6-param overload) + `queueExecuteChain`.
+4. **`ClickToMoveManager.updateTarget()`**: Before the wall check, calls `isInteractableBlock()`. If the clicked block is interactable and within range → trigger interaction immediately. If out of range → set `targetInteractBlock` and begin walking toward block center.
+5. **`ClickToMoveManager.tickMovement()`**: After entity-range check, added block-interaction range check. When within range → `tryBlockInteraction` + stop movement. While walking, updates `targetPosition` to block center each tick (same pattern as entity tracking).
+
+**Bug discovered during testing**: After closing a bench page, CTM stopped responding entirely.
+
+**Root cause**: The `activePage` tracker (set via outbound `SetPage` watcher) correctly detected `Page.Bench` open, but built-in page closes (Escape key) are handled entirely client-side — the server never receives a `SetPage(Page.None)`. So `activePage` was stuck at `Page.Bench`, causing `isPageOpen()` to return `true` forever.
+
+**Fix**: Added `recoverStale` parameter to `isPageOpen()`. Mouse-click events use `recoverStale=true`: if `activePage` is non-None but no custom page is open (checked via `PageManager.getCustomPage()`), the tracker is optimistically reset to `Page.None` and the click is processed. Mouse-motion events use `recoverStale=false` to maintain suppression while the page is genuinely open. This works because the client suppresses mouse events while a built-in page has focus, so any arriving click implies the page was closed.
+
+---
+
 ## Current State (2026-02-28)
 
 ### Working
@@ -512,7 +539,8 @@ Only runs on click events (not drag/motion) to avoid per-frame spatial queries. 
 - **Hurt animation filter**: `PacketAdapters.registerOutbound()` drops outbound `PlayAnimation` packets with `animationId` starting with "Hurt" on `AnimationSlot.Status` for players in CTM mode. Validates `PlayAnimation.entityId` matches the player's own `NetworkId` — only drops Hurt animations for the player's own entity, not for nearby NPCs/players. Prevents the engine's hurt feedback from cancelling the `Run`/`RunBackward` animation.
 - **Hurt sound replacement**: When the Hurt animation is dropped, manually sends `PlaySoundEvent2D` with `SFX_Player_Hurt` to the player. Sound index lazily resolved from `SoundEvent.getAssetMap()` on first intercept (handles `Integer.MIN_VALUE` not-found sentinel). Extracted into private methods `filterHurtAnimation()` and `sendHurtSound()`.
 - **Knockback clamping**: `ClickToMoveKnockbackSystem` (extends `DamageEventSystem`, FilterDamage group) adds a `0.08×` modifier to `KnockbackComponent` for CTM players. The engine's `HackKnockbackValues.PLAYER_KNOCKBACK_SCALE = 25×` makes knockback extreme in isometric mode; `25 × 0.08 = 2×` effective knockback gives a gentle push.
-- **Page-aware input suppression**: CTM input (both click and drag) is suppressed while a UI page is open. Checks custom pages via `PageManager.getCustomPage()` and server-opened built-in pages via an outbound `SetPage` packet watcher. Limitation: client-toggled pages (Inventory, Map) are invisible to the server.
+- **Page-aware input suppression**: CTM input (both click and drag) is suppressed while a UI page is open. Checks custom pages via `PageManager.getCustomPage()` and server-opened built-in pages via an outbound `SetPage` packet watcher. Built-in page closes (client-side only) are recovered via `recoverStale` flag on next mouse click. Limitation: client-toggled pages (Inventory, Map) are invisible to the server.
+- **Block interaction (bench/chest)**: Left-clicking an interactable block (any block with `InteractionType.Use` registered, e.g. benches, chests) triggers a `Use` interaction chain. If within 3 blocks → interact immediately. If out of range → walk toward block center and interact on arrival. Uses `targetInteractBlock` field (parallel to `targetEntity`) for walk-to-interact tracking. Server-forced `Use` chain manually populates `Interaction.TARGET_BLOCK` and `TARGET_BLOCK_RAW` on the meta store, and uses `World.getBaseBlock()` for multi-block structure resolution.
 
 ### Known Issues
 - **"Failed check getActiveSlot: X != Y"** — Only occurs when our custom camera (topdown/iso) is active; never with the default FPS camera. The check is a server-side validation in `InteractionModule.doMouseInteraction()` (InteractionModule.java L358-364): the client's `MouseInteraction` packet includes its `activeSlot`, and the server compares it against `playerComponent.getInventory().getActiveHotbarSlot()`. On mismatch, the interaction is rejected and the debug message appears in chat.
