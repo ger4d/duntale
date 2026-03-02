@@ -237,6 +237,18 @@ public class ProgressionService {
     }
 
     /**
+     * Ensures the player has a progression row in the database.
+     *
+     * <p>Call on player connect to guarantee the row exists before
+     * any XP grant or level query.
+     *
+     * @param playerId the player's UUID
+     */
+    public void onPlayerJoin(@Nonnull UUID playerId) {
+        repository.ensurePlayerExists(playerId);
+    }
+
+    /**
      * Cleans up per-player locks for a disconnecting player.
      *
      * @param playerId the player's UUID

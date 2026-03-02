@@ -309,7 +309,8 @@ public class ZSquadPlugin extends JavaPlugin {
     private void onPlayerConnect(@Nonnull PlayerConnectEvent event) {
         UUID uuid = event.getPlayerRef().getUuid();
         rpgService.onPlayerJoin(uuid);
-        LOGGER.atFine().log("Pre-loaded RPG profile for %s", uuid);
+        progressionService.onPlayerJoin(uuid);
+        LOGGER.atFine().log("Pre-loaded RPG profile + ensured progression for %s", uuid);
     }
 
     private void onPlayerDisconnect(@Nonnull PlayerDisconnectEvent event) {

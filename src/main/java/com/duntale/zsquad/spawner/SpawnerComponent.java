@@ -152,6 +152,28 @@ public class SpawnerComponent implements Component<EntityStore> {
     }
 
     /**
+     * Reserve a spawn budget slot without recording a ref yet.
+     * Used when the actual spawn is deferred via {@code World.execute()}.
+     *
+     * @since 1.1.0
+     */
+    public void reserveBudget() {
+        this.spawnedCount++;
+        this.spawnBudgetRemaining--;
+    }
+
+    /**
+     * Track a spawned NPC ref for alive-pruning.
+     * Called from deferred spawn callbacks after the entity is added to the store.
+     *
+     * @param npcRef ref to the spawned NPC entity
+     * @since 1.1.0
+     */
+    public void addAliveNpc(@Nonnull Ref<EntityStore> npcRef) {
+        this.aliveNpcs.add(npcRef);
+    }
+
+    /**
      * Get the next spawn position from the pre-computed offsets, cycling through them.
      * If no offsets are defined, returns the spawner's own position.
      *

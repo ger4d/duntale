@@ -84,7 +84,7 @@ public class SpawnerTickSystem extends DelayedEntitySystem<EntityStore> {
 
         switch (spawner.getState()) {
             case DORMANT -> handleDormant(spawner, archetypeChunk, index, store);
-            case ACTIVE -> handleActive(spawner, store);
+            case ACTIVE -> handleActive(spawner, archetypeChunk, index, store);
             case DEPLETED -> spawner.pruneDeadNpcs();
             case DISABLED -> { /* no-op, will be removed by teardown */ }
         }
@@ -146,6 +146,8 @@ public class SpawnerTickSystem extends DelayedEntitySystem<EntityStore> {
     }
 
     private void handleActive(@Nonnull SpawnerComponent spawner,
+                              @Nonnull ArchetypeChunk<EntityStore> chunk,
+                              int index,
                               @Nonnull Store<EntityStore> store) {
         // Prune dead NPCs first
         spawner.pruneDeadNpcs();
@@ -158,6 +160,11 @@ public class SpawnerTickSystem extends DelayedEntitySystem<EntityStore> {
         }
 
         if (spawnBudgetThisTick <= 0) return; // global budget exhausted
+
+        // Get the spawner's world position from its TransformComponent
+        TransformComponent transform = chunk.getComponent(index, TransformComponent.getComponentType());
+        if (transform == null) return;
+        Vector3d spawnerWorldPos = transform.getPosition();
 
         int toSpawn = Math.min(spawner.getSpawnBudgetRemaining(), spawnBudgetThisTick);
         List<SpawnEntry> pool = spawner.getDefinition().spawnPool();
@@ -172,6 +179,12 @@ public class SpawnerTickSystem extends DelayedEntitySystem<EntityStore> {
             totalWeight += entry.weight();
         }
 
+        // Collect spawn requests synchronously, then batch into a single World.execute().
+        // NPCPlugin.spawnEntity() calls store.addEntity() which is illegal during
+        // system processing — must defer to outside tick systems.
+        record SpawnRequest(String npcRole, Vector3d position, int level, boolean boss, int spawnerId) {}
+        List<SpawnRequest> deferredSpawns = new ArrayList<>();
+
         for (int i = 0; i < toSpawn; i++) {
             SpawnEntry picked = weightedPick(pool, totalWeight);
             if (picked == null) break;
@@ -181,27 +194,45 @@ public class SpawnerTickSystem extends DelayedEntitySystem<EntityStore> {
                     ? picked.minLevel()
                     : ThreadLocalRandom.current().nextInt(picked.minLevel(), picked.maxLevel() + 1);
 
-            // Get spawn position from pre-computed offsets
+            // Get spawn position: spawner world pos + relative offset
             Vec3i offset = spawner.nextSpawnOffset();
-            Vector3d spawnPos = new Vector3d(offset.x() + 0.5, offset.y(), offset.z() + 0.5);
+            Vector3d spawnPos = new Vector3d(
+                    spawnerWorldPos.x + offset.x(),
+                    spawnerWorldPos.y + offset.y(),
+                    spawnerWorldPos.z + offset.z());
 
-            // Spawn via LeveledNpcSpawner
-            Pair<Ref<EntityStore>, NPCEntity> result = npcSpawner.spawn(
-                    store, picked.npcRole(), spawnPos, level, spawner.getDefinition().isBoss()
-            );
+            // Reserve budget synchronously
+            spawner.reserveBudget();
+            spawnBudgetThisTick--;
 
-            if (result != null) {
-                spawner.recordSpawn(result.first());
-                spawnBudgetThisTick--;
-                LOGGER.atInfo().log("[Spawner] Spawned %s Lv.%d at (%.1f,%.1f,%.1f) for spawner #%d",
-                        picked.npcRole(), level, spawnPos.x, spawnPos.y, spawnPos.z,
-                        spawner.getDefinition().id());
-                if (spawnBudgetThisTick <= 0) break;
-            } else {
-                LOGGER.atWarning().log("[Spawner] Failed to spawn %s Lv.%d at (%.1f,%.1f,%.1f) for spawner #%d",
-                        picked.npcRole(), level, spawnPos.x, spawnPos.y, spawnPos.z,
-                        spawner.getDefinition().id());
-            }
+            deferredSpawns.add(new SpawnRequest(
+                    picked.npcRole(), spawnPos, level,
+                    spawner.getDefinition().isBoss(), spawner.getDefinition().id()));
+
+            if (spawnBudgetThisTick <= 0) break;
+        }
+
+        if (!deferredSpawns.isEmpty()) {
+            World world = store.getExternalData().getWorld();
+            world.execute(() -> {
+                Store<EntityStore> entityStore = world.getEntityStore().getStore();
+                for (SpawnRequest req : deferredSpawns) {
+                    Pair<Ref<EntityStore>, NPCEntity> result = npcSpawner.spawn(
+                            entityStore, req.npcRole(), req.position(), req.level(), req.boss()
+                    );
+
+                    if (result != null) {
+                        spawner.addAliveNpc(result.first());
+                        LOGGER.atInfo().log("[Spawner] Spawned %s Lv.%d at (%.1f,%.1f,%.1f) for spawner #%d",
+                                req.npcRole(), req.level(),
+                                req.position().x, req.position().y, req.position().z, req.spawnerId());
+                    } else {
+                        LOGGER.atWarning().log("[Spawner] Failed to spawn %s Lv.%d at (%.1f,%.1f,%.1f) for spawner #%d",
+                                req.npcRole(), req.level(),
+                                req.position().x, req.position().y, req.position().z, req.spawnerId());
+                    }
+                }
+            });
         }
 
         if (spawner.getSpawnBudgetRemaining() <= 0) {
