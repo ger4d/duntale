@@ -61,6 +61,7 @@ final class MovementHelper {
      * @param ref       player entity reference
      * @param playerPos player's current world position
      * @param target    the position to walk toward
+     * @param moveSpeed movement speed in blocks/second
      */
     static void beginMovement(@Nonnull PlayerState state,
                               @Nonnull PlayerRef playerRef,
@@ -68,7 +69,8 @@ final class MovementHelper {
                               @Nonnull Store<EntityStore> store,
                               @Nonnull Ref<EntityStore> ref,
                               @Nonnull Vector3d playerPos,
-                              @Nonnull Vector3d target) {
+                              @Nonnull Vector3d target,
+                              double moveSpeed) {
         state.targetPosition = target;
         state.cursorOffsetX = target.x - playerPos.x;
         state.cursorOffsetZ = target.z - playerPos.z;
@@ -77,7 +79,7 @@ final class MovementHelper {
         double dz = target.z - playerPos.z;
         double distSq = dx * dx + dz * dz;
         if (distSq > ClickToMoveManager.ARRIVAL_THRESHOLD_SQ) {
-            sendVelocity(state, playerRef, dx, dz, distSq);
+            sendVelocity(state, playerRef, dx, dz, distSq, moveSpeed);
             updateAnimation(state, store, ref, chooseAnimation(transform, dx, dz));
             setMovingStates(store, ref);
         }
@@ -87,13 +89,21 @@ final class MovementHelper {
      * Sends a {@code ChangeVelocity} packet directly to the client. Bypasses the
      * velocity-instruction pipeline so we can use the protocol {@link VelocityConfig}.
      * The {@link #NO_DECAY_CONFIG} ensures velocity persists until explicitly stopped.
+     *
+     * @param state     per-player state to update
+     * @param playerRef player reference (for packet sending)
+     * @param dx        delta X to target
+     * @param dz        delta Z to target
+     * @param distSq    squared distance to target
+     * @param moveSpeed movement speed in blocks/second
      */
     static void sendVelocity(@Nonnull PlayerState state,
                              @Nonnull PlayerRef playerRef,
-                             double dx, double dz, double distSq) {
+                             double dx, double dz, double distSq,
+                             double moveSpeed) {
         double dist = Math.sqrt(distSq);
-        float vx = (float) ((dx / dist) * MOVE_SPEED);
-        float vz = (float) ((dz / dist) * MOVE_SPEED);
+        float vx = (float) ((dx / dist) * moveSpeed);
+        float vz = (float) ((dz / dist) * moveSpeed);
 
         playerRef.getPacketHandler().writeNoCache(
                 new ChangeVelocity(vx, 0.0F, vz, ChangeVelocityType.Set, NO_DECAY_CONFIG)

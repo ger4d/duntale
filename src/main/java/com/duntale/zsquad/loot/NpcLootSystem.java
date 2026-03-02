@@ -1,6 +1,9 @@
 package com.duntale.zsquad.loot;
 
+import com.duntale.zsquad.economy.CurrencyDrop;
 import com.duntale.zsquad.progression.NpcLevelRegistry;
+import com.duntale.zsquad.rpg.RpgService;
+import com.duntale.zsquad.rpg.RpgStat;
 import com.hypixel.hytale.component.AddReason;
 import com.hypixel.hytale.component.CommandBuffer;
 import com.hypixel.hytale.component.Holder;
@@ -19,14 +22,17 @@ import com.hypixel.hytale.server.core.entity.entities.Player;
 import com.hypixel.hytale.server.core.inventory.ItemStack;
 import com.hypixel.hytale.server.core.modules.entity.component.HeadRotation;
 import com.hypixel.hytale.server.core.modules.entity.component.TransformComponent;
+import com.hypixel.hytale.server.core.modules.entity.damage.Damage;
 import com.hypixel.hytale.server.core.modules.entity.damage.DeathComponent;
 import com.hypixel.hytale.server.core.modules.entity.damage.DeathSystems;
 import com.hypixel.hytale.server.core.modules.entity.item.ItemComponent;
+import com.hypixel.hytale.server.core.modules.entity.item.PreventPickup;
 import com.hypixel.hytale.server.core.universe.world.storage.EntityStore;
 import com.hypixel.hytale.server.npc.entities.NPCEntity;
 import com.hypixel.hytale.server.npc.systems.NPCDamageSystems;
 
 import javax.annotation.Nonnull;
+import javax.annotation.Nullable;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
@@ -61,16 +67,21 @@ public class NpcLootSystem extends DeathSystems.OnDeathSystem {
 
     private final LootTableRegistry lootTableRegistry;
     private final NpcLevelRegistry npcLevelRegistry;
+    private final RpgService rpgService;
 
     /**
      * Creates a new NPC loot system.
      *
      * @param lootTableRegistry the registry of custom loot tables
      * @param npcLevelRegistry  the registry tracking spawned NPC levels
+     * @param rpgService        the RPG service for attacker stat lookups
      */
-    public NpcLootSystem(@Nonnull LootTableRegistry lootTableRegistry, @Nonnull NpcLevelRegistry npcLevelRegistry) {
+    public NpcLootSystem(@Nonnull LootTableRegistry lootTableRegistry,
+                         @Nonnull NpcLevelRegistry npcLevelRegistry,
+                         @Nonnull RpgService rpgService) {
         this.lootTableRegistry = lootTableRegistry;
         this.npcLevelRegistry = npcLevelRegistry;
+        this.rpgService = rpgService;
     }
 
     @Nonnull
@@ -108,6 +119,13 @@ public class NpcLootSystem extends DeathSystems.OnDeathSystem {
         // ── 2. Suppress default NPC drops for all tracked NPCs ──────
         component.setItemsLossMode(DeathConfig.ItemsLossMode.NONE);
 
+        // ── 2b. Resolve attacker for Luck stat ──────────────────────
+        int luckLevel = 0;
+        UUID attackerUuid = resolveAttacker(component, store);
+        if (attackerUuid != null) {
+            luckLevel = rpgService.getStat(attackerUuid, RpgStat.LUCK);
+        }
+
         // ── 3. Look up the loot table for this NPC role ──────────────
         LootTable lootTable = lootTableRegistry.get(levelData.npcId());
         if (lootTable == null) {
@@ -116,7 +134,7 @@ public class NpcLootSystem extends DeathSystems.OnDeathSystem {
         }
 
         // ── 4. Roll loot ─────────────────────────────────────────────
-        List<ItemStack> drops = lootTable.roll(levelData.level());
+        List<ItemStack> drops = lootTable.roll(levelData.level(), luckLevel);
         if (drops.isEmpty()) {
             return;
         }
@@ -132,9 +150,51 @@ public class NpcLootSystem extends DeathSystems.OnDeathSystem {
         Vector3f rotation = headRotation.getRotation().clone();
 
         Holder<EntityStore>[] itemEntities = ItemComponent.generateItemDrops(store, drops, dropPosition, rotation);
+
+        // ── 5b. Tag gold item entities with CurrencyDrop + PreventPickup ─
+        for (Holder<EntityStore> holder : itemEntities) {
+            ItemComponent itemComp = holder.getComponent(ItemComponent.getComponentType());
+            if (itemComp != null && "Gold_Coin".equals(itemComp.getItemStack().getItemId())) {
+                holder.addComponent(PreventPickup.getComponentType(), PreventPickup.INSTANCE);
+                holder.addComponent(CurrencyDrop.getComponentType(), CurrencyDrop.INSTANCE);
+            }
+        }
+
         commandBuffer.addEntities(itemEntities, AddReason.SPAWN);
 
         LOGGER.atInfo().log("Dropped %d custom loot item(s) for %s Lv.%d",
                 drops.size(), levelData.npcId(), levelData.level());
+    }
+
+    /**
+     * Resolves the attacking player's UUID from the death component.
+     *
+     * @param deathComponent the death component
+     * @param store          the entity store
+     * @return the attacker's UUID, or {@code null} if unresolvable
+     */
+    @Nullable
+    private UUID resolveAttacker(@Nonnull DeathComponent deathComponent,
+                                 @Nonnull Store<EntityStore> store) {
+        try {
+            Damage damage = deathComponent.getDeathInfo();
+            if (damage == null) return null;
+
+            Damage.Source source = damage.getSource();
+            if (!(source instanceof Damage.EntitySource entitySource)) return null;
+
+            Ref<EntityStore> attackerRef = entitySource.getRef();
+            if (!attackerRef.isValid()) return null;
+
+            // Only player attackers contribute Luck
+            Player player = store.getComponent(attackerRef, Player.getComponentType());
+            if (player == null) return null;
+
+            UUIDComponent uuidComp = store.getComponent(attackerRef, UUIDComponent.getComponentType());
+            return uuidComp != null ? uuidComp.getUuid() : null;
+        } catch (Exception e) {
+            LOGGER.atWarning().log("Failed to resolve attacker from DeathComponent: %s", e.getMessage());
+            return null;
+        }
     }
 }

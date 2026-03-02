@@ -1,13 +1,13 @@
 {
   "TranslationProperties": {
-    "Name": "server.items.Gold_Coin.name"
+    "Name": "Gold Coin"
   },
-  "Icon": "Icons/ItemsGenerated/Ingredient_Stick.png",
-  "Model": "Items/Ingredients/Stick.blockymodel",
-  "Texture": "Items/Ingredients/Stick_Texture.png",
+  "Icon": "Icons/ItemsGenerated/Ingredient_Bar_Gold.png",
+  "Model": "Resources/Materials/Ingot.blockymodel",
+  "Texture": "Resources/Materials/Ingot_Textures/Gold.png",
   "PlayerAnimationsId": "Item",
-  "ItemSoundSetId": "ISS_Default",
-  "MaxStack": 100,
+  "ItemSoundSetId": "ISS_Items_Ingots",
+  "MaxStack": 9999,
   "Tags": { "Type": ["Currency"] },
   "DropOnDeath": false
 }

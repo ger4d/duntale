@@ -15,6 +15,7 @@ import com.duntale.zsquad.loot.LootEntry.GearType;
 import com.duntale.zsquad.loot.LootTable;
 import com.duntale.zsquad.loot.LootTableRegistry;
 import com.duntale.zsquad.loot.NpcLootSystem;
+import com.duntale.zsquad.db.DatabaseConnection;
 import com.duntale.zsquad.progression.CombatScalingSystem;
 import com.duntale.zsquad.rpg.RpgRepository;
 import com.duntale.zsquad.rpg.RpgService;
@@ -35,6 +36,8 @@ import com.hypixel.hytale.server.core.universe.world.World;
 import com.hypixel.hytale.server.core.universe.world.storage.EntityStore;
 
 import javax.annotation.Nonnull;
+import java.nio.file.Path;
+import java.sql.SQLException;
 import java.util.List;
 
 public class ZSquadPlugin extends JavaPlugin {
@@ -54,6 +57,7 @@ public class ZSquadPlugin extends JavaPlugin {
     private LootTableRegistry lootTableRegistry;
 
     // RPG system
+    private DatabaseConnection databaseConnection;
     private RpgService rpgService;
 
     // Spawner system
@@ -176,7 +180,17 @@ public class ZSquadPlugin extends JavaPlugin {
         LOGGER.atInfo().log("Data directory: %s", getDataDirectory().toAbsolutePath());
 
         // ── RPG System ───────────────────────────────────────────────
-        this.rpgService = new RpgService(new RpgRepository(getDataDirectory()));
+        this.databaseConnection = new DatabaseConnection();
+        try {
+            Path dbPath = getDataDirectory().resolve("zsquad.db");
+            databaseConnection.initialize(dbPath);
+            RpgRepository rpgRepo = new RpgRepository(databaseConnection);
+            rpgRepo.initialize();
+            this.rpgService = new RpgService(rpgRepo);
+        } catch (SQLException e) {
+            LOGGER.atSevere().log("Failed to initialize RPG database: %s", e.getMessage());
+            this.rpgService = new RpgService(new RpgRepository(databaseConnection));
+        }
         this.clickToMoveManager.setRpgService(rpgService);
 
         // ── Progression System ───────────────────────────────────────
@@ -248,6 +262,9 @@ public class ZSquadPlugin extends JavaPlugin {
         }
         if (npcLevelRegistry != null) {
             npcLevelRegistry.clear();
+        }
+        if (databaseConnection != null) {
+            databaseConnection.close();
         }
     }
 

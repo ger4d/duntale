@@ -29,6 +29,9 @@ import com.hypixel.hytale.server.core.universe.world.ParticleUtil;
 import com.hypixel.hytale.server.core.universe.world.World;
 import com.hypixel.hytale.server.core.universe.world.storage.EntityStore;
 
+import com.duntale.zsquad.rpg.RpgService;
+import com.duntale.zsquad.rpg.RpgStat;
+import com.duntale.zsquad.rpg.RpgStatEffects;
 import com.hypixel.hytale.protocol.SoundCategory;
 import com.hypixel.hytale.protocol.packets.entities.PlayAnimation;
 import com.hypixel.hytale.protocol.packets.interface_.Page;
@@ -123,6 +126,10 @@ public class ClickToMoveManager {
 
     private final Map<UUID, PlayerState> players = new ConcurrentHashMap<>();
     private final EventRegistry eventRegistry;
+
+    /** Optional RPG service for per-player speed and attack throttle scaling. */
+    @Nullable
+    private RpgService rpgService;
 
     /**
      * Lazily-resolved sound event index for {@code SFX_Player_Hurt}.
@@ -227,6 +234,15 @@ public class ClickToMoveManager {
     // ============================================
     // Public API
     // ============================================
+
+    /**
+     * Sets the RPG service for per-player stat-based speed and attack throttle.
+     *
+     * @param rpgService the RPG service, or {@code null} to use defaults
+     */
+    public void setRpgService(@Nullable RpgService rpgService) {
+        this.rpgService = rpgService;
+    }
 
     /**
      * Enables click-to-move for a player. Widens the player model's
@@ -339,7 +355,7 @@ public class ClickToMoveManager {
                 double entityDistSq = edx * edx + edz * edz;
 
                 if (entityDistSq <= ATTACK_RANGE_SQ) {
-                    AttackHandler.tryAttack(state, store, ref, true, ATTACK_THROTTLE_NS);
+                    AttackHandler.tryAttack(state, store, ref, true, getPlayerAttackThrottle(uuid));
                     state.targetEntity = null;
                     MovementHelper.stopMovement(state, store, ref, playerRef);
                     return;
@@ -364,7 +380,7 @@ public class ClickToMoveManager {
 
             if (blockDistSq <= ATTACK_RANGE_SQ) {
                 AttackHandler.tryBlockInteraction(
-                        state, store, ref, interactBlock, ATTACK_THROTTLE_NS);
+                        state, store, ref, interactBlock, getPlayerAttackThrottle(uuid));
                 state.targetInteractBlock = null;
                 MovementHelper.stopMovement(state, store, ref, playerRef);
                 return;
@@ -393,13 +409,33 @@ public class ClickToMoveManager {
             double angleDiff = Math.abs(angle - state.lastSentAngle);
             if (angleDiff > Math.PI) angleDiff = 2 * Math.PI - angleDiff;
             if (angleDiff > DIRECTION_CHANGE_THRESHOLD) {
-                MovementHelper.sendVelocity(state, playerRef, dx, dz, distSq);
+                MovementHelper.sendVelocity(state, playerRef, dx, dz, distSq, getPlayerMoveSpeed(uuid));
             }
         }
 
         String anim = MovementHelper.chooseAnimation(transform, dx, dz);
         MovementHelper.updateAnimation(state, store, ref, anim);
         MovementHelper.setMovingStates(store, ref);
+    }
+
+    /**
+     * Computes per-player move speed from the Speed RPG stat.
+     * Falls back to {@link MovementHelper#MOVE_SPEED} when no RPG service is set.
+     */
+    private double getPlayerMoveSpeed(@Nonnull UUID uuid) {
+        if (rpgService == null) return MovementHelper.MOVE_SPEED;
+        int speedLevel = rpgService.getStat(uuid, RpgStat.SPEED);
+        return RpgStatEffects.computeMoveSpeed(speedLevel);
+    }
+
+    /**
+     * Computes per-player attack throttle from the Agility RPG stat.
+     * Falls back to {@link #ATTACK_THROTTLE_NS} when no RPG service is set.
+     */
+    private long getPlayerAttackThrottle(@Nonnull UUID uuid) {
+        if (rpgService == null) return ATTACK_THROTTLE_NS;
+        int agilityLevel = rpgService.getStat(uuid, RpgStat.AGILITY);
+        return RpgStatEffects.computeAttackThrottleNs(agilityLevel);
     }
 
     /**
@@ -557,7 +593,7 @@ public class ClickToMoveManager {
                 AttackHandler.AttackResult result = AttackHandler.tryAttack(
                         state, store, ref,
                         entityDistSq <= ATTACK_RANGE_SQ,
-                        ATTACK_THROTTLE_NS);
+                        getPlayerAttackThrottle(playerRef.getUuid()));
 
                 if (result == AttackHandler.AttackResult.ATTACKED) {
                     state.targetEntity = null;
@@ -568,7 +604,7 @@ public class ClickToMoveManager {
                 // OUT_OF_RANGE — melee weapon, walk toward entity
                 state.targetEntity = targetEntityRef;
                 MovementHelper.beginMovement(state, playerRef, transform, store, ref, pos,
-                        new Vector3d(ePos.x, pos.y, ePos.z));
+                        new Vector3d(ePos.x, pos.y, ePos.z), getPlayerMoveSpeed(playerRef.getUuid()));
                 return;
             }
         }
@@ -594,7 +630,7 @@ public class ClickToMoveManager {
             if (distSq <= ATTACK_RANGE_SQ) {
                 // In range → interact immediately
                 AttackHandler.tryBlockInteraction(
-                        state, store, ref, targetBlock, ATTACK_THROTTLE_NS);
+                        state, store, ref, targetBlock, getPlayerAttackThrottle(playerRef.getUuid()));
                 MovementHelper.stopMovement(state, store, ref, playerRef);
                 return;
             }
@@ -602,7 +638,7 @@ public class ClickToMoveManager {
             // Out of range → walk to block, interact on arrival
             state.targetInteractBlock = targetBlock;
             MovementHelper.beginMovement(state, playerRef, transform, store, ref, pos,
-                    new Vector3d(bx, pos.y, bz));
+                    new Vector3d(bx, pos.y, bz), getPlayerMoveSpeed(playerRef.getUuid()));
             return;
         }
 
@@ -618,7 +654,7 @@ public class ClickToMoveManager {
         double targetZ = tz + 0.5;
 
         MovementHelper.beginMovement(state, playerRef, transform, store, ref, pos,
-                new Vector3d(targetX, pos.y, targetZ));
+                new Vector3d(targetX, pos.y, targetZ), getPlayerMoveSpeed(playerRef.getUuid()));
 
         if (spawnParticle) {
             ParticleUtil.spawnParticleEffect("Block_Break_Ore",

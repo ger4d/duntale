@@ -1,6 +1,7 @@
 package com.duntale.zsquad.loot;
 
 import com.duntale.zsquad.progression.GearLevelService;
+import com.duntale.zsquad.rpg.RpgStatEffects;
 import com.hypixel.hytale.server.core.inventory.ItemStack;
 
 import javax.annotation.Nonnull;
@@ -89,6 +90,66 @@ public class LootTable {
         List<ItemStack> result = new ArrayList<>(rolls);
 
         for (int i = 0; i < rolls; i++) {
+            LootEntry picked = pickWeighted(eligible, totalWeight, random);
+            ItemStack stack = createItemStack(picked, random);
+            if (stack != null) {
+                result.add(stack);
+            }
+        }
+
+        return Collections.unmodifiableList(result);
+    }
+
+    /**
+     * Rolls this loot table with Luck bonus applied.
+     *
+     * <p>Luck provides two bonuses:
+     * <ul>
+     *   <li>Drop chance bonus: increases the base drop chance</li>
+     *   <li>Bonus rolls: additional rolls on the loot table</li>
+     * </ul>
+     *
+     * @param npcLevel  the dying NPC's dungeon level
+     * @param luckLevel the attacker's Luck stat level (0 = no bonus)
+     * @return an unmodifiable list of rolled drops (may be empty)
+     */
+    @Nonnull
+    public List<ItemStack> roll(int npcLevel, int luckLevel) {
+        if (luckLevel <= 0) {
+            return roll(npcLevel);
+        }
+
+        ThreadLocalRandom random = ThreadLocalRandom.current();
+
+        // Adjusted drop chance with Luck bonus
+        float dropBonus = RpgStatEffects.computeLuckDropBonus(luckLevel);
+        double adjustedDropChance = Math.min(1.0, dropChance + dropBonus);
+
+        if (adjustedDropChance < 1.0 && random.nextDouble() >= adjustedDropChance) {
+            return Collections.emptyList();
+        }
+
+        // Filter eligible entries
+        List<LootEntry> eligible = new ArrayList<>();
+        double totalWeight = 0;
+        for (LootEntry entry : entries) {
+            if (entry.isEligible(npcLevel)) {
+                eligible.add(entry);
+                totalWeight += entry.weight();
+            }
+        }
+
+        if (eligible.isEmpty() || totalWeight <= 0) {
+            return Collections.emptyList();
+        }
+
+        // Total rolls = base rolls + Luck bonus rolls
+        int bonusRolls = RpgStatEffects.computeLuckBonusRolls(luckLevel);
+        int totalRolls = rolls + bonusRolls;
+
+        List<ItemStack> result = new ArrayList<>(totalRolls);
+
+        for (int i = 0; i < totalRolls; i++) {
             LootEntry picked = pickWeighted(eligible, totalWeight, random);
             ItemStack stack = createItemStack(picked, random);
             if (stack != null) {
