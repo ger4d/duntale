@@ -10,7 +10,9 @@
     ],
     "Main": "com.duntale.zsquad.ZSquadPlugin",
     "ServerVersion": "2026.02.18-f3b8fff95",
-    "Dependencies": {},
+    "Dependencies": {
+        "com.duntale:DungeonGen": ">=1.0.0-SNAPSHOT"
+    },
     "OptionalDependencies": {
         "org.herolias:DynamicTooltipsLib": ">=1.5.1"
     },

@@ -16,6 +16,8 @@ import com.duntale.zsquad.loot.LootTable;
 import com.duntale.zsquad.loot.LootTableRegistry;
 import com.duntale.zsquad.loot.NpcLootSystem;
 import com.duntale.zsquad.progression.CombatScalingSystem;
+import com.duntale.zsquad.rpg.RpgRepository;
+import com.duntale.zsquad.rpg.RpgService;
 import com.duntale.zsquad.progression.LeveledNpcSpawner;
 import com.duntale.zsquad.progression.NpcLevelRegistry;
 import com.duntale.zsquad.progression.ScalingDataCache;
@@ -50,6 +52,9 @@ public class ZSquadPlugin extends JavaPlugin {
 
     // Loot system
     private LootTableRegistry lootTableRegistry;
+
+    // RPG system
+    private RpgService rpgService;
 
     // Spawner system
     private ComponentType<EntityStore, SpawnerComponent> spawnerComponentType;
@@ -170,6 +175,10 @@ public class ZSquadPlugin extends JavaPlugin {
 
         LOGGER.atInfo().log("Data directory: %s", getDataDirectory().toAbsolutePath());
 
+        // ── RPG System ───────────────────────────────────────────────
+        this.rpgService = new RpgService(new RpgRepository(getDataDirectory()));
+        this.clickToMoveManager.setRpgService(rpgService);
+
         // ── Progression System ───────────────────────────────────────
         this.scalingDataCache = new ScalingDataCache(getDataDirectory());
         this.npcLevelRegistry = new NpcLevelRegistry();
@@ -183,7 +192,7 @@ public class ZSquadPlugin extends JavaPlugin {
         this.getEntityStoreRegistry().registerSystem(new ClickToMoveTickSystem(this.clickToMoveManager));
         this.getEntityStoreRegistry().registerSystem(new CombatScalingSystem(npcLevelRegistry, scalingDataCache));
         this.getEntityStoreRegistry().registerSystem(new ClickToMoveKnockbackSystem(this.clickToMoveManager));
-        this.getEntityStoreRegistry().registerSystem(new NpcLootSystem(lootTableRegistry, npcLevelRegistry));
+        this.getEntityStoreRegistry().registerSystem(new NpcLootSystem(lootTableRegistry, npcLevelRegistry, rpgService));
 
         // ── Spawner System ───────────────────────────────────────────
         this.spawnerComponentType = this.getEntityStoreRegistry().registerComponent(SpawnerComponent.class, SpawnerComponent::new);
@@ -191,7 +200,7 @@ public class ZSquadPlugin extends JavaPlugin {
         this.getEntityStoreRegistry().registerSystem(new SpawnerTickSystem(leveledNpcSpawner));
 
         // -- Dungeon Generation ----------------------------------------
-        this.dungeonOrchestrator = new GenerationOrchestrator(new BlockResolver());
+        // Deferred to start() — DungeonSettingsConfig asset store not available during setup()
 
         // Command registration
         this.getCommandRegistry().registerCommand(new com.duntale.zsquad.command.SpawnCommand());
@@ -208,6 +217,8 @@ public class ZSquadPlugin extends JavaPlugin {
 
     @Override
     protected void start() {
+        // Initialize dungeon orchestrator here — asset stores are available after all plugins setup()
+        this.dungeonOrchestrator = new GenerationOrchestrator(new BlockResolver());
         LOGGER.atInfo().log("ZSquad Plugin Started!");
     }
 

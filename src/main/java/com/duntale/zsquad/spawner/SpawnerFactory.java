@@ -42,14 +42,33 @@ public class SpawnerFactory {
             @Nonnull Store<EntityStore> store,
             @Nonnull DungeonBlueprint blueprint,
             @Nonnull Vec3i worldOrigin) {
+        return createSpawners(store, blueprint.getSpawners(), worldOrigin);
+    }
 
-        List<SpawnerDefinition> definitions = blueprint.getSpawners();
+    /**
+     * Create spawner entities from a list of spawner definitions.
+     *
+     * @param store       the entity store
+     * @param definitions the spawner definitions
+     * @param worldOrigin the world-space origin offset of the dungeon
+     * @return list of refs to created spawner entities
+     * @since 1.2.0
+     */
+    @Nonnull
+    public List<Ref<EntityStore>> createSpawners(
+            @Nonnull Store<EntityStore> store,
+            @Nonnull List<SpawnerDefinition> definitions,
+            @Nonnull Vec3i worldOrigin) {
         List<Ref<EntityStore>> refs = new ArrayList<>(definitions.size());
 
         for (SpawnerDefinition def : definitions) {
             int wx = worldOrigin.x() + def.x();
             int wy = worldOrigin.y() + def.y();
             int wz = worldOrigin.z() + def.z();
+
+            LOGGER.atInfo().log("[Spawner] Creating spawner #%d at (%d,%d,%d) room=%d pool=%d budget=%d boss=%s",
+                    def.id(), wx, wy, wz, def.roomId(), def.spawnPool().size(),
+                    def.totalCount(), def.isBoss());
 
             Holder<EntityStore> holder = EntityStore.REGISTRY.newHolder();
             holder.addComponent(SpawnerComponent.getComponentType(), new SpawnerComponent(def));

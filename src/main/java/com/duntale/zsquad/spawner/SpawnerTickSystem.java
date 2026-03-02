@@ -193,7 +193,14 @@ public class SpawnerTickSystem extends DelayedEntitySystem<EntityStore> {
             if (result != null) {
                 spawner.recordSpawn(result.first());
                 spawnBudgetThisTick--;
+                LOGGER.atInfo().log("[Spawner] Spawned %s Lv.%d at (%.1f,%.1f,%.1f) for spawner #%d",
+                        picked.npcRole(), level, spawnPos.x, spawnPos.y, spawnPos.z,
+                        spawner.getDefinition().id());
                 if (spawnBudgetThisTick <= 0) break;
+            } else {
+                LOGGER.atWarning().log("[Spawner] Failed to spawn %s Lv.%d at (%.1f,%.1f,%.1f) for spawner #%d",
+                        picked.npcRole(), level, spawnPos.x, spawnPos.y, spawnPos.z,
+                        spawner.getDefinition().id());
             }
         }
 
