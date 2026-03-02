@@ -5,6 +5,33 @@
 
 ---
 
+## Implementation Progress
+
+| Round | Commit | Status | Description |
+|-------|--------|--------|-------------|
+| 1 | `62c68ff` | **Done** | Foundation: `DatabaseConnection`, `RpgStat`, `RpgConstants`, `RpgProfile`, `CurrencyDrop`, `Gold_Coin.json` |
+| 2 | `7859991` | **Done** | Repositories + formulas: `GoldRepository`, `RpgRepository`, `RpgStatEffects` |
+| 3 | `6367ba3` | **Done** | Services: `GoldService`, `RpgService` |
+| 4 | `27e6159` | **Done** | Commands + ECS: `/gold`, `/stat`, `GoldPickupSystem`, `RpgDamageScalingSystem` |
+| 5 | `a70d62f` | **Done** | Gameplay hooks: Speed/Agility in movement, Luck in loot, CurrencyDrop tagging |
+| 6 | `aae4380` | **Done** | Progression: `ProgressionRepository`, `ProgressionService`, `LevelUpResult`, XP-on-kill |
+| 7 | `7d19272` | **Done** | Plugin integration: all services/systems/commands/events wired in `ZSquadPlugin` |
+
+**New files created**: 18 (14 Java + 1 JSON asset + 3 progression)  
+**Files modified**: 5 (`ZSquadPlugin`, `ClickToMoveManager`, `MovementHelper`, `LootTable`, `NpcLootSystem`)
+
+### Remaining (deferred to future work)
+
+| Item | Reason Deferred |
+|------|------------------|
+| `StatPointReward.java` | Needs Reward interface infrastructure from duntale-dev |
+| `StatAssignmentPage.java` | Needs `InteractiveCustomUIPage<T>` pattern research + .ui template |
+| Vitality/Stamina engine modifiers | Needs `EntityStatMap.putModifier()` API verification on live server |
+| Gold drops in loot tables | Pending: add `LootEntry.Simple("Gold_Coin", ...)` entries to existing tables |
+| Level thresholds seeding | Pending: import-levels script or SQL seed for the `levels` table |
+
+---
+
 ## Part 1: Gold Economy
 
 ### Design
@@ -521,40 +548,40 @@ shutdown():
 | `progression/` | `ProgressionRepository.java` | New (copy) | XP + level persistence |
 | `progression/` | `ProgressionService.java` | New (copy) | XP granting, level calc |
 | `progression/` | `LevelUpResult.java` | New (copy) | Level-up result record |
-| `progression/` | `StatPointReward.java` | New | Grants stat points on level-up |
-| `progression/` | `StatAssignmentPage.java` | New | CustomUI page for spending points |
+| `progression/` | `StatPointReward.java` | **Deferred** | Grants stat points on level-up (needs Reward interface) |
+| `progression/` | `StatAssignmentPage.java` | **Deferred** | CustomUI page for spending points (needs UI template) |
 | `loot/` | `LootTable.java` | Modified | Luck overload |
 | `loot/` | `NpcLootSystem.java` | Modified | Attacker resolution, Luck, XP grant, CurrencyDrop |
 | `camera/` | `MovementHelper.java` | Modified | Dynamic speed parameter |
 | `camera/` | `ClickToMoveManager.java` | Modified | Dynamic throttle + speed |
 | — | `ZSquadPlugin.java` | Modified | Wire everything |
 
-**Total**: ~19 new files, ~5 modified files.
+**Total**: ~19 new files, ~5 modified files. (**18 implemented**, 2 deferred)
 
 ---
 
 ## Implementation Phases
 
-### Phase 1: Core Infrastructure
-- `DatabaseConnection`, `GoldRepository`, `GoldService`
-- `RpgStat`, `RpgProfile`, `RpgRepository`, `RpgService`, `RpgConstants`
-- Gold_Coin.json asset + `CurrencyDrop` component
-- `/gold` and `/stat` admin commands
+### Phase 1: Core Infrastructure — COMPLETE
+- [x] `DatabaseConnection`, `GoldRepository`, `GoldService`
+- [x] `RpgStat`, `RpgProfile`, `RpgRepository`, `RpgService`, `RpgConstants`
+- [x] Gold_Coin.json asset + `CurrencyDrop` component
+- [x] `/gold` and `/stat` admin commands
 
-### Phase 2: Gameplay Hooks
-- `RpgStatEffects` formula computations
-- `RpgDamageScalingSystem` (Strength outgoing + Resistance incoming)
-- `GoldPickupSystem` (auto-pickup → balance)
-- `MovementHelper` + `ClickToMoveManager` integration (Speed + Agility)
-- Vitality + Stamina engine stat modifiers
-- `NpcLootSystem` updates (attacker resolution, Luck, gold CurrencyDrop)
-- `LootTable.roll()` Luck overload
+### Phase 2: Gameplay Hooks — COMPLETE
+- [x] `RpgStatEffects` formula computations
+- [x] `RpgDamageScalingSystem` (Strength outgoing + Resistance incoming)
+- [x] `GoldPickupSystem` (auto-pickup → balance)
+- [x] `MovementHelper` + `ClickToMoveManager` integration (Speed + Agility)
+- [ ] Vitality + Stamina engine stat modifiers — **deferred** (needs `EntityStatMap` API verification)
+- [x] `NpcLootSystem` updates (attacker resolution, Luck, gold CurrencyDrop)
+- [x] `LootTable.roll()` Luck overload
 
-### Phase 3: Progression
-- Copy + adapt Progression system from duntale-dev
-- Kill detection → XP grant in `NpcLootSystem`
-- `StatPointReward` for level-up rewards
-- `StatAssignmentPage` (InteractiveCustomUIPage)
+### Phase 3: Progression — PARTIAL
+- [x] Copy + adapt Progression system from duntale-dev
+- [x] Kill detection → XP grant in `NpcLootSystem` (BASE_XP=10 × npcLevel)
+- [ ] `StatPointReward` for level-up rewards — **deferred** (needs Reward interface)
+- [ ] `StatAssignmentPage` (InteractiveCustomUIPage) — **deferred** (needs UI template)
 
 ### Phase 4: Enhancements (Future)
 - **Custom HUD/Scoreboard**: Gold balance + stats display (pattern: `BaseScoreboard extends CustomUIHud` from duntale-dev, with `.ui` template + `UICommandBuilder` updates)
