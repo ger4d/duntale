@@ -10,6 +10,11 @@ import com.duntale.zsquad.command.DSpawnCommand;
 import com.duntale.zsquad.command.GenerateCommand;
 import com.duntale.dungeongen.generator.GenerationOrchestrator;
 import com.duntale.dungeongen.util.BlockResolver;
+import com.duntale.zsquad.economy.CurrencyDrop;
+import com.duntale.zsquad.economy.GoldCommand;
+import com.duntale.zsquad.economy.GoldPickupSystem;
+import com.duntale.zsquad.economy.GoldRepository;
+import com.duntale.zsquad.economy.GoldService;
 import com.duntale.zsquad.loot.LootEntry;
 import com.duntale.zsquad.loot.LootEntry.GearType;
 import com.duntale.zsquad.loot.LootTable;
@@ -19,8 +24,10 @@ import com.duntale.zsquad.db.DatabaseConnection;
 import com.duntale.zsquad.progression.CombatScalingSystem;
 import com.duntale.zsquad.progression.ProgressionRepository;
 import com.duntale.zsquad.progression.ProgressionService;
+import com.duntale.zsquad.rpg.RpgDamageScalingSystem;
 import com.duntale.zsquad.rpg.RpgRepository;
 import com.duntale.zsquad.rpg.RpgService;
+import com.duntale.zsquad.rpg.RpgStatCommand;
 import com.duntale.zsquad.progression.LeveledNpcSpawner;
 import com.duntale.zsquad.progression.NpcLevelRegistry;
 import com.duntale.zsquad.progression.ScalingDataCache;
@@ -30,6 +37,8 @@ import com.duntale.zsquad.spawner.SpawnerTickSystem;
 import com.hypixel.hytale.component.ComponentType;
 import com.hypixel.hytale.component.Ref;
 import com.hypixel.hytale.logger.HytaleLogger;
+import com.hypixel.hytale.server.core.event.events.player.PlayerConnectEvent;
+import com.hypixel.hytale.server.core.event.events.player.PlayerDisconnectEvent;
 import com.hypixel.hytale.server.core.plugin.JavaPlugin;
 import com.hypixel.hytale.server.core.plugin.JavaPluginInit;
 import com.hypixel.hytale.server.core.universe.PlayerRef;
@@ -41,6 +50,7 @@ import javax.annotation.Nonnull;
 import java.nio.file.Path;
 import java.sql.SQLException;
 import java.util.List;
+import java.util.UUID;
 
 public class ZSquadPlugin extends JavaPlugin {
 
@@ -61,6 +71,7 @@ public class ZSquadPlugin extends JavaPlugin {
     // RPG system
     private DatabaseConnection databaseConnection;
     private RpgService rpgService;
+    private GoldService goldService;
     private ProgressionService progressionService;
 
     // Spawner system
@@ -191,12 +202,17 @@ public class ZSquadPlugin extends JavaPlugin {
             rpgRepo.initialize();
             this.rpgService = new RpgService(rpgRepo);
 
+            GoldRepository goldRepo = new GoldRepository(databaseConnection);
+            goldRepo.initialize();
+            this.goldService = new GoldService(goldRepo);
+
             ProgressionRepository progressionRepo = new ProgressionRepository(databaseConnection);
             progressionRepo.initialize();
             this.progressionService = new ProgressionService(progressionRepo);
         } catch (SQLException e) {
             LOGGER.atSevere().log("Failed to initialize RPG database: %s", e.getMessage());
             this.rpgService = new RpgService(new RpgRepository(databaseConnection));
+            this.goldService = new GoldService(new GoldRepository(databaseConnection));
             this.progressionService = new ProgressionService(new ProgressionRepository(databaseConnection));
         }
         this.clickToMoveManager.setRpgService(rpgService);
@@ -210,11 +226,17 @@ public class ZSquadPlugin extends JavaPlugin {
         this.lootTableRegistry = new LootTableRegistry();
         registerLootTables();
 
+        // ── ECS Component Registration ───────────────────────────────
+        CurrencyDrop.setComponentType(
+                this.getEntityStoreRegistry().registerComponent(CurrencyDrop.class, () -> CurrencyDrop.INSTANCE));
+
         // Register ECS systems
         this.getEntityStoreRegistry().registerSystem(new ClickToMoveTickSystem(this.clickToMoveManager));
         this.getEntityStoreRegistry().registerSystem(new CombatScalingSystem(npcLevelRegistry, scalingDataCache));
         this.getEntityStoreRegistry().registerSystem(new ClickToMoveKnockbackSystem(this.clickToMoveManager));
         this.getEntityStoreRegistry().registerSystem(new NpcLootSystem(lootTableRegistry, npcLevelRegistry, rpgService, progressionService));
+        this.getEntityStoreRegistry().registerSystem(new GoldPickupSystem(goldService));
+        this.getEntityStoreRegistry().registerSystem(new RpgDamageScalingSystem(rpgService));
 
         // ── Spawner System ───────────────────────────────────────────
         this.spawnerComponentType = this.getEntityStoreRegistry().registerComponent(SpawnerComponent.class, SpawnerComponent::new);
@@ -232,6 +254,12 @@ public class ZSquadPlugin extends JavaPlugin {
         this.getCommandRegistry().registerCommand(new DListCommand(scalingDataCache));
         this.getCommandRegistry().registerCommand(new DGiveCommand(scalingDataCache));
         this.getCommandRegistry().registerCommand(new GenerateCommand());
+        this.getCommandRegistry().registerCommand(new GoldCommand(goldService));
+        this.getCommandRegistry().registerCommand(new RpgStatCommand(rpgService));
+
+        // ── Player join/leave events ─────────────────────────────────
+        this.getEventRegistry().register(PlayerConnectEvent.class, this::onPlayerConnect);
+        this.getEventRegistry().register(PlayerDisconnectEvent.class, this::onPlayerDisconnect);
 
         // ── DynamicTooltipsLib integration (optional dependency) ──
         registerTooltipProvider();
@@ -274,6 +302,21 @@ public class ZSquadPlugin extends JavaPlugin {
         if (databaseConnection != null) {
             databaseConnection.close();
         }
+    }
+
+    // ── Player lifecycle events ──────────────────────────────────────
+
+    private void onPlayerConnect(@Nonnull PlayerConnectEvent event) {
+        UUID uuid = event.getPlayerRef().getUuid();
+        rpgService.onPlayerJoin(uuid);
+        LOGGER.atFine().log("Pre-loaded RPG profile for %s", uuid);
+    }
+
+    private void onPlayerDisconnect(@Nonnull PlayerDisconnectEvent event) {
+        UUID uuid = event.getPlayerRef().getUuid();
+        rpgService.onPlayerLeave(uuid);
+        progressionService.onPlayerLeave(uuid);
+        LOGGER.atFine().log("Evicted RPG + progression data for %s", uuid);
     }
 
     /**
