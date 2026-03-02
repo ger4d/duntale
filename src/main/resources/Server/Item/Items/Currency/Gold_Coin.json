@@ -1,0 +1,13 @@
+{
+  "TranslationProperties": {
+    "Name": "server.items.Gold_Coin.name"
+  },
+  "Icon": "Icons/ItemsGenerated/Ingredient_Stick.png",
+  "Model": "Items/Ingredients/Stick.blockymodel",
+  "Texture": "Items/Ingredients/Stick_Texture.png",
+  "PlayerAnimationsId": "Item",
+  "ItemSoundSetId": "ISS_Default",
+  "MaxStack": 100,
+  "Tags": { "Type": ["Currency"] },
+  "DropOnDeath": false
+}

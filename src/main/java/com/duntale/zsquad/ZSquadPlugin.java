@@ -16,6 +16,10 @@ import com.duntale.zsquad.progression.CombatScalingSystem;
 import com.duntale.zsquad.progression.LeveledNpcSpawner;
 import com.duntale.zsquad.progression.NpcLevelRegistry;
 import com.duntale.zsquad.progression.ScalingDataCache;
+import com.duntale.zsquad.spawner.SpawnerComponent;
+import com.duntale.zsquad.spawner.SpawnerFactory;
+import com.duntale.zsquad.spawner.SpawnerTickSystem;
+import com.hypixel.hytale.component.ComponentType;
 import com.hypixel.hytale.component.Ref;
 import com.hypixel.hytale.logger.HytaleLogger;
 import com.hypixel.hytale.server.core.plugin.JavaPlugin;
@@ -43,6 +47,10 @@ public class ZSquadPlugin extends JavaPlugin {
 
     // Loot system
     private LootTableRegistry lootTableRegistry;
+
+    // Spawner system
+    private ComponentType<EntityStore, SpawnerComponent> spawnerComponentType;
+    private SpawnerFactory spawnerFactory;
 
     public ZSquadPlugin(@Nonnull JavaPluginInit init) {
         super(init);
@@ -113,6 +121,28 @@ public class ZSquadPlugin extends JavaPlugin {
         return lootTableRegistry;
     }
 
+    /**
+     * Returns the registered component type for {@link SpawnerComponent}.
+     *
+     * @return the spawner component type
+     * @since 1.1.0
+     */
+    @Nonnull
+    public ComponentType<EntityStore, SpawnerComponent> getSpawnerComponentType() {
+        return spawnerComponentType;
+    }
+
+    /**
+     * Returns the spawner factory for creating spawner entities from blueprints.
+     *
+     * @return the spawner factory
+     * @since 1.1.0
+     */
+    @Nonnull
+    public SpawnerFactory getSpawnerFactory() {
+        return spawnerFactory;
+    }
+
     @Override
     protected void setup() {
         LOGGER.atInfo().log("ZSquad Plugin Setting Up...");
@@ -137,6 +167,11 @@ public class ZSquadPlugin extends JavaPlugin {
         this.getEntityStoreRegistry().registerSystem(new CombatScalingSystem(npcLevelRegistry, scalingDataCache));
         this.getEntityStoreRegistry().registerSystem(new ClickToMoveKnockbackSystem(this.clickToMoveManager));
         this.getEntityStoreRegistry().registerSystem(new NpcLootSystem(lootTableRegistry, npcLevelRegistry));
+
+        // ── Spawner System ───────────────────────────────────────────
+        this.spawnerComponentType = this.getEntityStoreRegistry().registerComponent(SpawnerComponent.class, SpawnerComponent::new);
+        this.spawnerFactory = new SpawnerFactory();
+        this.getEntityStoreRegistry().registerSystem(new SpawnerTickSystem(leveledNpcSpawner));
 
         // Command registration
         this.getCommandRegistry().registerCommand(new com.duntale.zsquad.command.SpawnCommand());
