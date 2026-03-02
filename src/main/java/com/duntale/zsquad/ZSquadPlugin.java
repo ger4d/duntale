@@ -7,6 +7,9 @@ import com.duntale.zsquad.camera.ClickToMoveTickSystem;
 import com.duntale.zsquad.command.DGiveCommand;
 import com.duntale.zsquad.command.DListCommand;
 import com.duntale.zsquad.command.DSpawnCommand;
+import com.duntale.zsquad.command.GenerateCommand;
+import com.duntale.dungeongen.generator.GenerationOrchestrator;
+import com.duntale.dungeongen.util.BlockResolver;
 import com.duntale.zsquad.loot.LootEntry;
 import com.duntale.zsquad.loot.LootEntry.GearType;
 import com.duntale.zsquad.loot.LootTable;
@@ -51,6 +54,9 @@ public class ZSquadPlugin extends JavaPlugin {
     // Spawner system
     private ComponentType<EntityStore, SpawnerComponent> spawnerComponentType;
     private SpawnerFactory spawnerFactory;
+
+    // Dungeon generation
+    private GenerationOrchestrator dungeonOrchestrator;
 
     public ZSquadPlugin(@Nonnull JavaPluginInit init) {
         super(init);
@@ -143,6 +149,17 @@ public class ZSquadPlugin extends JavaPlugin {
         return spawnerFactory;
     }
 
+    /**
+     * Returns the dungeon generation orchestrator.
+     *
+     * @return the generation orchestrator
+     * @since 1.2.0
+     */
+    @Nonnull
+    public GenerationOrchestrator getDungeonOrchestrator() {
+        return dungeonOrchestrator;
+    }
+
     @Override
     protected void setup() {
         LOGGER.atInfo().log("ZSquad Plugin Setting Up...");
@@ -173,6 +190,9 @@ public class ZSquadPlugin extends JavaPlugin {
         this.spawnerFactory = new SpawnerFactory();
         this.getEntityStoreRegistry().registerSystem(new SpawnerTickSystem(leveledNpcSpawner));
 
+        // ── Dungeon Generation ────────────────────────────────────────
+        this.dungeonOrchestrator = new GenerationOrchestrator(new BlockResolver());
+
         // Command registration
         this.getCommandRegistry().registerCommand(new com.duntale.zsquad.command.SpawnCommand());
         this.getCommandRegistry().registerCommand(new com.duntale.zsquad.command.CameraCommand());
@@ -180,6 +200,7 @@ public class ZSquadPlugin extends JavaPlugin {
         this.getCommandRegistry().registerCommand(new DSpawnCommand(leveledNpcSpawner, scalingDataCache));
         this.getCommandRegistry().registerCommand(new DListCommand(scalingDataCache));
         this.getCommandRegistry().registerCommand(new DGiveCommand(scalingDataCache));
+        this.getCommandRegistry().registerCommand(new GenerateCommand());
 
         // ── DynamicTooltipsLib integration (optional dependency) ──
         registerTooltipProvider();
@@ -207,6 +228,9 @@ public class ZSquadPlugin extends JavaPlugin {
                     blockOcclusionManager.shutdown(world);
                 }
             }
+        }
+        if (dungeonOrchestrator != null) {
+            dungeonOrchestrator.shutdown();
         }
         if (scalingDataCache != null) {
             scalingDataCache.shutdown();
