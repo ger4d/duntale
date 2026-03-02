@@ -8,6 +8,7 @@ import com.duntale.zsquad.command.DGiveCommand;
 import com.duntale.zsquad.command.DListCommand;
 import com.duntale.zsquad.command.DSpawnCommand;
 import com.duntale.zsquad.loot.LootEntry;
+import com.duntale.zsquad.loot.LootEntry.GearType;
 import com.duntale.zsquad.loot.LootTable;
 import com.duntale.zsquad.loot.LootTableRegistry;
 import com.duntale.zsquad.loot.NpcLootSystem;
@@ -183,15 +184,91 @@ public class ZSquadPlugin extends JavaPlugin {
     /**
      * Populates the {@link LootTableRegistry} with drop tables for each NPC role.
      *
-     * <p>Each table defines weighted entries that may be level-gated.
-     * Adjust entries, weights, quantities, and roll counts here.
+     * <p>Each table defines weighted entries that may be level-gated. Entries can be:
+     * <ul>
+     *   <li>{@link LootEntry.Simple} — regular items (potions, materials).</li>
+     *   <li>{@link LootEntry.Leveled} — weapons/armor with gear level + variance metadata.</li>
+     * </ul>
      */
     private void registerLootTables() {
-        // Example: Trork_Grunt drops 1–3 gold coins (always) or 1 iron ingot (Lv.5+)
-        lootTableRegistry.register("Trork_Grunt", new LootTable(List.of(
-                new LootEntry("Common:Gold_Coin", 1, 3, 10.0),
-                new LootEntry("Common:Iron_Ingot", 1, 1, 3.0, 5, null)
-        ), 1));
+        // ── Trork mobs (Lv.5–15 zone) ───────────────────────────────
+        lootTableRegistry.register("Trork_Warrior", new LootTable(List.of(
+                new LootEntry.Leveled("Weapon_Axe_Crude", GearType.WEAPON, 5, 8, 3.0),
+                new LootEntry.Leveled("Weapon_Spear_Crude", GearType.WEAPON, 5, 8, 3.0),
+                new LootEntry.Leveled("Armor_Wood_Head", GearType.ARMOR, 5, 8, 2.0),
+                new LootEntry.Leveled("Armor_Wood_Chest", GearType.ARMOR, 5, 8, 1.0)
+        ), 1, 0.35));
+
+        lootTableRegistry.register("Trork_Brawler", new LootTable(List.of(
+                new LootEntry.Leveled("Weapon_Club_Crude", GearType.WEAPON, 5, 10, 3.0),
+                new LootEntry.Leveled("Weapon_Mace_Crude", GearType.WEAPON, 7, 10, 2.0),
+                new LootEntry.Leveled("Armor_Wood_Hands", GearType.ARMOR, 5, 8, 1.5),
+                new LootEntry.Leveled("Armor_Wood_Legs", GearType.ARMOR, 5, 8, 1.5)
+        ), 1, 0.35));
+
+        lootTableRegistry.register("Trork_Hunter", new LootTable(List.of(
+                new LootEntry.Leveled("Weapon_Spear_Crude", GearType.WEAPON, 5, 10, 3.0),
+                new LootEntry.Leveled("Weapon_Daggers_Crude", GearType.WEAPON, 6, 10, 2.0),
+                new LootEntry.Leveled("Armor_Leather_Soft_Chest", GearType.ARMOR, 8, 12, 1.5, 8, null)
+        ), 1, 0.35));
+
+        lootTableRegistry.register("Trork_Guard", new LootTable(List.of(
+                new LootEntry.Leveled("Weapon_Longsword_Crude", GearType.WEAPON, 5, 10, 3.0),
+                new LootEntry.Leveled("Weapon_Axe_Copper", GearType.WEAPON, 10, 12, 1.5, 10, null),
+                new LootEntry.Leveled("Armor_Copper_Chest", GearType.ARMOR, 10, 12, 1.0, 10, null),
+                new LootEntry.Leveled("Armor_Copper_Head", GearType.ARMOR, 10, 12, 1.0, 10, null)
+        ), 1, 0.40));
+
+        // ── Skeleton mobs (Lv.15–30 zone) ───────────────────────────
+        lootTableRegistry.register("Skeleton_Soldier", new LootTable(List.of(
+                new LootEntry.Leveled("Weapon_Sword_Iron", GearType.WEAPON, 18, 22, 3.0),
+                new LootEntry.Leveled("Weapon_Longsword_Iron", GearType.WEAPON, 18, 22, 2.0),
+                new LootEntry.Leveled("Armor_Iron_Chest", GearType.ARMOR, 18, 22, 1.5),
+                new LootEntry.Leveled("Armor_Iron_Head", GearType.ARMOR, 18, 22, 1.5)
+        ), 1, 0.40));
+
+        lootTableRegistry.register("Skeleton_Fighter", new LootTable(List.of(
+                new LootEntry.Leveled("Weapon_Axe_Iron", GearType.WEAPON, 18, 22, 3.0),
+                new LootEntry.Leveled("Weapon_Mace_Iron", GearType.WEAPON, 18, 22, 2.0),
+                new LootEntry.Leveled("Armor_Iron_Hands", GearType.ARMOR, 18, 22, 1.5),
+                new LootEntry.Leveled("Armor_Iron_Legs", GearType.ARMOR, 18, 22, 1.5)
+        ), 1, 0.40));
+
+        lootTableRegistry.register("Skeleton_Knight", new LootTable(List.of(
+                new LootEntry.Leveled("Weapon_Sword_Bronze", GearType.WEAPON, 23, 27, 2.5),
+                new LootEntry.Leveled("Weapon_Longsword_Praetorian", GearType.WEAPON, 23, 27, 1.5),
+                new LootEntry.Leveled("Armor_Bronze_Chest", GearType.ARMOR, 23, 27, 1.5),
+                new LootEntry.Leveled("Armor_Bronze_Head", GearType.ARMOR, 23, 27, 1.5),
+                new LootEntry.Leveled("Armor_Bronze_Ornate_Chest", GearType.ARMOR, 26, 30, 0.5, 25, null)
+        ), 1, 0.45));
+
+        lootTableRegistry.register("Skeleton_Archer", new LootTable(List.of(
+                new LootEntry.Leveled("Weapon_Spear_Iron", GearType.WEAPON, 18, 22, 3.0),
+                new LootEntry.Leveled("Weapon_Daggers_Iron", GearType.WEAPON, 18, 22, 2.0),
+                new LootEntry.Leveled("Armor_Leather_Light_Chest", GearType.ARMOR, 15, 20, 1.5),
+                new LootEntry.Leveled("Armor_Leather_Light_Head", GearType.ARMOR, 15, 20, 1.5)
+        ), 1, 0.40));
+
+        // ── Goblin mobs (Lv.10–25 zone) ─────────────────────────────
+        lootTableRegistry.register("Goblin_Scrapper", new LootTable(List.of(
+                new LootEntry.Leveled("Weapon_Club_Copper", GearType.WEAPON, 10, 15, 3.0),
+                new LootEntry.Leveled("Weapon_Sword_Scrap", GearType.WEAPON, 13, 17, 2.0, 12, null),
+                new LootEntry.Leveled("Armor_Copper_Hands", GearType.ARMOR, 10, 15, 1.5)
+        ), 1, 0.40));
+
+        lootTableRegistry.register("Goblin_Scavenger", new LootTable(List.of(
+                new LootEntry.Leveled("Weapon_Mace_Scrap", GearType.WEAPON, 13, 17, 3.0),
+                new LootEntry.Leveled("Weapon_Club_Scrap", GearType.WEAPON, 13, 17, 2.0),
+                new LootEntry.Leveled("Armor_Copper_Legs", GearType.ARMOR, 10, 15, 1.5)
+        ), 1, 0.40));
+
+        // ── Zombie mobs (Lv.25–35 zone) ─────────────────────────────
+        lootTableRegistry.register("Zombie", new LootTable(List.of(
+                new LootEntry.Leveled("Weapon_Sword_Bone", GearType.WEAPON, 23, 27, 2.0),
+                new LootEntry.Leveled("Weapon_Axe_Bone", GearType.WEAPON, 23, 27, 2.0),
+                new LootEntry.Leveled("Weapon_Sword_Doomed", GearType.WEAPON, 28, 32, 1.0, 28, null),
+                new LootEntry.Leveled("Armor_Thorium_Chest", GearType.ARMOR, 28, 32, 0.8, 28, null)
+        ), 1, 0.50));
 
         LOGGER.atInfo().log("Registered %d custom loot tables", lootTableRegistry.size());
     }
