@@ -2,6 +2,7 @@ package com.duntale.zsquad.loot;
 
 import com.duntale.zsquad.economy.CurrencyDrop;
 import com.duntale.zsquad.progression.NpcLevelRegistry;
+import com.duntale.zsquad.progression.ProgressionService;
 import com.duntale.zsquad.rpg.RpgService;
 import com.duntale.zsquad.rpg.RpgStat;
 import com.hypixel.hytale.component.AddReason;
@@ -65,23 +66,30 @@ public class NpcLootSystem extends DeathSystems.OnDeathSystem {
             new SystemDependency<>(Order.BEFORE, NPCDamageSystems.DropDeathItems.class)
     );
 
+    /** Base XP per kill, scaled by NPC level. */
+    private static final long BASE_XP_PER_KILL = 10;
+
     private final LootTableRegistry lootTableRegistry;
     private final NpcLevelRegistry npcLevelRegistry;
     private final RpgService rpgService;
+    private final ProgressionService progressionService;
 
     /**
      * Creates a new NPC loot system.
      *
-     * @param lootTableRegistry the registry of custom loot tables
-     * @param npcLevelRegistry  the registry tracking spawned NPC levels
-     * @param rpgService        the RPG service for attacker stat lookups
+     * @param lootTableRegistry    the registry of custom loot tables
+     * @param npcLevelRegistry     the registry tracking spawned NPC levels
+     * @param rpgService           the RPG service for attacker stat lookups
+     * @param progressionService   the progression service for granting XP on kill
      */
     public NpcLootSystem(@Nonnull LootTableRegistry lootTableRegistry,
                          @Nonnull NpcLevelRegistry npcLevelRegistry,
-                         @Nonnull RpgService rpgService) {
+                         @Nonnull RpgService rpgService,
+                         @Nonnull ProgressionService progressionService) {
         this.lootTableRegistry = lootTableRegistry;
         this.npcLevelRegistry = npcLevelRegistry;
         this.rpgService = rpgService;
+        this.progressionService = progressionService;
     }
 
     @Nonnull
@@ -119,11 +127,15 @@ public class NpcLootSystem extends DeathSystems.OnDeathSystem {
         // ── 2. Suppress default NPC drops for all tracked NPCs ──────
         component.setItemsLossMode(DeathConfig.ItemsLossMode.NONE);
 
-        // ── 2b. Resolve attacker for Luck stat ──────────────────────
+        // ── 2b. Resolve attacker for Luck stat + XP grant ────────
         int luckLevel = 0;
         UUID attackerUuid = resolveAttacker(component, store);
         if (attackerUuid != null) {
             luckLevel = rpgService.getStat(attackerUuid, RpgStat.LUCK);
+
+            // Grant XP based on NPC level
+            long xpAmount = BASE_XP_PER_KILL * levelData.level();
+            progressionService.grantXP(attackerUuid, xpAmount);
         }
 
         // ── 3. Look up the loot table for this NPC role ──────────────

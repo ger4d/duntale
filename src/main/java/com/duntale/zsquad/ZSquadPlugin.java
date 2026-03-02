@@ -17,6 +17,8 @@ import com.duntale.zsquad.loot.LootTableRegistry;
 import com.duntale.zsquad.loot.NpcLootSystem;
 import com.duntale.zsquad.db.DatabaseConnection;
 import com.duntale.zsquad.progression.CombatScalingSystem;
+import com.duntale.zsquad.progression.ProgressionRepository;
+import com.duntale.zsquad.progression.ProgressionService;
 import com.duntale.zsquad.rpg.RpgRepository;
 import com.duntale.zsquad.rpg.RpgService;
 import com.duntale.zsquad.progression.LeveledNpcSpawner;
@@ -59,6 +61,7 @@ public class ZSquadPlugin extends JavaPlugin {
     // RPG system
     private DatabaseConnection databaseConnection;
     private RpgService rpgService;
+    private ProgressionService progressionService;
 
     // Spawner system
     private ComponentType<EntityStore, SpawnerComponent> spawnerComponentType;
@@ -187,9 +190,14 @@ public class ZSquadPlugin extends JavaPlugin {
             RpgRepository rpgRepo = new RpgRepository(databaseConnection);
             rpgRepo.initialize();
             this.rpgService = new RpgService(rpgRepo);
+
+            ProgressionRepository progressionRepo = new ProgressionRepository(databaseConnection);
+            progressionRepo.initialize();
+            this.progressionService = new ProgressionService(progressionRepo);
         } catch (SQLException e) {
             LOGGER.atSevere().log("Failed to initialize RPG database: %s", e.getMessage());
             this.rpgService = new RpgService(new RpgRepository(databaseConnection));
+            this.progressionService = new ProgressionService(new ProgressionRepository(databaseConnection));
         }
         this.clickToMoveManager.setRpgService(rpgService);
 
@@ -206,7 +214,7 @@ public class ZSquadPlugin extends JavaPlugin {
         this.getEntityStoreRegistry().registerSystem(new ClickToMoveTickSystem(this.clickToMoveManager));
         this.getEntityStoreRegistry().registerSystem(new CombatScalingSystem(npcLevelRegistry, scalingDataCache));
         this.getEntityStoreRegistry().registerSystem(new ClickToMoveKnockbackSystem(this.clickToMoveManager));
-        this.getEntityStoreRegistry().registerSystem(new NpcLootSystem(lootTableRegistry, npcLevelRegistry, rpgService));
+        this.getEntityStoreRegistry().registerSystem(new NpcLootSystem(lootTableRegistry, npcLevelRegistry, rpgService, progressionService));
 
         // ── Spawner System ───────────────────────────────────────────
         this.spawnerComponentType = this.getEntityStoreRegistry().registerComponent(SpawnerComponent.class, SpawnerComponent::new);
