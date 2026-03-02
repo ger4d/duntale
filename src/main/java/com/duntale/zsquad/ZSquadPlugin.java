@@ -190,7 +190,7 @@ public class ZSquadPlugin extends JavaPlugin {
         this.spawnerFactory = new SpawnerFactory();
         this.getEntityStoreRegistry().registerSystem(new SpawnerTickSystem(leveledNpcSpawner));
 
-        // ── Dungeon Generation ────────────────────────────────────────
+        // -- Dungeon Generation ----------------------------------------
         this.dungeonOrchestrator = new GenerationOrchestrator(new BlockResolver());
 
         // Command registration
