@@ -580,14 +580,19 @@ shutdown():
 ### Phase 3: Progression — PARTIAL
 - [x] Copy + adapt Progression system from duntale-dev
 - [x] Kill detection → XP grant in `NpcLootSystem` (BASE_XP=10 × npcLevel)
+- [x] Levels table seeded (100 rows from duntale.db)
+- [x] `ProgressionService.onPlayerJoin()` wired in `ZSquadPlugin.onPlayerConnect()`
+- [x] XP grant verified: fires once per NPC kill only (DeathComponent added on death, not damage)
+- [x] **XP curve rebalanced for PvE** — thresholds multiplied by 5× (original curve was tuned for rare PvP kills; PvE mobs die much faster)
 - [ ] `StatPointReward` for level-up rewards — **deferred** (needs Reward interface)
 - [ ] `StatAssignmentPage` (InteractiveCustomUIPage) — **deferred** (needs UI template)
 
-### Phase 4: Enhancements (Future)
-- **Custom HUD/Scoreboard**: Gold balance + stats display (pattern: `BaseScoreboard extends CustomUIHud` from duntale-dev, with `.ui` template + `UICommandBuilder` updates)
-- **Merchant system**: NPC shops to spend gold on items/stat resets (gold sink)
-- **Death penalty**: Optional % gold loss on death (trivial: `GoldService.removeGold(uuid, balance * penalty)`)
-- **Temporary stat buffs**: Potions, area effects — requires extending `RpgProfile` with transient modifier list
+### Phase 4: Enhancements (In Progress)
+- [ ] **Death penalty**: % gold loss on player death (`PlayerDeathPenaltySystem` extends `DeathSystems.OnDeathSystem`)
+- [ ] **Custom HUD/Scoreboard**: Gold balance + level + stats display (pattern: `BaseScoreboard extends CustomUIHud` from duntale-dev, with `.ui` template + `UICommandBuilder` updates)
+- [ ] **Level-up + Stat Point Assignment**: `StatPointReward`, `StatAssignmentPage` (InteractiveCustomUIPage + `.ui` template)
+- [ ] **Merchant system**: NPC shops to spend gold on items/stat resets (gold sink)
+- ~~**Temporary stat buffs**~~: **Will not do** — YAGNI, no clear use case yet
 
 ---
 
@@ -602,6 +607,8 @@ shutdown():
 | Vitality uses separate modifier key | `"RPG_VITALITY"` key coexists with armor's health modifier key. Engine sums all ADDITIVE MAX modifiers per stat. |
 | No temporary modifiers for v1 | YAGNI. Data model uses `int` base stats only. Adding transient modifiers later = extend `RpgProfile`. |
 | No death penalty for v1 | Design decision — documented for future consideration. |
+| XP curve 5× rebalance | Original levels table from duntale-dev was tuned for PvP (rare kills). PvE dungeon mobs die much more frequently — one floor was granting 13+ levels. Multiplied all thresholds by 5× so early floors grant 2-3 levels. Can be adjusted further after playtesting. |
+| Temp stat buffs = won't do | YAGNI — no concrete use case. Can revisit if potion/buff system is needed later. |
 
 ---
 

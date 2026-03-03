@@ -185,14 +185,20 @@ public class SpawnerTickSystem extends DelayedEntitySystem<EntityStore> {
         record SpawnRequest(String npcRole, Vector3d position, int level, boolean boss, int spawnerId) {}
         List<SpawnRequest> deferredSpawns = new ArrayList<>();
 
+        // Level = floorLevel ± levelVariance, clamped to [1, 60]
+        int floorLevel = spawner.getDefinition().floorLevel();
+        int variance = spawner.getDefinition().levelVariance();
+        int minLevel = Math.max(1, floorLevel - variance);
+        int maxLevel = Math.min(60, floorLevel + variance);
+
         for (int i = 0; i < toSpawn; i++) {
             SpawnEntry picked = weightedPick(pool, totalWeight);
             if (picked == null) break;
 
-            // Random level in [minLevel, maxLevel]
-            int level = picked.minLevel() == picked.maxLevel()
-                    ? picked.minLevel()
-                    : ThreadLocalRandom.current().nextInt(picked.minLevel(), picked.maxLevel() + 1);
+            // Random level in [floorLevel - variance, floorLevel + variance], clamped
+            int level = minLevel == maxLevel
+                    ? minLevel
+                    : ThreadLocalRandom.current().nextInt(minLevel, maxLevel + 1);
 
             // Get spawn position: spawner world pos + relative offset
             Vec3i offset = spawner.nextSpawnOffset();
