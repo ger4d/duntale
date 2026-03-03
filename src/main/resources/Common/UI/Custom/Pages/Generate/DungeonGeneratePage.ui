@@ -41,13 +41,13 @@ $C.@Container {
           LayoutMode: Left;
           Anchor: (Height: 44, Bottom: 4);
           Label { Text: "Origin X"; Style: (FontSize: 14, TextColor: #96a9be, VerticalAlignment: Center); Anchor: (Width: 70); }
-          $C.@NumberField #OriginX { @Anchor = (Width: 85, Right: 16); Value: 0; }
+          $C.@NumberField #OriginX { @Anchor = (Width: 85, Right: 16); Value: 0; Format: (MaxDecimalPlaces: 0, Step: 1, MinValue: -10000, MaxValue: 10000); }
           Label { Text: "Y"; Style: (FontSize: 14, TextColor: #96a9be, VerticalAlignment: Center); Anchor: (Width: 22); }
-          $C.@NumberField #OriginY { @Anchor = (Width: 85, Right: 16); Value: 0; }
+          $C.@NumberField #OriginY { @Anchor = (Width: 85, Right: 16); Value: 0; Format: (MaxDecimalPlaces: 0, Step: 1, MinValue: -10000, MaxValue: 10000); }
           Label { Text: "Z"; Style: (FontSize: 14, TextColor: #96a9be, VerticalAlignment: Center); Anchor: (Width: 22); }
-          $C.@NumberField #OriginZ { @Anchor = (Width: 85, Right: 30); Value: 0; }
+          $C.@NumberField #OriginZ { @Anchor = (Width: 85, Right: 30); Value: 0; Format: (MaxDecimalPlaces: 0, Step: 1, MinValue: -10000, MaxValue: 10000); }
           Label { Text: "Floor Lv"; Style: (FontSize: 14, TextColor: #96a9be, VerticalAlignment: Center); Anchor: (Width: 65); }
-          $C.@NumberField #FloorLevel { @Anchor = (Width: 75); Value: 1; }
+          $C.@NumberField #FloorLevel { @Anchor = (Width: 75); Value: 1; Format: (MaxDecimalPlaces: 0, Step: 1, MinValue: 1, MaxValue: 60); }
         }
 
         Group {
@@ -72,11 +72,11 @@ $C.@Container {
         Padding: (Horizontal: 14, Top: 4, Bottom: 12);
 
         Label { Text: "Width"; Style: (FontSize: 14, TextColor: #96a9be, VerticalAlignment: Center); Anchor: (Width: 60); }
-        $C.@NumberField #Width { @Anchor = (Width: 85, Right: 30); Value: 64; }
+        $C.@NumberField #Width { @Anchor = (Width: 85, Right: 30); Value: 64; Format: (MaxDecimalPlaces: 0, Step: 8, MinValue: 16, MaxValue: 256); }
         Label { Text: "Depth"; Style: (FontSize: 14, TextColor: #96a9be, VerticalAlignment: Center); Anchor: (Width: 60); }
-        $C.@NumberField #Depth { @Anchor = (Width: 85, Right: 30); Value: 64; }
+        $C.@NumberField #Depth { @Anchor = (Width: 85, Right: 30); Value: 64; Format: (MaxDecimalPlaces: 0, Step: 8, MinValue: 16, MaxValue: 256); }
         Label { Text: "Height"; Style: (FontSize: 14, TextColor: #96a9be, VerticalAlignment: Center); Anchor: (Width: 60); }
-        $C.@NumberField #Height { @Anchor = (Width: 85); Value: 12; }
+        $C.@NumberField #Height { @Anchor = (Width: 85); Value: 12; Format: (MaxDecimalPlaces: 0, Step: 1, MinValue: 4, MaxValue: 64); }
       }
     }
 
@@ -96,7 +96,7 @@ $C.@Container {
           LayoutMode: Left;
           Anchor: (Height: 44, Bottom: 4);
           Label { Text: "Max Rooms"; Style: (FontSize: 14, TextColor: #96a9be, VerticalAlignment: Center); Anchor: (Width: 90); }
-          $C.@NumberField #MaxRooms { @Anchor = (Width: 75, Right: 25); Value: 20; }
+          $C.@NumberField #MaxRooms { @Anchor = (Width: 75, Right: 25); Value: 20; Format: (MaxDecimalPlaces: 0, Step: 1, MinValue: 1, MaxValue: 100); }
           Label { Text: "Density"; Style: (FontSize: 14, TextColor: #96a9be, VerticalAlignment: Center); Anchor: (Width: 65); }
           $C.@TextField #RoomDensity { @Anchor = (Width: 80, Right: 25); }
           Label { Text: "Complexity"; Style: (FontSize: 14, TextColor: #96a9be, VerticalAlignment: Center); Anchor: (Width: 90); }
@@ -107,11 +107,19 @@ $C.@Container {
           LayoutMode: Left;
           Anchor: (Height: 44, Bottom: 4);
           Label { Text: "Min Size"; Style: (FontSize: 14, TextColor: #96a9be, VerticalAlignment: Center); Anchor: (Width: 70); }
-          $C.@NumberField #MinRoomSize { @Anchor = (Width: 65, Right: 20); Value: 4; }
+          $C.@NumberField #MinRoomSize { @Anchor = (Width: 65, Right: 20); Value: 4; Format: (MaxDecimalPlaces: 0, Step: 1, MinValue: 2, MaxValue: 30); }
           Label { Text: "Max Size"; Style: (FontSize: 14, TextColor: #96a9be, VerticalAlignment: Center); Anchor: (Width: 70); }
-          $C.@NumberField #MaxRoomSize { @Anchor = (Width: 65, Right: 20); Value: 14; }
+          $C.@NumberField #MaxRoomSize { @Anchor = (Width: 65, Right: 20); Value: 14; Format: (MaxDecimalPlaces: 0, Step: 1, MinValue: 4, MaxValue: 60); }
           Label { Text: "Shape"; Style: (FontSize: 14, TextColor: #96a9be, VerticalAlignment: Center); Anchor: (Width: 55); }
-          $C.@TextField #RoomShape { @Anchor = (Width: 170); PlaceholderText: "rectangular"; }
+          $C.@DropdownBox #RoomShape {
+            @Anchor = (Width: 170);
+            Value: "rectangular";
+            DropdownEntry { Value: "rectangular"; Text: "Rectangular"; }
+            DropdownEntry { Value: "circular"; Text: "Circular"; }
+            DropdownEntry { Value: "lshaped"; Text: "L-Shaped"; }
+            DropdownEntry { Value: "cross"; Text: "Cross"; }
+            DropdownEntry { Value: "irregular"; Text: "Irregular"; }
+          }
         }
 
         Group {
@@ -139,7 +147,7 @@ $C.@Container {
           LayoutMode: Left;
           Anchor: (Height: 44, Bottom: 4);
           Label { Text: "Width"; Style: (FontSize: 14, TextColor: #96a9be, VerticalAlignment: Center); Anchor: (Width: 60); }
-          $C.@NumberField #CorridorWidth { @Anchor = (Width: 65, Right: 25); Value: 2; }
+          $C.@NumberField #CorridorWidth { @Anchor = (Width: 65, Right: 25); Value: 2; Format: (MaxDecimalPlaces: 0, Step: 1, MinValue: 1, MaxValue: 4); }
           Label { Text: "Branch %"; Style: (FontSize: 14, TextColor: #96a9be, VerticalAlignment: Center); Anchor: (Width: 75); }
           $C.@TextField #BranchChance { @Anchor = (Width: 80, Right: 25); }
           Label { Text: "Loop %"; Style: (FontSize: 14, TextColor: #96a9be, VerticalAlignment: Center); Anchor: (Width: 65); }
@@ -204,7 +212,14 @@ $C.@Container {
         Padding: (Horizontal: 14, Top: 4, Bottom: 12);
 
         Label { Text: "Entrance"; Style: (FontSize: 14, TextColor: #96a9be, VerticalAlignment: Center); Anchor: (Width: 75); }
-        $C.@TextField #EntrancePlacement { @Anchor = (Width: 150, Right: 30); PlaceholderText: "edge"; }
+        $C.@DropdownBox #EntrancePlacement {
+          @Anchor = (Width: 160, Right: 30);
+          Value: "edge";
+          DropdownEntry { Value: "edge"; Text: "Edge"; }
+          DropdownEntry { Value: "corner"; Text: "Corner"; }
+          DropdownEntry { Value: "center"; Text: "Center"; }
+          DropdownEntry { Value: "random"; Text: "Random"; }
+        }
         Label { Text: "Exit Distance"; Style: (FontSize: 14, TextColor: #96a9be, VerticalAlignment: Center); Anchor: (Width: 100); }
         $C.@TextField #ExitDistance { @Anchor = (Width: 80); }
       }
@@ -228,7 +243,7 @@ $C.@Container {
           Label { Text: "Density"; Style: (FontSize: 14, TextColor: #96a9be, VerticalAlignment: Center); Anchor: (Width: 65); }
           $C.@TextField #EnemyDensity { @Anchor = (Width: 80, Right: 20); }
           Label { Text: "Max/Room"; Style: (FontSize: 14, TextColor: #96a9be, VerticalAlignment: Center); Anchor: (Width: 80); }
-          $C.@NumberField #MaxEnemiesPerRoom { @Anchor = (Width: 65, Right: 20); Value: 5; }
+          $C.@NumberField #MaxEnemiesPerRoom { @Anchor = (Width: 65, Right: 20); Value: 5; Format: (MaxDecimalPlaces: 0, Step: 1, MinValue: 1, MaxValue: 20); }
           Label { Text: "Ambush %"; Style: (FontSize: 14, TextColor: #96a9be, VerticalAlignment: Center); Anchor: (Width: 80); }
           $C.@TextField #AmbushChance { @Anchor = (Width: 80); }
         }
@@ -286,7 +301,17 @@ $C.@Container {
           LayoutMode: Left;
           Anchor: (Height: 44, Bottom: 4);
           Label { Text: "Palette"; Style: (FontSize: 14, TextColor: #96a9be, VerticalAlignment: Center); Anchor: (Width: 65); }
-          $C.@TextField #Palette { @Anchor = (Width: 190); PlaceholderText: "crypt"; }
+          $C.@DropdownBox #Palette {
+            @Anchor = (Width: 200);
+            Value: "Crypt";
+            DropdownEntry { Value: "Crypt"; Text: "Crypt"; }
+            DropdownEntry { Value: "Hive"; Text: "Hive"; }
+            DropdownEntry { Value: "Mine"; Text: "Mine"; }
+            DropdownEntry { Value: "Arcane"; Text: "Arcane"; }
+            DropdownEntry { Value: "Temple_Dark"; Text: "Temple Dark"; }
+            DropdownEntry { Value: "Volcanic"; Text: "Volcanic"; }
+            DropdownEntry { Value: "Mushroom"; Text: "Mushroom"; }
+          }
         }
 
         Group {
@@ -322,10 +347,29 @@ $C.@Container {
     }
 
     // == STATUS ==========================================================
-    Label #StatusLabel {
-      Style: (FontSize: 14, TextColor: #7a9cc6, HorizontalAlignment: Center);
-      Anchor: (Top: 10, Bottom: 12);
-      Text: "";
+    Group #StatusGroup {
+      LayoutMode: Left;
+      Anchor: (Top: 10, Bottom: 12, Height: 32);
+      Visible: false;
+
+      Group {
+        Anchor: (Width: 0);
+        FlexWeight: 1;
+      }
+
+      $C.@DefaultSpinner #StatusSpinner {
+        Anchor: (Right: 8);
+      }
+
+      Label #StatusLabel {
+        Style: (FontSize: 14, TextColor: #7a9cc6, VerticalAlignment: Center);
+        Text: "";
+      }
+
+      Group {
+        Anchor: (Width: 0);
+        FlexWeight: 1;
+      }
     }
 
     // == GENERATE BUTTON =================================================

@@ -134,7 +134,7 @@ public class DungeonGeneratePage extends InteractiveCustomUIPage<DungeonGenerate
         cmd.set("#EnemyDensity.Value", savedStr(saved, "enemyDensity", String.valueOf(ld.enemyDensity())));
         cmd.set("#AmbushChance.Value", savedStr(saved, "ambushChance", String.valueOf(ld.ambushChance())));
         cmd.set("#Erosion.Value", savedStr(saved, "erosion", String.valueOf(ld.erosion())));
-        cmd.set("#Palette.Value", savedStr(saved, "palette", td.palette()));
+        cmd.set("#Palette.Value", savedStr(saved, "palette", "Crypt"));
         cmd.set("#DecayFactor.Value", savedStr(saved, "decayFactor", String.valueOf(td.decayFactor())));
         cmd.set("#OvergrowthFactor.Value", savedStr(saved, "overgrowthFactor", String.valueOf(td.overgrowthFactor())));
         cmd.set("#FloodingFactor.Value", savedStr(saved, "floodingFactor", String.valueOf(td.floodingFactor())));
@@ -202,7 +202,9 @@ public class DungeonGeneratePage extends InteractiveCustomUIPage<DungeonGenerate
         UIEventBuilder events = new UIEventBuilder();
 
         if (config.clear()) {
-            cmd.set("#StatusLabel.Text", "Clearing area...");
+            cmd.set("#StatusGroup.Visible", true);
+            cmd.set("#StatusGroup #StatusLabel.Text", "Clearing area...");
+            cmd.set("#StatusGroup #StatusSpinner.Visible", true);
             this.sendUpdate(cmd, events, false);
 
             // Build clear command: clear x1 y1 z1 x2 y2 z2
@@ -227,12 +229,14 @@ public class DungeonGeneratePage extends InteractiveCustomUIPage<DungeonGenerate
                       String msg = e.getCause() != null ? e.getCause().getMessage() : e.getMessage();
                       playerRef.sendMessage(Message.raw("[DungeonGen] Generation failed: " + msg).color("#FF5555"));
                       LOGGER.atSevere().log("[DungeonGen] Generation failed: %s", msg);
-                      updateStatus("Error - see chat");
+                      updateStatus("Error - see chat", false);
                   });
                   return null;
               });
         } else {
-            cmd.set("#StatusLabel.Text", "Generating...");
+            cmd.set("#StatusGroup.Visible", true);
+            cmd.set("#StatusGroup #StatusLabel.Text", "Generating...");
+            cmd.set("#StatusGroup #StatusSpinner.Visible", true);
             this.sendUpdate(cmd, events, false);
             playerRef.sendMessage(Message.raw("[DungeonGen] Generating dungeon...").color("#FFD700"));
 
@@ -244,7 +248,7 @@ public class DungeonGeneratePage extends InteractiveCustomUIPage<DungeonGenerate
                     String msg = e.getCause() != null ? e.getCause().getMessage() : e.getMessage();
                     playerRef.sendMessage(Message.raw("[DungeonGen] Generation failed: " + msg).color("#FF5555"));
                     LOGGER.atSevere().log("[DungeonGen] Generation failed: %s", msg);
-                    updateStatus("Error - see chat");
+                    updateStatus("Error - see chat", false);
                 });
                 return null;
             });
@@ -279,13 +283,19 @@ public class DungeonGeneratePage extends InteractiveCustomUIPage<DungeonGenerate
             }
         }
 
-        updateStatus(String.format("Done - %d rooms, %dms", result.rooms(), result.generationTimeMs()));
+        updateStatus(String.format("Done - %d rooms, %dms", result.rooms(), result.generationTimeMs()), false);
     }
 
     private void updateStatus(@Nonnull String text) {
+        updateStatus(text, true);
+    }
+
+    private void updateStatus(@Nonnull String text, boolean showSpinner) {
         UICommandBuilder cmd = new UICommandBuilder();
         UIEventBuilder events = new UIEventBuilder();
-        cmd.set("#StatusLabel.Text", text);
+        cmd.set("#StatusGroup.Visible", true);
+        cmd.set("#StatusGroup #StatusLabel.Text", text);
+        cmd.set("#StatusGroup #StatusSpinner.Visible", showSpinner);
         this.sendUpdate(cmd, events, false);
     }
 
