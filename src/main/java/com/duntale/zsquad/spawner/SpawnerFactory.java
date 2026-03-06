@@ -7,6 +7,7 @@ import com.hypixel.hytale.component.AddReason;
 import com.hypixel.hytale.component.Holder;
 import com.hypixel.hytale.component.NonSerialized;
 import com.hypixel.hytale.component.Ref;
+import com.hypixel.hytale.component.RemoveReason;
 import com.hypixel.hytale.component.Store;
 import com.hypixel.hytale.logger.HytaleLogger;
 import com.hypixel.hytale.math.vector.Vector3d;
@@ -16,6 +17,7 @@ import com.hypixel.hytale.server.core.universe.world.storage.EntityStore;
 
 import javax.annotation.Nonnull;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 
 /**
@@ -27,6 +29,9 @@ import java.util.List;
 public class SpawnerFactory {
 
     private static final HytaleLogger LOGGER = HytaleLogger.forEnclosingClass();
+
+    /** Refs to spawner entities from the most recent generation. */
+    private List<Ref<EntityStore>> activeRefs = Collections.emptyList();
 
     /**
      * Create spawner entities for all spawner definitions in the blueprint.
@@ -83,6 +88,7 @@ public class SpawnerFactory {
         LOGGER.atInfo().log("[Spawner] Created %d spawner entities at origin (%d, %d, %d)",
                 refs.size(), worldOrigin.x(), worldOrigin.y(), worldOrigin.z());
 
+        activeRefs = refs;
         return refs;
     }
 
@@ -104,5 +110,60 @@ public class SpawnerFactory {
                 }
             }
         }
+    }
+
+    /**
+     * Destroy all spawner entities and their alive NPCs, then remove them from the store.
+     * Used to clean up before a new dungeon generation.
+     *
+     * @param store       the entity store
+     * @param spawnerRefs refs to spawner entities to destroy
+     * @return the total number of entities removed (spawners + NPCs)
+     * @since 1.3.0
+     */
+    public int destroyAll(@Nonnull Store<EntityStore> store,
+                          @Nonnull List<Ref<EntityStore>> spawnerRefs) {
+        int removed = 0;
+
+        for (Ref<EntityStore> ref : spawnerRefs) {
+            if (!ref.isValid()) continue;
+
+            SpawnerComponent comp = store.getComponent(ref, SpawnerComponent.getComponentType());
+            if (comp != null) {
+                comp.setState(SpawnerState.DISABLED);
+
+                // Remove alive NPCs spawned by this spawner
+                for (Ref<EntityStore> npcRef : comp.getAliveNpcs()) {
+                    if (npcRef.isValid()) {
+                        store.removeEntity(npcRef, RemoveReason.REMOVE);
+                        removed++;
+                    }
+                }
+            }
+
+            store.removeEntity(ref, RemoveReason.REMOVE);
+            removed++;
+        }
+
+        if (removed > 0) {
+            LOGGER.atInfo().log("[Spawner] Destroyed %d entities (%d spawners + NPCs)",
+                    removed, spawnerRefs.size());
+        }
+
+        return removed;
+    }
+
+    /**
+     * Destroy all active spawner entities and their alive NPCs from the most recent generation.
+     *
+     * @param store the entity store
+     * @return the total number of entities removed (spawners + NPCs)
+     * @since 1.3.0
+     */
+    public int destroyActive(@Nonnull Store<EntityStore> store) {
+        if (activeRefs.isEmpty()) return 0;
+        int removed = destroyAll(store, activeRefs);
+        activeRefs = Collections.emptyList();
+        return removed;
     }
 }

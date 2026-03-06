@@ -9,6 +9,7 @@ import com.duntale.dungeongen.generator.GenerationOrchestrator;
 import com.duntale.dungeongen.generator.GenerationResult;
 import com.duntale.dungeongen.util.JsonParser;
 import com.duntale.zsquad.ZSquadPlugin;
+import com.duntale.zsquad.spawner.SpawnerFactory;
 import com.hypixel.hytale.codec.Codec;
 import com.hypixel.hytale.codec.KeyedCodec;
 import com.hypixel.hytale.codec.builder.BuilderCodec;
@@ -272,7 +273,17 @@ public class DungeonGeneratePage extends InteractiveCustomUIPage<DungeonGenerate
         if (config.assemble() && !result.spawnerDefinitions().isEmpty()) {
             try {
                 Store<EntityStore> store = world.getEntityStore().getStore();
-                ZSquadPlugin.get().getSpawnerFactory().createSpawners(
+
+                // Destroy old spawner entities and their alive NPCs before creating new ones
+                SpawnerFactory spawnerFactory = ZSquadPlugin.get().getSpawnerFactory();
+                int removed = spawnerFactory.destroyActive(store);
+                if (removed > 0) {
+                    playerRef.sendMessage(Message.raw(
+                        "[DungeonGen] Cleaned up " + removed + " old spawner/NPC entities"
+                    ).color("#AAAAAA"));
+                }
+
+                spawnerFactory.createSpawners(
                     store, result.spawnerDefinitions(), config.origin());
                 playerRef.sendMessage(Message.raw(
                     "[DungeonGen] Registered " + result.spawnerDefinitions().size() + " spawner entities"
