@@ -4,6 +4,7 @@ import com.duntale.zsquad.rpg.RpgConstants;
 import com.hypixel.hytale.logger.HytaleLogger;
 
 import javax.annotation.Nonnull;
+import javax.annotation.Nullable;
 import java.sql.Connection;
 import java.sql.SQLException;
 import java.util.UUID;
@@ -21,6 +22,9 @@ public class GoldService {
 
     private final GoldRepository repository;
 
+    /** Optional listener notified after every gold balance change. */
+    private GoldChangeListener changeListener;
+
     /**
      * Creates a new gold service backed by the given repository.
      *
@@ -28,6 +32,15 @@ public class GoldService {
      */
     public GoldService(@Nonnull GoldRepository repository) {
         this.repository = repository;
+    }
+
+    /**
+     * Sets the listener notified after every gold balance mutation.
+     *
+     * @param listener the listener, or {@code null} to remove
+     */
+    public void setChangeListener(@Nullable GoldChangeListener listener) {
+        this.changeListener = listener;
     }
 
     /**
@@ -65,6 +78,7 @@ public class GoldService {
 
             LOGGER.at(Level.INFO).log("addGold player=%s amount=%d old=%d new=%d",
                     playerId, amount, oldBalance, newBalance);
+            notifyChange(playerId, newBalance);
             return true;
         } catch (SQLException e) {
             LOGGER.at(Level.SEVERE).log("Failed to add gold for %s: %s", playerId, e.getMessage());
@@ -96,6 +110,7 @@ public class GoldService {
 
             LOGGER.at(Level.INFO).log("removeGold player=%s amount=%d old=%d new=%d",
                     playerId, amount, oldBalance, newBalance);
+            notifyChange(playerId, newBalance);
             return true;
         } catch (SQLException e) {
             LOGGER.at(Level.SEVERE).log("Failed to remove gold for %s: %s", playerId, e.getMessage());
@@ -152,6 +167,8 @@ public class GoldService {
                 LOGGER.at(Level.INFO).log(
                         "transfer from=%s to=%s amount=%d fromOld=%d fromNew=%d toOld=%d toNew=%d",
                         from, to, amount, fromBalance, newFromBalance, toBalance, newToBalance);
+                notifyChange(from, newFromBalance);
+                notifyChange(to, newToBalance);
                 return true;
             } catch (SQLException e) {
                 conn.rollback();
@@ -168,5 +185,29 @@ public class GoldService {
                 LOGGER.at(Level.WARNING).log("Failed to restore auto-commit: %s", e.getMessage());
             }
         }
+    }
+
+    // ── Listener ─────────────────────────────────────────────────────
+
+    private void notifyChange(@Nonnull UUID playerId, long newBalance) {
+        GoldChangeListener listener = this.changeListener;
+        if (listener != null) {
+            listener.onGoldChanged(playerId, newBalance);
+        }
+    }
+
+    /**
+     * Listener interface for gold balance changes.
+     */
+    @FunctionalInterface
+    public interface GoldChangeListener {
+
+        /**
+         * Called after a player's gold balance has changed.
+         *
+         * @param playerId   the player's UUID
+         * @param newBalance the new gold balance
+         */
+        void onGoldChanged(@Nonnull UUID playerId, long newBalance);
     }
 }

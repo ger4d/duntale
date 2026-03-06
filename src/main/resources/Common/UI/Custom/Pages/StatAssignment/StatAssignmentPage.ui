@@ -1,0 +1,105 @@
+// StatAssignmentPage.ui — Stat point assignment modal.
+// Displays current stats with "+" buttons to spend unassigned points.
+
+$C = "../../Common.ui";
+
+$C.@PageOverlay {}
+
+$C.@Container {
+  Anchor: (Width: 420, Height: 440);
+
+  #Title {
+    Group {
+      $C.@Title { @Text = "Assign Stat Points"; }
+    }
+  }
+
+  #Content {
+    LayoutMode: Top;
+    Padding: (Horizontal: 20, Top: 8, Bottom: 16);
+
+    // Unassigned points header
+    Group {
+      LayoutMode: Left;
+      Anchor: (Height: 36, Bottom: 8);
+      Label {
+        Text: "Available Points:";
+        Style: (FontSize: 16, TextColor: #96a9be, VerticalAlignment: Center);
+        Anchor: (Width: 170);
+      }
+      Label #UnassignedValue {
+        Text: "0";
+        Style: (FontSize: 18, TextColor: #FFD700, RenderBold: true, VerticalAlignment: Center, Alignment: Center);
+        Anchor: (Width: 60);
+      }
+    }
+
+    // Separator
+    Group { Anchor: (Height: 1, Bottom: 10); Background: #ffffff(0.15); }
+
+    // -- STRENGTH --
+    Group {
+      LayoutMode: Left;
+      Anchor: (Height: 34, Bottom: 4);
+      Label { Text: "Strength"; Style: (FontSize: 14, TextColor: #ff6b6b, VerticalAlignment: Center); Anchor: (Width: 120); }
+      Label #StrValue { Text: "0"; Style: (FontSize: 14, TextColor: #ffffff, VerticalAlignment: Center, Alignment: Center); Anchor: (Width: 60, Right: 20); }
+      $C.@TextButton #StrAddBtn { Anchor: (Width: 50, Height: 28); Text: "+"; }
+    }
+
+    // -- SPEED --
+    Group {
+      LayoutMode: Left;
+      Anchor: (Height: 34, Bottom: 4);
+      Label { Text: "Speed"; Style: (FontSize: 14, TextColor: #55ff55, VerticalAlignment: Center); Anchor: (Width: 120); }
+      Label #SpdValue { Text: "0"; Style: (FontSize: 14, TextColor: #ffffff, VerticalAlignment: Center, Alignment: Center); Anchor: (Width: 60, Right: 20); }
+      $C.@TextButton #SpdAddBtn { Anchor: (Width: 50, Height: 28); Text: "+"; }
+    }
+
+    // -- AGILITY --
+    Group {
+      LayoutMode: Left;
+      Anchor: (Height: 34, Bottom: 4);
+      Label { Text: "Agility"; Style: (FontSize: 14, TextColor: #55ffff, VerticalAlignment: Center); Anchor: (Width: 120); }
+      Label #AgiValue { Text: "0"; Style: (FontSize: 14, TextColor: #ffffff, VerticalAlignment: Center, Alignment: Center); Anchor: (Width: 60, Right: 20); }
+      $C.@TextButton #AgiAddBtn { Anchor: (Width: 50, Height: 28); Text: "+"; }
+    }
+
+    // -- RESISTANCE --
+    Group {
+      LayoutMode: Left;
+      Anchor: (Height: 34, Bottom: 4);
+      Label { Text: "Resistance"; Style: (FontSize: 14, TextColor: #aaaaff, VerticalAlignment: Center); Anchor: (Width: 120); }
+      Label #ResValue { Text: "0"; Style: (FontSize: 14, TextColor: #ffffff, VerticalAlignment: Center, Alignment: Center); Anchor: (Width: 60, Right: 20); }
+      $C.@TextButton #ResAddBtn { Anchor: (Width: 50, Height: 28); Text: "+"; }
+    }
+
+    // -- LUCK --
+    Group {
+      LayoutMode: Left;
+      Anchor: (Height: 34, Bottom: 4);
+      Label { Text: "Luck"; Style: (FontSize: 14, TextColor: #FFD700, VerticalAlignment: Center); Anchor: (Width: 120); }
+      Label #LckValue { Text: "0"; Style: (FontSize: 14, TextColor: #ffffff, VerticalAlignment: Center, Alignment: Center); Anchor: (Width: 60, Right: 20); }
+      $C.@TextButton #LckAddBtn { Anchor: (Width: 50, Height: 28); Text: "+"; }
+    }
+
+    // -- VITALITY --
+    Group {
+      LayoutMode: Left;
+      Anchor: (Height: 34, Bottom: 4);
+      Label { Text: "Vitality"; Style: (FontSize: 14, TextColor: #ff55ff, VerticalAlignment: Center); Anchor: (Width: 120); }
+      Label #VitValue { Text: "0"; Style: (FontSize: 14, TextColor: #ffffff, VerticalAlignment: Center, Alignment: Center); Anchor: (Width: 60, Right: 20); }
+      $C.@TextButton #VitAddBtn { Anchor: (Width: 50, Height: 28); Text: "+"; }
+    }
+
+    // -- STAMINA --
+    Group {
+      LayoutMode: Left;
+      Anchor: (Height: 34, Bottom: 4);
+      Label { Text: "Stamina"; Style: (FontSize: 14, TextColor: #ffaa55, VerticalAlignment: Center); Anchor: (Width: 120); }
+      Label #StaValue { Text: "0"; Style: (FontSize: 14, TextColor: #ffffff, VerticalAlignment: Center, Alignment: Center); Anchor: (Width: 60, Right: 20); }
+      $C.@TextButton #StaAddBtn { Anchor: (Width: 50, Height: 28); Text: "+"; }
+    }
+  }
+}
+
+$C.@BackButton {}

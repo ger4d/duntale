@@ -6,6 +6,9 @@ import java.util.Map;
 
 /**
  * Per-player RPG stat profile. Stores the base stat values for all {@link RpgStat}s.
+ *
+ * <p><strong>Thread safety:</strong> This class is not thread-safe. All mutations must
+ * occur on the WorldThread (the same thread that processes player commands and events).
  */
 public class RpgProfile {
     private final Map<RpgStat, Integer> stats;

@@ -45,6 +45,9 @@ public class ProgressionService {
     /** Callback for level-up notifications. */
     private LevelUpListener levelUpListener;
 
+    /** Callback for every XP grant (regardless of level-up). */
+    private XPGrantListener xpGrantListener;
+
     /**
      * Creates a new progression service.
      *
@@ -98,6 +101,12 @@ public class ProgressionService {
                 LOGGER.atInfo().log("Player %s leveled up to %d", playerId, level);
                 levelUpListener.onLevelUp(playerId, level);
             }
+        }
+
+        // Notify XP grant listener (fires on every grant, not just level-ups)
+        XPGrantListener xpListener = this.xpGrantListener;
+        if (xpListener != null) {
+            xpListener.onXPGranted(playerId, amount, result);
         }
 
         return result;
@@ -210,6 +219,15 @@ public class ProgressionService {
     }
 
     /**
+     * Sets the listener for every XP grant event (regardless of level-up).
+     *
+     * @param listener the listener to notify on XP grant
+     */
+    public void setXPGrantListener(@Nonnull XPGrantListener listener) {
+        this.xpGrantListener = listener;
+    }
+
+    /**
      * Listener interface for level-up events.
      */
     @FunctionalInterface
@@ -225,6 +243,22 @@ public class ProgressionService {
          * @param newLevel the new level achieved
          */
         void onLevelUp(@Nonnull UUID playerId, int newLevel);
+    }
+
+    /**
+     * Listener interface for XP grant events.
+     */
+    @FunctionalInterface
+    public interface XPGrantListener {
+
+        /**
+         * Called after XP is granted to a player.
+         *
+         * @param playerId the player's UUID
+         * @param amount   the XP amount granted
+         * @param result   the level-up result with old/new levels
+         */
+        void onXPGranted(@Nonnull UUID playerId, long amount, @Nonnull LevelUpResult result);
     }
 
     /**

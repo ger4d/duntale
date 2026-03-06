@@ -19,8 +19,15 @@ public class RpgService {
 
     private static final HytaleLogger LOGGER = HytaleLogger.forEnclosingClass();
 
+    /** Number of stat points granted per level gained. */
+    public static final int POINTS_PER_LEVEL = 3;
+
     private final RpgRepository repository;
     private final Map<UUID, RpgProfile> cache = new ConcurrentHashMap<>();
+    private final Map<UUID, Integer> unassignedPointsCache = new ConcurrentHashMap<>();
+
+    /** Optional listener notified after stat value changes. */
+    private StatChangeListener statChangeListener;
 
     /**
      * Creates a new RPG service backed by the given repository.
@@ -29,6 +36,15 @@ public class RpgService {
      */
     public RpgService(@Nonnull RpgRepository repository) {
         this.repository = repository;
+    }
+
+    /**
+     * Sets the listener notified after any stat value changes.
+     *
+     * @param listener the listener, or {@code null} to remove
+     */
+    public void setStatChangeListener(@javax.annotation.Nullable StatChangeListener listener) {
+        this.statChangeListener = listener;
     }
 
     /**
@@ -87,6 +103,11 @@ public class RpgService {
             LOGGER.at(Level.SEVERE).log("Failed to save stat %s for %s: %s",
                     stat, playerId, e.getMessage());
         }
+
+        StatChangeListener listener = this.statChangeListener;
+        if (listener != null) {
+            listener.onStatChanged(playerId, stat, clamped);
+        }
     }
 
     /**
@@ -102,6 +123,87 @@ public class RpgService {
         setStat(playerId, stat, getStat(playerId, stat) + delta);
     }
 
+    // ── Stat Points ──────────────────────────────────────────────────
+
+    /**
+     * Returns the number of unassigned stat points for the given player.
+     *
+     * @param playerId the player's UUID
+     * @return the unassigned points count (lazy-loaded from DB)
+     */
+    public int getUnassignedPoints(@Nonnull UUID playerId) {
+        return unassignedPointsCache.computeIfAbsent(playerId, id -> {
+            try {
+                return repository.loadUnassignedPoints(id);
+            } catch (SQLException e) {
+                LOGGER.at(Level.SEVERE).log("Failed to load unassigned points for %s: %s", id, e.getMessage());
+                return 0;
+            }
+        });
+    }
+
+    /**
+     * Grants stat points to the player (e.g. on level-up).
+     *
+     * @param playerId the player's UUID
+     * @param points   the number of points to grant (must be positive)
+     */
+    public void grantStatPoints(@Nonnull UUID playerId, int points) {
+        if (points <= 0) return;
+
+        int current = getUnassignedPoints(playerId);
+        int updated = current + points;
+        unassignedPointsCache.put(playerId, updated);
+
+        try {
+            repository.saveUnassignedPoints(playerId, updated);
+        } catch (SQLException e) {
+            LOGGER.at(Level.SEVERE).log("Failed to save unassigned points for %s: %s", playerId, e.getMessage());
+        }
+    }
+
+    /**
+     * Assigns one stat point from the unassigned pool to the given stat.
+     *
+     * @param playerId the player's UUID
+     * @param stat     the stat to increment
+     * @return {@code true} if the point was assigned, {@code false} if no points available
+     *         or the stat is already at max
+     */
+    public boolean assignPoint(@Nonnull UUID playerId, @Nonnull RpgStat stat) {
+        int currentStat = getStat(playerId, stat);
+        if (currentStat >= RpgConstants.MAX_STAT) {
+            return false;
+        }
+
+        // Atomically decrement unassigned points; abort if none available
+        boolean[] succeeded = { false };
+        unassignedPointsCache.compute(playerId, (key, current) -> {
+            int available = (current != null) ? current : 0;
+            if (available <= 0) {
+                return current;
+            }
+            succeeded[0] = true;
+            return available - 1;
+        });
+
+        if (!succeeded[0]) {
+            return false;
+        }
+
+        int newUnassigned = getUnassignedPoints(playerId);
+        setStat(playerId, stat, currentStat + 1);
+
+        try {
+            repository.saveUnassignedPoints(playerId, newUnassigned);
+        } catch (SQLException e) {
+            LOGGER.at(Level.SEVERE).log("Failed to save unassigned points for %s: %s", playerId, e.getMessage());
+        }
+        return true;
+    }
+
+    // ── Player Lifecycle ─────────────────────────────────────────────
+
     /**
      * Pre-loads the player's RPG profile into the cache on join.
      *
@@ -112,16 +214,37 @@ public class RpgService {
      */
     public void onPlayerJoin(@Nonnull UUID playerId) {
         RpgProfile profile = getProfile(playerId);
-        LOGGER.at(Level.INFO).log("Pre-loaded RPG profile for %s — stats: %s", playerId, profile.getAll());
+        int unassigned = getUnassignedPoints(playerId);
+        LOGGER.at(Level.INFO).log("Pre-loaded RPG profile for %s — stats: %s, unassigned: %d",
+                playerId, profile.getAll(), unassigned);
     }
 
     /**
-     * Evicts the player's RPG profile from the cache on leave.
+     * Evicts the player's RPG profile and unassigned points from the cache on leave.
      *
      * @param playerId the player's UUID
      */
     public void onPlayerLeave(@Nonnull UUID playerId) {
         cache.remove(playerId);
+        unassignedPointsCache.remove(playerId);
         LOGGER.at(Level.INFO).log("Evicted RPG profile cache for %s", playerId);
+    }
+
+    // ── Listener ─────────────────────────────────────────────────────
+
+    /**
+     * Listener interface for RPG stat changes.
+     */
+    @FunctionalInterface
+    public interface StatChangeListener {
+
+        /**
+         * Called after a player's stat value has changed.
+         *
+         * @param playerId the player's UUID
+         * @param stat     the stat that changed
+         * @param newValue the new stat value
+         */
+        void onStatChanged(@Nonnull UUID playerId, @Nonnull RpgStat stat, int newValue);
     }
 }

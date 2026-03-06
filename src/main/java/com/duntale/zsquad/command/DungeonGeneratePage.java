@@ -116,30 +116,30 @@ public class DungeonGeneratePage extends InteractiveCustomUIPage<DungeonGenerate
         cmd.set("#CorridorWidth.Value", saved.containsKey("corridorWidth") ? JsonParser.toInt(saved.get("corridorWidth")) : ld.corridorWidth());
         cmd.set("#MaxEnemiesPerRoom.Value", saved.containsKey("maxEnemiesPerRoom") ? JsonParser.toInt(saved.get("maxEnemiesPerRoom")) : ld.maxEnemiesPerRoom());
 
-        // TextField values (strings/decimals) - use saved or defaults
-        cmd.set("#RoomDensity.Value", savedStr(saved, "roomDensity", String.valueOf(ld.roomDensity())));
-        cmd.set("#Complexity.Value", savedStr(saved, "complexity", String.valueOf(ld.complexity())));
+        // FloatSlider values (0-1) - use saved or defaults
+        cmd.set("#RoomDensity.Value", savedFloat(saved, "roomDensity", (float) ld.roomDensity()));
+        cmd.set("#Complexity.Value", savedFloat(saved, "complexity", (float) ld.complexity()));
         cmd.set("#RoomShape.Value", savedStr(saved, "roomShape", ld.roomShape()));
-        cmd.set("#Irregularity.Value", savedStr(saved, "irregularity", String.valueOf(ld.irregularity())));
-        cmd.set("#BranchChance.Value", savedStr(saved, "branchChance", String.valueOf(ld.branchChance())));
-        cmd.set("#LoopChance.Value", savedStr(saved, "loopChance", String.valueOf(ld.loopChance())));
-        cmd.set("#WindingFactor.Value", savedStr(saved, "windingFactor", String.valueOf(ld.windingFactor())));
-        cmd.set("#PillarFreq.Value", savedStr(saved, "pillarFreq", String.valueOf(ld.pillarFrequency())));
-        cmd.set("#WaterFreq.Value", savedStr(saved, "waterFreq", String.valueOf(ld.waterFrequency())));
-        cmd.set("#LavaFreq.Value", savedStr(saved, "lavaFreq", String.valueOf(ld.lavaFrequency())));
-        cmd.set("#TrapDensity.Value", savedStr(saved, "trapDensity", String.valueOf(ld.trapDensity())));
-        cmd.set("#SecretWallChance.Value", savedStr(saved, "secretWallChance", String.valueOf(ld.secretWallChance())));
+        cmd.set("#Irregularity.Value", savedFloat(saved, "irregularity", (float) ld.irregularity()));
+        cmd.set("#BranchChance.Value", savedFloat(saved, "branchChance", (float) ld.branchChance()));
+        cmd.set("#LoopChance.Value", savedFloat(saved, "loopChance", (float) ld.loopChance()));
+        cmd.set("#WindingFactor.Value", savedFloat(saved, "windingFactor", (float) ld.windingFactor()));
+        cmd.set("#PillarFreq.Value", savedFloat(saved, "pillarFreq", (float) ld.pillarFrequency()));
+        cmd.set("#WaterFreq.Value", savedFloat(saved, "waterFreq", (float) ld.waterFrequency()));
+        cmd.set("#LavaFreq.Value", savedFloat(saved, "lavaFreq", (float) ld.lavaFrequency()));
+        cmd.set("#TrapDensity.Value", savedFloat(saved, "trapDensity", (float) ld.trapDensity()));
+        cmd.set("#SecretWallChance.Value", savedFloat(saved, "secretWallChance", (float) ld.secretWallChance()));
         cmd.set("#EntrancePlacement.Value", savedStr(saved, "entrancePlacement", ld.entrancePlacement()));
-        cmd.set("#ExitDistance.Value", savedStr(saved, "exitDistance", String.valueOf(ld.exitDistance())));
-        cmd.set("#EnemyDensity.Value", savedStr(saved, "enemyDensity", String.valueOf(ld.enemyDensity())));
-        cmd.set("#AmbushChance.Value", savedStr(saved, "ambushChance", String.valueOf(ld.ambushChance())));
-        cmd.set("#Erosion.Value", savedStr(saved, "erosion", String.valueOf(ld.erosion())));
+        cmd.set("#ExitDistance.Value", savedFloat(saved, "exitDistance", (float) ld.exitDistance()));
+        cmd.set("#EnemyDensity.Value", savedFloat(saved, "enemyDensity", (float) ld.enemyDensity()));
+        cmd.set("#AmbushChance.Value", savedFloat(saved, "ambushChance", (float) ld.ambushChance()));
+        cmd.set("#Erosion.Value", savedFloat(saved, "erosion", (float) ld.erosion()));
         cmd.set("#Palette.Value", savedStr(saved, "palette", "Crypt"));
-        cmd.set("#DecayFactor.Value", savedStr(saved, "decayFactor", String.valueOf(td.decayFactor())));
-        cmd.set("#OvergrowthFactor.Value", savedStr(saved, "overgrowthFactor", String.valueOf(td.overgrowthFactor())));
-        cmd.set("#FloodingFactor.Value", savedStr(saved, "floodingFactor", String.valueOf(td.floodingFactor())));
-        cmd.set("#BreatheRoomFreq.Value", savedStr(saved, "breatheRoomFreq", String.valueOf(pd.breatheRoomFrequency())));
-        cmd.set("#DifficultyRamp.Value", savedStr(saved, "difficultyRamp", String.valueOf(pd.difficultyRamp())));
+        cmd.set("#DecayFactor.Value", savedFloat(saved, "decayFactor", (float) td.decayFactor()));
+        cmd.set("#OvergrowthFactor.Value", savedFloat(saved, "overgrowthFactor", (float) td.overgrowthFactor()));
+        cmd.set("#FloodingFactor.Value", savedFloat(saved, "floodingFactor", (float) td.floodingFactor()));
+        cmd.set("#BreatheRoomFreq.Value", savedFloat(saved, "breatheRoomFreq", (float) pd.breatheRoomFrequency()));
+        cmd.set("#DifficultyRamp.Value", savedFloat(saved, "difficultyRamp", (float) pd.difficultyRamp()));
 
         // Checkbox values - use saved or defaults
         if (saved.containsKey("assemble")) {
@@ -346,45 +346,41 @@ public class DungeonGeneratePage extends InteractiveCustomUIPage<DungeonGenerate
         appendInt(sb, "depth", d.depth);
         appendInt(sb, "height", d.height);
         appendInt(sb, "maxRooms", d.maxRooms);
-        appendStr(sb, "roomDensity", d.roomDensity);
-        appendStr(sb, "complexity", d.complexity);
+        appendFloat(sb, "roomDensity", d.roomDensity);
+        appendFloat(sb, "complexity", d.complexity);
         appendInt(sb, "minRoomSize", d.minRoomSize);
         appendInt(sb, "maxRoomSize", d.maxRoomSize);
         appendStr(sb, "roomShape", d.roomShape);
-        appendStr(sb, "irregularity", d.irregularity);
+        appendFloat(sb, "irregularity", d.irregularity);
         appendInt(sb, "corridorWidth", d.corridorWidth);
-        appendStr(sb, "branchChance", d.branchChance);
-        appendStr(sb, "loopChance", d.loopChance);
+        appendFloat(sb, "branchChance", d.branchChance);
+        appendFloat(sb, "loopChance", d.loopChance);
         appendBool(sb, "windingCorridors", d.windingCorridors);
-        appendStr(sb, "windingFactor", d.windingFactor);
-        appendStr(sb, "pillarFreq", d.pillarFreq);
-        appendStr(sb, "waterFreq", d.waterFreq);
-        appendStr(sb, "lavaFreq", d.lavaFreq);
-        appendStr(sb, "trapDensity", d.trapDensity);
-        appendStr(sb, "secretWallChance", d.secretWallChance);
+        appendFloat(sb, "windingFactor", d.windingFactor);
+        appendFloat(sb, "pillarFreq", d.pillarFreq);
+        appendFloat(sb, "waterFreq", d.waterFreq);
+        appendFloat(sb, "lavaFreq", d.lavaFreq);
+        appendFloat(sb, "trapDensity", d.trapDensity);
+        appendFloat(sb, "secretWallChance", d.secretWallChance);
         appendBool(sb, "floorTraps", d.floorTraps);
         appendStr(sb, "entrancePlacement", d.entrancePlacement);
-        appendStr(sb, "exitDistance", d.exitDistance);
-        appendStr(sb, "enemyDensity", d.enemyDensity);
+        appendFloat(sb, "exitDistance", d.exitDistance);
+        appendFloat(sb, "enemyDensity", d.enemyDensity);
         appendInt(sb, "maxEnemiesPerRoom", d.maxEnemiesPerRoom);
-        appendStr(sb, "ambushChance", d.ambushChance);
+        appendFloat(sb, "ambushChance", d.ambushChance);
         appendBool(sb, "bossRoom", d.bossRoom);
-        appendStr(sb, "erosion", d.erosion);
+        appendFloat(sb, "erosion", d.erosion);
         appendBool(sb, "removeCeiling", d.removeCeiling);
         appendBool(sb, "flatFloor", d.flatFloor);
         appendBool(sb, "solidFill", d.solidFill);
         appendStr(sb, "palette", d.palette);
-        appendStr(sb, "decayFactor", d.decayFactor);
-        appendStr(sb, "overgrowthFactor", d.overgrowthFactor);
-        appendStr(sb, "floodingFactor", d.floodingFactor);
-        appendStr(sb, "breatheRoomFreq", d.breatheRoomFreq);
+        appendFloat(sb, "decayFactor", d.decayFactor);
+        appendFloat(sb, "overgrowthFactor", d.overgrowthFactor);
+        appendFloat(sb, "floodingFactor", d.floodingFactor);
+        appendFloat(sb, "breatheRoomFreq", d.breatheRoomFreq);
         // Last field - no trailing comma
         sb.append("  \"difficultyRamp\": ");
-        if (d.difficultyRamp != null) {
-            sb.append('"').append(escapeJson(d.difficultyRamp)).append('"');
-        } else {
-            sb.append("null");
-        }
+        sb.append(d.difficultyRamp != null ? d.difficultyRamp.toString() : "null");
         sb.append('\n');
         sb.append('}');
         return sb.toString();
@@ -412,6 +408,12 @@ public class DungeonGeneratePage extends InteractiveCustomUIPage<DungeonGenerate
         sb.append(",\n");
     }
 
+    private static void appendFloat(@Nonnull StringBuilder sb, @Nonnull String key, @Nullable Float value) {
+        sb.append("  \"").append(key).append("\": ");
+        sb.append(value != null ? value.toString() : "null");
+        sb.append(",\n");
+    }
+
     @Nonnull
     private static String escapeJson(@Nonnull String s) {
         return s.replace("\\", "\\\\").replace("\"", "\\\"").replace("\n", "\\n").replace("\r", "\\r");
@@ -422,6 +424,18 @@ public class DungeonGeneratePage extends InteractiveCustomUIPage<DungeonGenerate
                                    @Nonnull String fallback) {
         String val = JsonParser.toStringOrNull(saved.get(key));
         return val != null ? val : fallback;
+    }
+
+    private static float savedFloat(@Nonnull Map<String, Object> saved, @Nonnull String key,
+                                    float fallback) {
+        Object val = saved.get(key);
+        if (val == null) return fallback;
+        if (val instanceof Number n) return n.floatValue();
+        try { return Float.parseFloat(val.toString()); } catch (NumberFormatException e) { return fallback; }
+    }
+
+    private static double floatOrDefault(@Nullable Float value, double fallback) {
+        return value != null ? value.doubleValue() : fallback;
     }
 
     // ============================================
@@ -448,46 +462,46 @@ public class DungeonGeneratePage extends InteractiveCustomUIPage<DungeonGenerate
             intOrDefault(d.width, ld.width()),
             intOrDefault(d.depth, ld.depth()),
             intOrDefault(d.height, ld.height()),
-            parseDouble(d.roomDensity, ld.roomDensity()),
+            floatOrDefault(d.roomDensity, ld.roomDensity()),
             intOrDefault(d.minRoomSize, ld.minRoomSize()),
             intOrDefault(d.maxRoomSize, ld.maxRoomSize()),
             intOrDefault(d.maxRooms, ld.maxRooms()),
             isBlank(d.roomShape) ? ld.roomShape() : d.roomShape,
-            parseDouble(d.irregularity, ld.irregularity()),
+            floatOrDefault(d.irregularity, ld.irregularity()),
             intOrDefault(d.corridorWidth, ld.corridorWidth()),
-            parseDouble(d.branchChance, ld.branchChance()),
-            parseDouble(d.loopChance, ld.loopChance()),
+            floatOrDefault(d.branchChance, ld.branchChance()),
+            floatOrDefault(d.loopChance, ld.loopChance()),
             d.windingCorridors != null ? d.windingCorridors : ld.windingCorridors(),
-            parseDouble(d.windingFactor, ld.windingFactor()),
-            parseDouble(d.pillarFreq, ld.pillarFrequency()),
-            parseDouble(d.waterFreq, ld.waterFrequency()),
-            parseDouble(d.lavaFreq, ld.lavaFrequency()),
-            parseDouble(d.trapDensity, ld.trapDensity()),
+            floatOrDefault(d.windingFactor, ld.windingFactor()),
+            floatOrDefault(d.pillarFreq, ld.pillarFrequency()),
+            floatOrDefault(d.waterFreq, ld.waterFrequency()),
+            floatOrDefault(d.lavaFreq, ld.lavaFrequency()),
+            floatOrDefault(d.trapDensity, ld.trapDensity()),
             d.floorTraps != null ? d.floorTraps : ld.floorTraps(),
-            parseDouble(d.secretWallChance, ld.secretWallChance()),
+            floatOrDefault(d.secretWallChance, ld.secretWallChance()),
             isBlank(d.entrancePlacement) ? ld.entrancePlacement() : d.entrancePlacement,
-            parseDouble(d.exitDistance, ld.exitDistance()),
-            parseDouble(d.enemyDensity, ld.enemyDensity()),
+            floatOrDefault(d.exitDistance, ld.exitDistance()),
+            floatOrDefault(d.enemyDensity, ld.enemyDensity()),
             intOrDefault(d.maxEnemiesPerRoom, ld.maxEnemiesPerRoom()),
             d.bossRoom != null ? d.bossRoom : ld.bossRoom(),
-            parseDouble(d.ambushChance, ld.ambushChance()),
-            parseDouble(d.erosion, ld.erosion()),
+            floatOrDefault(d.ambushChance, ld.ambushChance()),
+            floatOrDefault(d.erosion, ld.erosion()),
             d.removeCeiling != null ? d.removeCeiling : ld.removeCeiling(),
             d.flatFloor != null ? d.flatFloor : ld.flatFloor(),
             d.solidFill != null ? d.solidFill : ld.solidFill(),
-            parseDouble(d.complexity, ld.complexity())
+            floatOrDefault(d.complexity, ld.complexity())
         );
 
         ThemeConfig theme = new ThemeConfig(
             isBlank(d.palette) ? td.palette() : d.palette,
-            parseDouble(d.decayFactor, td.decayFactor()),
-            parseDouble(d.overgrowthFactor, td.overgrowthFactor()),
-            parseDouble(d.floodingFactor, td.floodingFactor())
+            floatOrDefault(d.decayFactor, td.decayFactor()),
+            floatOrDefault(d.overgrowthFactor, td.overgrowthFactor()),
+            floatOrDefault(d.floodingFactor, td.floodingFactor())
         );
 
         PacingConfig pacing = new PacingConfig(
-            parseDouble(d.breatheRoomFreq, pd.breatheRoomFrequency()),
-            parseDouble(d.difficultyRamp, pd.difficultyRamp())
+            floatOrDefault(d.breatheRoomFreq, pd.breatheRoomFrequency()),
+            floatOrDefault(d.difficultyRamp, pd.difficultyRamp())
         );
 
         boolean assemble = d.assemble != null ? d.assemble : dd.assemble();
@@ -569,11 +583,6 @@ public class DungeonGeneratePage extends InteractiveCustomUIPage<DungeonGenerate
         return value != null ? value : fallback;
     }
 
-    private static double parseDouble(@Nullable String value, double fallback) {
-        if (isBlank(value)) return fallback;
-        try { return Double.parseDouble(value.trim()); } catch (NumberFormatException e) { return fallback; }
-    }
-
     private static boolean isBlank(@Nullable String s) {
         return s == null || s.isBlank();
     }
@@ -608,46 +617,46 @@ public class DungeonGeneratePage extends InteractiveCustomUIPage<DungeonGenerate
             .addField(new KeyedCodec<>("@Height", Codec.INTEGER), (e, v) -> e.height = v, e -> e.height)
             // Rooms
             .addField(new KeyedCodec<>("@MaxRooms", Codec.INTEGER), (e, v) -> e.maxRooms = v, e -> e.maxRooms)
-            .addField(new KeyedCodec<>("@RoomDensity", Codec.STRING), (e, v) -> e.roomDensity = v, e -> e.roomDensity)
-            .addField(new KeyedCodec<>("@Complexity", Codec.STRING), (e, v) -> e.complexity = v, e -> e.complexity)
+            .addField(new KeyedCodec<>("@RoomDensity", Codec.FLOAT), (e, v) -> e.roomDensity = v, e -> e.roomDensity)
+            .addField(new KeyedCodec<>("@Complexity", Codec.FLOAT), (e, v) -> e.complexity = v, e -> e.complexity)
             .addField(new KeyedCodec<>("@MinRoomSize", Codec.INTEGER), (e, v) -> e.minRoomSize = v, e -> e.minRoomSize)
             .addField(new KeyedCodec<>("@MaxRoomSize", Codec.INTEGER), (e, v) -> e.maxRoomSize = v, e -> e.maxRoomSize)
             .addField(new KeyedCodec<>("@RoomShape", Codec.STRING), (e, v) -> e.roomShape = v, e -> e.roomShape)
-            .addField(new KeyedCodec<>("@Irregularity", Codec.STRING), (e, v) -> e.irregularity = v, e -> e.irregularity)
+            .addField(new KeyedCodec<>("@Irregularity", Codec.FLOAT), (e, v) -> e.irregularity = v, e -> e.irregularity)
             // Corridors
             .addField(new KeyedCodec<>("@CorridorWidth", Codec.INTEGER), (e, v) -> e.corridorWidth = v, e -> e.corridorWidth)
-            .addField(new KeyedCodec<>("@BranchChance", Codec.STRING), (e, v) -> e.branchChance = v, e -> e.branchChance)
-            .addField(new KeyedCodec<>("@LoopChance", Codec.STRING), (e, v) -> e.loopChance = v, e -> e.loopChance)
+            .addField(new KeyedCodec<>("@BranchChance", Codec.FLOAT), (e, v) -> e.branchChance = v, e -> e.branchChance)
+            .addField(new KeyedCodec<>("@LoopChance", Codec.FLOAT), (e, v) -> e.loopChance = v, e -> e.loopChance)
             .addField(new KeyedCodec<>("@Winding", Codec.BOOLEAN), (e, v) -> e.windingCorridors = v, e -> e.windingCorridors)
-            .addField(new KeyedCodec<>("@WindingFactor", Codec.STRING), (e, v) -> e.windingFactor = v, e -> e.windingFactor)
+            .addField(new KeyedCodec<>("@WindingFactor", Codec.FLOAT), (e, v) -> e.windingFactor = v, e -> e.windingFactor)
             // Features
-            .addField(new KeyedCodec<>("@PillarFreq", Codec.STRING), (e, v) -> e.pillarFreq = v, e -> e.pillarFreq)
-            .addField(new KeyedCodec<>("@WaterFreq", Codec.STRING), (e, v) -> e.waterFreq = v, e -> e.waterFreq)
-            .addField(new KeyedCodec<>("@LavaFreq", Codec.STRING), (e, v) -> e.lavaFreq = v, e -> e.lavaFreq)
-            .addField(new KeyedCodec<>("@TrapDensity", Codec.STRING), (e, v) -> e.trapDensity = v, e -> e.trapDensity)
-            .addField(new KeyedCodec<>("@SecretWallChance", Codec.STRING), (e, v) -> e.secretWallChance = v, e -> e.secretWallChance)
+            .addField(new KeyedCodec<>("@PillarFreq", Codec.FLOAT), (e, v) -> e.pillarFreq = v, e -> e.pillarFreq)
+            .addField(new KeyedCodec<>("@WaterFreq", Codec.FLOAT), (e, v) -> e.waterFreq = v, e -> e.waterFreq)
+            .addField(new KeyedCodec<>("@LavaFreq", Codec.FLOAT), (e, v) -> e.lavaFreq = v, e -> e.lavaFreq)
+            .addField(new KeyedCodec<>("@TrapDensity", Codec.FLOAT), (e, v) -> e.trapDensity = v, e -> e.trapDensity)
+            .addField(new KeyedCodec<>("@SecretWallChance", Codec.FLOAT), (e, v) -> e.secretWallChance = v, e -> e.secretWallChance)
             .addField(new KeyedCodec<>("@FloorTraps", Codec.BOOLEAN), (e, v) -> e.floorTraps = v, e -> e.floorTraps)
             // Navigation
             .addField(new KeyedCodec<>("@EntrancePlacement", Codec.STRING), (e, v) -> e.entrancePlacement = v, e -> e.entrancePlacement)
-            .addField(new KeyedCodec<>("@ExitDistance", Codec.STRING), (e, v) -> e.exitDistance = v, e -> e.exitDistance)
+            .addField(new KeyedCodec<>("@ExitDistance", Codec.FLOAT), (e, v) -> e.exitDistance = v, e -> e.exitDistance)
             // Enemies
-            .addField(new KeyedCodec<>("@EnemyDensity", Codec.STRING), (e, v) -> e.enemyDensity = v, e -> e.enemyDensity)
+            .addField(new KeyedCodec<>("@EnemyDensity", Codec.FLOAT), (e, v) -> e.enemyDensity = v, e -> e.enemyDensity)
             .addField(new KeyedCodec<>("@MaxEnemiesPerRoom", Codec.INTEGER), (e, v) -> e.maxEnemiesPerRoom = v, e -> e.maxEnemiesPerRoom)
-            .addField(new KeyedCodec<>("@AmbushChance", Codec.STRING), (e, v) -> e.ambushChance = v, e -> e.ambushChance)
+            .addField(new KeyedCodec<>("@AmbushChance", Codec.FLOAT), (e, v) -> e.ambushChance = v, e -> e.ambushChance)
             .addField(new KeyedCodec<>("@BossRoom", Codec.BOOLEAN), (e, v) -> e.bossRoom = v, e -> e.bossRoom)
             // Architecture
-            .addField(new KeyedCodec<>("@Erosion", Codec.STRING), (e, v) -> e.erosion = v, e -> e.erosion)
+            .addField(new KeyedCodec<>("@Erosion", Codec.FLOAT), (e, v) -> e.erosion = v, e -> e.erosion)
             .addField(new KeyedCodec<>("@RemoveCeiling", Codec.BOOLEAN), (e, v) -> e.removeCeiling = v, e -> e.removeCeiling)
             .addField(new KeyedCodec<>("@FlatFloor", Codec.BOOLEAN), (e, v) -> e.flatFloor = v, e -> e.flatFloor)
             .addField(new KeyedCodec<>("@SolidFill", Codec.BOOLEAN), (e, v) -> e.solidFill = v, e -> e.solidFill)
             // Theme
             .addField(new KeyedCodec<>("@Palette", Codec.STRING), (e, v) -> e.palette = v, e -> e.palette)
-            .addField(new KeyedCodec<>("@DecayFactor", Codec.STRING), (e, v) -> e.decayFactor = v, e -> e.decayFactor)
-            .addField(new KeyedCodec<>("@OvergrowthFactor", Codec.STRING), (e, v) -> e.overgrowthFactor = v, e -> e.overgrowthFactor)
-            .addField(new KeyedCodec<>("@FloodingFactor", Codec.STRING), (e, v) -> e.floodingFactor = v, e -> e.floodingFactor)
+            .addField(new KeyedCodec<>("@DecayFactor", Codec.FLOAT), (e, v) -> e.decayFactor = v, e -> e.decayFactor)
+            .addField(new KeyedCodec<>("@OvergrowthFactor", Codec.FLOAT), (e, v) -> e.overgrowthFactor = v, e -> e.overgrowthFactor)
+            .addField(new KeyedCodec<>("@FloodingFactor", Codec.FLOAT), (e, v) -> e.floodingFactor = v, e -> e.floodingFactor)
             // Pacing
-            .addField(new KeyedCodec<>("@BreatheRoomFreq", Codec.STRING), (e, v) -> e.breatheRoomFreq = v, e -> e.breatheRoomFreq)
-            .addField(new KeyedCodec<>("@DifficultyRamp", Codec.STRING), (e, v) -> e.difficultyRamp = v, e -> e.difficultyRamp)
+            .addField(new KeyedCodec<>("@BreatheRoomFreq", Codec.FLOAT), (e, v) -> e.breatheRoomFreq = v, e -> e.breatheRoomFreq)
+            .addField(new KeyedCodec<>("@DifficultyRamp", Codec.FLOAT), (e, v) -> e.difficultyRamp = v, e -> e.difficultyRamp)
             .build();
 
         // Action
@@ -663,31 +672,34 @@ public class DungeonGeneratePage extends InteractiveCustomUIPage<DungeonGenerate
         Integer width, depth, height;
         // Rooms
         Integer maxRooms;
-        String roomDensity, complexity;
+        Float roomDensity, complexity;
         Integer minRoomSize, maxRoomSize;
-        String roomShape, irregularity;
+        String roomShape;
+        Float irregularity;
         // Corridors
         Integer corridorWidth;
-        String branchChance, loopChance;
+        Float branchChance, loopChance;
         Boolean windingCorridors;
-        String windingFactor;
+        Float windingFactor;
         // Features
-        String pillarFreq, waterFreq, lavaFreq;
-        String trapDensity, secretWallChance;
+        Float pillarFreq, waterFreq, lavaFreq;
+        Float trapDensity, secretWallChance;
         Boolean floorTraps;
         // Navigation
-        String entrancePlacement, exitDistance;
+        String entrancePlacement;
+        Float exitDistance;
         // Enemies
-        String enemyDensity;
+        Float enemyDensity;
         Integer maxEnemiesPerRoom;
-        String ambushChance;
+        Float ambushChance;
         Boolean bossRoom;
         // Architecture
-        String erosion;
+        Float erosion;
         Boolean removeCeiling, flatFloor, solidFill;
         // Theme
-        String palette, decayFactor, overgrowthFactor, floodingFactor;
+        String palette;
+        Float decayFactor, overgrowthFactor, floodingFactor;
         // Pacing
-        String breatheRoomFreq, difficultyRamp;
+        Float breatheRoomFreq, difficultyRamp;
     }
 }

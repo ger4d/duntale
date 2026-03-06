@@ -38,6 +38,16 @@ public class RpgRepository {
             "INSERT INTO player_stats (uuid, stat, value) VALUES (?, ?, ?) "
                     + "ON CONFLICT(uuid, stat) DO UPDATE SET value = excluded.value";
 
+    /** Special key used to store unassigned stat points in the same table. */
+    static final String UNASSIGNED_POINTS_KEY = "UNASSIGNED_POINTS";
+
+    private static final String SELECT_UNASSIGNED_SQL =
+            "SELECT value FROM player_stats WHERE uuid = ? AND stat = '" + UNASSIGNED_POINTS_KEY + "'";
+
+    private static final String UPSERT_UNASSIGNED_SQL =
+            "INSERT INTO player_stats (uuid, stat, value) VALUES (?, '" + UNASSIGNED_POINTS_KEY + "', ?) "
+                    + "ON CONFLICT(uuid, stat) DO UPDATE SET value = excluded.value";
+
     private final DatabaseConnection database;
 
     /**
@@ -79,6 +89,10 @@ public class RpgRepository {
                 while (rs.next()) {
                     String statName = rs.getString("stat");
                     int value = rs.getInt("value");
+                    // Skip the special unassigned-points key
+                    if (UNASSIGNED_POINTS_KEY.equals(statName)) {
+                        continue;
+                    }
                     try {
                         RpgStat stat = RpgStat.valueOf(statName);
                         stats.put(stat, value);
@@ -105,6 +119,40 @@ public class RpgRepository {
             ps.setString(1, playerId.toString());
             ps.setString(2, stat.name());
             ps.setInt(3, value);
+            ps.executeUpdate();
+        }
+    }
+
+    /**
+     * Loads the unassigned stat points for the given player.
+     *
+     * @param playerId the player's UUID
+     * @return the number of unassigned points, or {@code 0} if none
+     * @throws SQLException if the query fails
+     */
+    public int loadUnassignedPoints(@Nonnull UUID playerId) throws SQLException {
+        try (PreparedStatement ps = database.getConnection().prepareStatement(SELECT_UNASSIGNED_SQL)) {
+            ps.setString(1, playerId.toString());
+            try (ResultSet rs = ps.executeQuery()) {
+                if (rs.next()) {
+                    return rs.getInt("value");
+                }
+            }
+        }
+        return 0;
+    }
+
+    /**
+     * Saves the unassigned stat points for the given player.
+     *
+     * @param playerId the player's UUID
+     * @param points   the number of unassigned points
+     * @throws SQLException if the upsert fails
+     */
+    public void saveUnassignedPoints(@Nonnull UUID playerId, int points) throws SQLException {
+        try (PreparedStatement ps = database.getConnection().prepareStatement(UPSERT_UNASSIGNED_SQL)) {
+            ps.setString(1, playerId.toString());
+            ps.setInt(2, points);
             ps.executeUpdate();
         }
     }

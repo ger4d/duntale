@@ -96,11 +96,16 @@ $C.@Container {
           LayoutMode: Left;
           Anchor: (Height: 44, Bottom: 4);
           Label { Text: "Max Rooms"; Style: (FontSize: 14, TextColor: #96a9be, VerticalAlignment: Center); Anchor: (Width: 90); }
-          $C.@NumberField #MaxRooms { @Anchor = (Width: 75, Right: 25); Value: 20; Format: (MaxDecimalPlaces: 0, Step: 1, MinValue: 1, MaxValue: 100); }
-          Label { Text: "Density"; Style: (FontSize: 14, TextColor: #96a9be, VerticalAlignment: Center); Anchor: (Width: 65); }
-          $C.@TextField #RoomDensity { @Anchor = (Width: 80, Right: 25); }
-          Label { Text: "Complexity"; Style: (FontSize: 14, TextColor: #96a9be, VerticalAlignment: Center); Anchor: (Width: 90); }
-          $C.@TextField #Complexity { @Anchor = (Width: 80); }
+          $C.@NumberField #MaxRooms { @Anchor = (Width: 75); Value: 20; Format: (MaxDecimalPlaces: 0, Step: 1, MinValue: 1, MaxValue: 100); }
+        }
+
+        Group {
+          LayoutMode: Left;
+          Anchor: (Height: 44, Bottom: 4);
+          Label { Text: "Density"; Style: (FontSize: 14, TextColor: #96a9be, VerticalAlignment: Center); Anchor: (Width: 80); }
+          $C.@FloatSlider #RoomDensity { @Anchor = (Width: 260, Right: 30); Min: 0.0; Max: 1.0; Value: 0.45; Step: 0.01; }
+          Label { Text: "Complexity"; Style: (FontSize: 14, TextColor: #96a9be, VerticalAlignment: Center); Anchor: (Width: 95); }
+          $C.@FloatSlider #Complexity { @Anchor = (Width: 260); Min: 0.0; Max: 1.0; Value: 0.5; Step: 0.01; }
         }
 
         Group {
@@ -125,8 +130,8 @@ $C.@Container {
         Group {
           LayoutMode: Left;
           Anchor: (Height: 44);
-          Label { Text: "Irregularity"; Style: (FontSize: 14, TextColor: #96a9be, VerticalAlignment: Center); Anchor: (Width: 90); }
-          $C.@TextField #Irregularity { @Anchor = (Width: 80); }
+          Label { Text: "Irregularity"; Style: (FontSize: 14, TextColor: #96a9be, VerticalAlignment: Center); Anchor: (Width: 100); }
+          $C.@FloatSlider #Irregularity { @Anchor = (Width: 260); Min: 0.0; Max: 1.0; Value: 0.2; Step: 0.01; }
         }
       }
     }
@@ -147,19 +152,24 @@ $C.@Container {
           LayoutMode: Left;
           Anchor: (Height: 44, Bottom: 4);
           Label { Text: "Width"; Style: (FontSize: 14, TextColor: #96a9be, VerticalAlignment: Center); Anchor: (Width: 60); }
-          $C.@NumberField #CorridorWidth { @Anchor = (Width: 65, Right: 25); Value: 2; Format: (MaxDecimalPlaces: 0, Step: 1, MinValue: 1, MaxValue: 4); }
-          Label { Text: "Branch %"; Style: (FontSize: 14, TextColor: #96a9be, VerticalAlignment: Center); Anchor: (Width: 75); }
-          $C.@TextField #BranchChance { @Anchor = (Width: 80, Right: 25); }
-          Label { Text: "Loop %"; Style: (FontSize: 14, TextColor: #96a9be, VerticalAlignment: Center); Anchor: (Width: 65); }
-          $C.@TextField #LoopChance { @Anchor = (Width: 80); }
+          $C.@NumberField #CorridorWidth { @Anchor = (Width: 65); Value: 2; Format: (MaxDecimalPlaces: 0, Step: 1, MinValue: 1, MaxValue: 4); }
         }
 
         Group {
           LayoutMode: Left;
-          Anchor: (Height: 34);
+          Anchor: (Height: 44, Bottom: 4);
+          Label { Text: "Branch %"; Style: (FontSize: 14, TextColor: #96a9be, VerticalAlignment: Center); Anchor: (Width: 80); }
+          $C.@FloatSlider #BranchChance { @Anchor = (Width: 260, Right: 30); Min: 0.0; Max: 1.0; Value: 0.3; Step: 0.01; }
+          Label { Text: "Loop %"; Style: (FontSize: 14, TextColor: #96a9be, VerticalAlignment: Center); Anchor: (Width: 70); }
+          $C.@FloatSlider #LoopChance { @Anchor = (Width: 260); Min: 0.0; Max: 1.0; Value: 0.15; Step: 0.01; }
+        }
+
+        Group {
+          LayoutMode: Left;
+          Anchor: (Height: 44);
           $C.@CheckBoxWithLabel #WindingCheck { @Text = "Winding Corridors"; @Checked = false; Anchor: (Right: 30); }
           Label { Text: "Factor"; Style: (FontSize: 14, TextColor: #96a9be, VerticalAlignment: Center); Anchor: (Width: 55); }
-          $C.@TextField #WindingFactor { @Anchor = (Width: 80); }
+          $C.@FloatSlider #WindingFactor { @Anchor = (Width: 250); Min: 0.0; Max: 1.0; Value: 0.5; Step: 0.01; }
         }
       }
     }
@@ -179,21 +189,26 @@ $C.@Container {
         Group {
           LayoutMode: Left;
           Anchor: (Height: 44, Bottom: 4);
-          Label { Text: "Pillars"; Style: (FontSize: 14, TextColor: #96a9be, VerticalAlignment: Center); Anchor: (Width: 60); }
-          $C.@TextField #PillarFreq { @Anchor = (Width: 80, Right: 20); }
-          Label { Text: "Water"; Style: (FontSize: 14, TextColor: #96a9be, VerticalAlignment: Center); Anchor: (Width: 55); }
-          $C.@TextField #WaterFreq { @Anchor = (Width: 80, Right: 20); }
-          Label { Text: "Lava"; Style: (FontSize: 14, TextColor: #96a9be, VerticalAlignment: Center); Anchor: (Width: 45); }
-          $C.@TextField #LavaFreq { @Anchor = (Width: 80); }
+          Label { Text: "Pillars"; Style: (FontSize: 14, TextColor: #96a9be, VerticalAlignment: Center); Anchor: (Width: 65); }
+          $C.@FloatSlider #PillarFreq { @Anchor = (Width: 260, Right: 30); Min: 0.0; Max: 1.0; Value: 0.1; Step: 0.01; }
+          Label { Text: "Water"; Style: (FontSize: 14, TextColor: #96a9be, VerticalAlignment: Center); Anchor: (Width: 60); }
+          $C.@FloatSlider #WaterFreq { @Anchor = (Width: 260); Min: 0.0; Max: 1.0; Value: 0.05; Step: 0.01; }
+        }
+
+        Group {
+          LayoutMode: Left;
+          Anchor: (Height: 44, Bottom: 4);
+          Label { Text: "Lava"; Style: (FontSize: 14, TextColor: #96a9be, VerticalAlignment: Center); Anchor: (Width: 65); }
+          $C.@FloatSlider #LavaFreq { @Anchor = (Width: 260, Right: 30); Min: 0.0; Max: 1.0; Value: 0.0; Step: 0.01; }
+          Label { Text: "Traps"; Style: (FontSize: 14, TextColor: #96a9be, VerticalAlignment: Center); Anchor: (Width: 60); }
+          $C.@FloatSlider #TrapDensity { @Anchor = (Width: 260); Min: 0.0; Max: 1.0; Value: 0.08; Step: 0.01; }
         }
 
         Group {
           LayoutMode: Left;
           Anchor: (Height: 44);
-          Label { Text: "Traps"; Style: (FontSize: 14, TextColor: #96a9be, VerticalAlignment: Center); Anchor: (Width: 55); }
-          $C.@TextField #TrapDensity { @Anchor = (Width: 80, Right: 20); }
-          Label { Text: "Secrets"; Style: (FontSize: 14, TextColor: #96a9be, VerticalAlignment: Center); Anchor: (Width: 60); }
-          $C.@TextField #SecretWallChance { @Anchor = (Width: 80, Right: 30); }
+          Label { Text: "Secrets"; Style: (FontSize: 14, TextColor: #96a9be, VerticalAlignment: Center); Anchor: (Width: 65); }
+          $C.@FloatSlider #SecretWallChance { @Anchor = (Width: 260, Right: 30); Min: 0.0; Max: 1.0; Value: 0.05; Step: 0.01; }
           $C.@CheckBoxWithLabel #FloorTrapsCheck { @Text = "Floor Traps"; @Checked = false; }
         }
       }
@@ -220,8 +235,8 @@ $C.@Container {
           DropdownEntry { Value: "center"; Text: "Center"; }
           DropdownEntry { Value: "random"; Text: "Random"; }
         }
-        Label { Text: "Exit Distance"; Style: (FontSize: 14, TextColor: #96a9be, VerticalAlignment: Center); Anchor: (Width: 100); }
-        $C.@TextField #ExitDistance { @Anchor = (Width: 80); }
+        Label { Text: "Exit Dist"; Style: (FontSize: 14, TextColor: #96a9be, VerticalAlignment: Center); Anchor: (Width: 75); }
+        $C.@FloatSlider #ExitDistance { @Anchor = (Width: 260); Min: 0.0; Max: 1.0; Value: 0.7; Step: 0.01; }
       }
     }
 
@@ -240,17 +255,17 @@ $C.@Container {
         Group {
           LayoutMode: Left;
           Anchor: (Height: 44, Bottom: 4);
-          Label { Text: "Density"; Style: (FontSize: 14, TextColor: #96a9be, VerticalAlignment: Center); Anchor: (Width: 65); }
-          $C.@TextField #EnemyDensity { @Anchor = (Width: 80, Right: 20); }
+          Label { Text: "Density"; Style: (FontSize: 14, TextColor: #96a9be, VerticalAlignment: Center); Anchor: (Width: 70); }
+          $C.@FloatSlider #EnemyDensity { @Anchor = (Width: 260, Right: 30); Min: 0.0; Max: 1.0; Value: 0.4; Step: 0.01; }
           Label { Text: "Max/Room"; Style: (FontSize: 14, TextColor: #96a9be, VerticalAlignment: Center); Anchor: (Width: 80); }
-          $C.@NumberField #MaxEnemiesPerRoom { @Anchor = (Width: 65, Right: 20); Value: 5; Format: (MaxDecimalPlaces: 0, Step: 1, MinValue: 1, MaxValue: 20); }
-          Label { Text: "Ambush %"; Style: (FontSize: 14, TextColor: #96a9be, VerticalAlignment: Center); Anchor: (Width: 80); }
-          $C.@TextField #AmbushChance { @Anchor = (Width: 80); }
+          $C.@NumberField #MaxEnemiesPerRoom { @Anchor = (Width: 65); Value: 5; Format: (MaxDecimalPlaces: 0, Step: 1, MinValue: 1, MaxValue: 20); }
         }
 
         Group {
           LayoutMode: Left;
-          Anchor: (Height: 34);
+          Anchor: (Height: 44, Bottom: 4);
+          Label { Text: "Ambush %"; Style: (FontSize: 14, TextColor: #96a9be, VerticalAlignment: Center); Anchor: (Width: 80); }
+          $C.@FloatSlider #AmbushChance { @Anchor = (Width: 260, Right: 30); Min: 0.0; Max: 1.0; Value: 0.1; Step: 0.01; }
           $C.@CheckBoxWithLabel #BossRoomCheck { @Text = "Boss Room"; @Checked = true; }
         }
       }
@@ -271,8 +286,8 @@ $C.@Container {
         Group {
           LayoutMode: Left;
           Anchor: (Height: 44, Bottom: 4);
-          Label { Text: "Erosion"; Style: (FontSize: 14, TextColor: #96a9be, VerticalAlignment: Center); Anchor: (Width: 65); }
-          $C.@TextField #Erosion { @Anchor = (Width: 80); }
+          Label { Text: "Erosion"; Style: (FontSize: 14, TextColor: #96a9be, VerticalAlignment: Center); Anchor: (Width: 70); }
+          $C.@FloatSlider #Erosion { @Anchor = (Width: 260); Min: 0.0; Max: 1.0; Value: 0.1; Step: 0.01; }
         }
 
         Group {
@@ -316,13 +331,18 @@ $C.@Container {
 
         Group {
           LayoutMode: Left;
+          Anchor: (Height: 44, Bottom: 4);
+          Label { Text: "Decay"; Style: (FontSize: 14, TextColor: #96a9be, VerticalAlignment: Center); Anchor: (Width: 65); }
+          $C.@FloatSlider #DecayFactor { @Anchor = (Width: 260, Right: 30); Min: 0.0; Max: 1.0; Value: 0.3; Step: 0.01; }
+          Label { Text: "Overgrowth"; Style: (FontSize: 14, TextColor: #96a9be, VerticalAlignment: Center); Anchor: (Width: 95); }
+          $C.@FloatSlider #OvergrowthFactor { @Anchor = (Width: 260); Min: 0.0; Max: 1.0; Value: 0.1; Step: 0.01; }
+        }
+
+        Group {
+          LayoutMode: Left;
           Anchor: (Height: 44);
-          Label { Text: "Decay"; Style: (FontSize: 14, TextColor: #96a9be, VerticalAlignment: Center); Anchor: (Width: 55); }
-          $C.@TextField #DecayFactor { @Anchor = (Width: 80, Right: 20); }
-          Label { Text: "Overgrowth"; Style: (FontSize: 14, TextColor: #96a9be, VerticalAlignment: Center); Anchor: (Width: 90); }
-          $C.@TextField #OvergrowthFactor { @Anchor = (Width: 80, Right: 20); }
-          Label { Text: "Flooding"; Style: (FontSize: 14, TextColor: #96a9be, VerticalAlignment: Center); Anchor: (Width: 70); }
-          $C.@TextField #FloodingFactor { @Anchor = (Width: 80); }
+          Label { Text: "Flooding"; Style: (FontSize: 14, TextColor: #96a9be, VerticalAlignment: Center); Anchor: (Width: 75); }
+          $C.@FloatSlider #FloodingFactor { @Anchor = (Width: 260); Min: 0.0; Max: 1.0; Value: 0.0; Step: 0.01; }
         }
       }
     }
@@ -336,13 +356,17 @@ $C.@Container {
       Group { Anchor: (Height: 34, Bottom: 4); $C.@PanelTitle { @Text = "Pacing"; } }
 
       Group {
-        LayoutMode: Left;
+        LayoutMode: Top;
         Padding: (Horizontal: 14, Top: 4, Bottom: 12);
 
-        Label { Text: "Breathe Rooms"; Style: (FontSize: 14, TextColor: #96a9be, VerticalAlignment: Center); Anchor: (Width: 110); }
-        $C.@TextField #BreatheRoomFreq { @Anchor = (Width: 80, Right: 30); }
-        Label { Text: "Difficulty Ramp"; Style: (FontSize: 14, TextColor: #96a9be, VerticalAlignment: Center); Anchor: (Width: 120); }
-        $C.@TextField #DifficultyRamp { @Anchor = (Width: 80); }
+        Group {
+          LayoutMode: Left;
+          Anchor: (Height: 44);
+          Label { Text: "Breathe Rooms"; Style: (FontSize: 14, TextColor: #96a9be, VerticalAlignment: Center); Anchor: (Width: 115); }
+          $C.@FloatSlider #BreatheRoomFreq { @Anchor = (Width: 230, Right: 30); Min: 0.0; Max: 1.0; Value: 0.3; Step: 0.01; }
+          Label { Text: "Diff Ramp"; Style: (FontSize: 14, TextColor: #96a9be, VerticalAlignment: Center); Anchor: (Width: 85); }
+          $C.@FloatSlider #DifficultyRamp { @Anchor = (Width: 230); Min: 0.0; Max: 1.0; Value: 0.5; Step: 0.01; }
+        }
       }
     }
 
