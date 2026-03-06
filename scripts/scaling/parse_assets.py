@@ -240,10 +240,11 @@ def extract_primary_damage(interaction_vars: dict | None) -> tuple[float, dict]:
             base_damage = dc.get("BaseDamage", {})
             if not isinstance(base_damage, dict):
                 continue
-            phys = base_damage.get("Physical", 0)
-            if phys and phys > 0:
-                all_moves[var_name] = phys
-                damages.append(phys)
+            # Sum all damage types (Physical, Fire, etc.)
+            total = sum(v for v in base_damage.values() if isinstance(v, (int, float)) and v > 0)
+            if total > 0:
+                all_moves[var_name] = total
+                damages.append(total)
 
     if not damages:
         return 0.0, all_moves

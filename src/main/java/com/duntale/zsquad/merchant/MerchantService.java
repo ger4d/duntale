@@ -1,6 +1,7 @@
 package com.duntale.zsquad.merchant;
 
 import com.duntale.zsquad.economy.GoldService;
+import com.duntale.zsquad.progression.GearLevelService;
 import com.hypixel.hytale.codec.Codec;
 import com.hypixel.hytale.component.ComponentAccessor;
 import com.hypixel.hytale.component.Ref;
@@ -266,7 +267,8 @@ public class MerchantService {
 
         // Item placed — player is selling
         String itemId = item.getItemId();
-        long sellPrice = priceRegistry.getSellPrice(itemId);
+        int dungeonLevel = getItemDungeonLevel(item);
+        long sellPrice = priceRegistry.getSellPrice(itemId, dungeonLevel);
         if (sellPrice <= 0) {
             return;
         }
@@ -445,6 +447,21 @@ public class MerchantService {
     @Nonnull
     static String formatGold(long gold) {
         return String.format("%,d Gold", gold);
+    }
+
+    /**
+     * Extracts the dungeon level from an item's weapon or armor level metadata.
+     *
+     * @param item the item stack to inspect
+     * @return the dungeon level, or {@code 0} if unleveled
+     */
+    private static int getItemDungeonLevel(@Nonnull ItemStack item) {
+        Integer weaponLevel = GearLevelService.getWeaponLevel(item);
+        if (weaponLevel != null) {
+            return weaponLevel;
+        }
+        Integer armorLevel = GearLevelService.getArmorLevel(item);
+        return armorLevel != null ? armorLevel : 0;
     }
 
     // ── Session Record ───────────────────────────────────────────────

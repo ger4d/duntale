@@ -73,7 +73,8 @@ public class MerchantTooltipProvider implements TooltipProvider {
 
         // 2. Any sellable item (always shows sell value for items in the registry)
         if (priceRegistry.isSellable(itemId)) {
-            long sellPrice = priceRegistry.getSellPrice(itemId);
+            int dungeonLevel = extractDungeonLevel(metadata);
+            long sellPrice = priceRegistry.getSellPrice(itemId, dungeonLevel);
             return TooltipData.builder()
                     .hashInput("merch_sell:" + sellPrice)
                     .addLine(colorTag(COLOR_GREEN, "Sell: " + formatGold(sellPrice)))
@@ -151,6 +152,27 @@ public class MerchantTooltipProvider implements TooltipProvider {
     @Nonnull
     private static String colorTag(@Nonnull String color, @Nonnull String text) {
         return "<color is=\"" + color + "\">" + text + "</color>";
+    }
+
+    /**
+     * Extracts the dungeon level from item metadata (weapon or armor level).
+     *
+     * @param metadata the raw metadata string
+     * @return the dungeon level, or {@code 0} if not found
+     */
+    private static int extractDungeonLevel(@Nullable String metadata) {
+        if (metadata == null) {
+            return 0;
+        }
+        Long weaponLevel = extractLong(metadata, "zsquad_weapon_level");
+        if (weaponLevel != null && weaponLevel > 0) {
+            return weaponLevel.intValue();
+        }
+        Long armorLevel = extractLong(metadata, "zsquad_armor_level");
+        if (armorLevel != null && armorLevel > 0) {
+            return armorLevel.intValue();
+        }
+        return 0;
     }
 
     /**

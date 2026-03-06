@@ -91,6 +91,26 @@ public class MerchantPriceRegistry {
     }
 
     /**
+     * Returns the sell price adjusted for the item's dungeon level.
+     *
+     * <p>Items with a dungeon level receive a multiplier based on a sigmoid scaling
+     * curve: higher dungeon levels yield better sell prices.
+     *
+     * @param itemId       the item asset ID
+     * @param dungeonLevel the dungeon level from item metadata, or {@code 0} for base price
+     * @return the level-adjusted sell price in gold
+     */
+    public long getSellPrice(@Nonnull String itemId, int dungeonLevel) {
+        long basePrice = getSellPrice(itemId);
+        if (basePrice <= 0 || dungeonLevel <= 0) {
+            return basePrice;
+        }
+        // Linear scaling: 1.0 at L1, 2.0 at L30, 3.0 at L60
+        double levelMult = 1.0 + (dungeonLevel - 1) / 29.5;
+        return Math.max(basePrice, (long) Math.floor(basePrice * levelMult));
+    }
+
+    /**
      * Returns whether the given item exists in the price registry and can be sold.
      *
      * @param itemId the item asset ID
@@ -147,7 +167,7 @@ public class MerchantPriceRegistry {
             case "Uncommon" -> 1.5;
             case "Rare" -> 2.5;
             case "Epic" -> 5.0;
-            case "Legendary" -> 10.0;
+            case "Legendary" -> 15.0;
             default -> 1.0;
         };
     }
