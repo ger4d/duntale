@@ -313,7 +313,7 @@ public class ScalingDataCache {
 
         String column = WEAPON_SORT_COLUMNS.getOrDefault(sortBy != null ? sortBy : "dmg", "base_damage");
         String order = ascending ? "ASC" : "DESC";
-        int clampedLimit = Math.max(1, Math.min(limit, 100));
+        int clampedLimit = Math.max(1, Math.min(limit, 500));
 
         StringBuilder sql = new StringBuilder(
                 "SELECT name, family, quality, item_level, base_damage FROM weapons_base"
@@ -383,7 +383,7 @@ public class ScalingDataCache {
 
         String column = ARMOR_SORT_COLUMNS.getOrDefault(sortBy != null ? sortBy : "phys", "phys_resist");
         String order = ascending ? "ASC" : "DESC";
-        int clampedLimit = Math.max(1, Math.min(limit, 100));
+        int clampedLimit = Math.max(1, Math.min(limit, 500));
 
         StringBuilder sql = new StringBuilder(
                 "SELECT name, slot, quality, item_level, phys_resist, proj_resist, health_bonus, special FROM armor_base"

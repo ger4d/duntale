@@ -147,6 +147,7 @@ public class MerchantPriceRegistry {
             case "Uncommon" -> 1.5;
             case "Rare" -> 2.5;
             case "Epic" -> 5.0;
+            case "Legendary" -> 10.0;
             default -> 1.0;
         };
     }

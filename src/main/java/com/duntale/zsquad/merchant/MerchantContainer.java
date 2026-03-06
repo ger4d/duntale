@@ -1,6 +1,7 @@
 package com.duntale.zsquad.merchant;
 
 import com.duntale.zsquad.economy.GoldService;
+import com.hypixel.hytale.logger.HytaleLogger;
 import com.hypixel.hytale.server.core.inventory.ItemStack;
 import com.hypixel.hytale.server.core.inventory.container.SimpleItemContainer;
 
@@ -25,6 +26,8 @@ import java.util.UUID;
  * @see MerchantService
  */
 public class MerchantContainer extends SimpleItemContainer {
+
+    private static final HytaleLogger LOGGER = HytaleLogger.forEnclosingClass();
 
     private final short buyCapacity;
     private final MerchantPriceRegistry priceRegistry;
@@ -139,7 +142,11 @@ public class MerchantContainer extends SimpleItemContainer {
             if (itemStack == null) {
                 return true;
             }
-            return !priceRegistry.isSellable(itemStack.getItemId());
+            boolean sellable = priceRegistry.isSellable(itemStack.getItemId());
+            if (!sellable) {
+                LOGGER.atInfo().log("[Merchant] Rejected unsellable item: '%s'", itemStack.getItemId());
+            }
+            return !sellable;
         }
 
         return super.cantAddToSlot(slot, itemStack, existing);
