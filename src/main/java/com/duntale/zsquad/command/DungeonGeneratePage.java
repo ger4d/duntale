@@ -258,9 +258,9 @@ public class DungeonGeneratePage extends InteractiveCustomUIPage<DungeonGenerate
 
     private void sendResult(@Nonnull GenerationResult result, @Nonnull DungeonConfig config) {
         String summary = String.format(
-            "[DungeonGen] Done! %d rooms, %d corridors, %d blocks, %d spawners - gen %dms, asm %dms",
+            "[DungeonGen] Done! %d rooms, %d corridors, %d blocks, %d spawners, %d merchants - gen %dms, asm %dms",
             result.rooms(), result.corridors(), result.totalBlocks(), result.spawners(),
-            result.generationTimeMs(), result.assemblyTimeMs()
+            result.merchants(), result.generationTimeMs(), result.assemblyTimeMs()
         );
         String color = result.assemblyError() == null ? "#55FF55" : "#FFAA00";
         playerRef.sendMessage(Message.raw(summary).color(color));
@@ -288,6 +288,16 @@ public class DungeonGeneratePage extends InteractiveCustomUIPage<DungeonGenerate
                 playerRef.sendMessage(Message.raw(
                     "[DungeonGen] Registered " + result.spawnerDefinitions().size() + " spawner entities"
                 ).color("#55FFFF"));
+
+                // Create merchant NPC entities
+                if (!result.merchantDefinitions().isEmpty()) {
+                    var merchantSpawner = ZSquadPlugin.get().getMerchantNpcSpawner();
+                    merchantSpawner.destroyActive(store);
+                    merchantSpawner.spawnMerchants(store, result.merchantDefinitions(), config.origin());
+                    playerRef.sendMessage(Message.raw(
+                        "[DungeonGen] Spawned " + result.merchantDefinitions().size() + " merchant NPCs"
+                    ).color("#55FFFF"));
+                }
             } catch (Exception e) {
                 LOGGER.atSevere().log("[DungeonGen] Failed to create spawner entities: %s", e.getMessage());
                 playerRef.sendMessage(Message.raw("[DungeonGen] Spawner entity creation failed: " + e.getMessage()).color("#FF5555"));
@@ -490,6 +500,7 @@ public class DungeonGeneratePage extends InteractiveCustomUIPage<DungeonGenerate
             floatOrDefault(d.trapDensity, ld.trapDensity()),
             d.floorTraps != null ? d.floorTraps : ld.floorTraps(),
             floatOrDefault(d.secretWallChance, ld.secretWallChance()),
+            ld.merchantSpawnChance(),
             isBlank(d.entrancePlacement) ? ld.entrancePlacement() : d.entrancePlacement,
             floatOrDefault(d.exitDistance, ld.exitDistance()),
             floatOrDefault(d.enemyDensity, ld.enemyDensity()),

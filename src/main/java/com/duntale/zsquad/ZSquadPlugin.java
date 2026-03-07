@@ -23,6 +23,8 @@ import com.duntale.zsquad.loot.LootTableRegistry;
 import com.duntale.zsquad.loot.NpcLootSystem;
 import com.duntale.zsquad.db.DatabaseConnection;
 import com.duntale.zsquad.merchant.MerchantCommand;
+import com.duntale.zsquad.merchant.MerchantComponent;
+import com.duntale.zsquad.merchant.MerchantNpcSpawner;
 import com.duntale.zsquad.merchant.MerchantPriceRegistry;
 import com.duntale.zsquad.merchant.MerchantService;
 import com.duntale.zsquad.merchant.MerchantTooltipProvider;
@@ -92,6 +94,8 @@ public class ZSquadPlugin extends JavaPlugin {
     private SpawnerFactory spawnerFactory;
 
     // Merchant system
+    private ComponentType<EntityStore, MerchantComponent> merchantComponentType;
+    private MerchantNpcSpawner merchantNpcSpawner;
     private MerchantPriceRegistry merchantPriceRegistry;
     private MerchantService merchantService;
 
@@ -193,6 +197,28 @@ public class ZSquadPlugin extends JavaPlugin {
     }
 
     /**
+     * Returns the registered component type for {@link MerchantComponent}.
+     *
+     * @return the merchant component type
+     * @since 1.3.0
+     */
+    @Nonnull
+    public ComponentType<EntityStore, MerchantComponent> getMerchantComponentType() {
+        return merchantComponentType;
+    }
+
+    /**
+     * Returns the merchant NPC spawner for creating merchant entities from blueprints.
+     *
+     * @return the merchant NPC spawner
+     * @since 1.3.0
+     */
+    @Nonnull
+    public MerchantNpcSpawner getMerchantNpcSpawner() {
+        return merchantNpcSpawner;
+    }
+
+    /**
      * Returns the dungeon generation orchestrator.
      *
      * @return the generation orchestrator
@@ -268,6 +294,10 @@ public class ZSquadPlugin extends JavaPlugin {
         this.spawnerComponentType = this.getEntityStoreRegistry().registerComponent(SpawnerComponent.class, SpawnerComponent::new);
         this.spawnerFactory = new SpawnerFactory();
         this.getEntityStoreRegistry().registerSystem(new SpawnerTickSystem(leveledNpcSpawner));
+
+        // ── Merchant NPC System ──────────────────────────────────────
+        this.merchantComponentType = this.getEntityStoreRegistry().registerComponent(MerchantComponent.class, MerchantComponent::new);
+        this.merchantNpcSpawner = new MerchantNpcSpawner();
 
         // -- Dungeon Generation ----------------------------------------
         // Deferred to start() — DungeonSettingsConfig asset store not available during setup()
