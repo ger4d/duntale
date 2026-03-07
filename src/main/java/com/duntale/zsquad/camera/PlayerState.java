@@ -90,6 +90,16 @@ final class PlayerState {
     @Nullable volatile Vector3i targetInteractBlock;
 
     /**
+     * Entity reference of a merchant NPC that the player is walking toward.
+     * When the player arrives within interaction range, the merchant UI is opened
+     * directly (bypassing the NPC interaction system for click-move compatibility).
+     * {@code null} when no merchant interaction is pending.
+     *
+     * <p><b>Volatile</b>: written by event handlers, read by tick system.</p>
+     */
+    @Nullable volatile Ref<EntityStore> targetMerchantEntity;
+
+    /**
      * {@link System#nanoTime()} of the last successful attack chain execution.
      * Used together with the attack throttle constant to avoid wasteful
      * InteractionContext / InteractionChain allocation on every mouse event.

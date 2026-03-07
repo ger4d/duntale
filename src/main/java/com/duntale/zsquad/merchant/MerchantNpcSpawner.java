@@ -26,7 +26,7 @@ public class MerchantNpcSpawner {
     private static final HytaleLogger LOGGER = HytaleLogger.forEnclosingClass();
 
     /** NPC role name for dungeon merchants. */
-    private static final String MERCHANT_ROLE = "Klops_Merchant";
+    private static final String MERCHANT_ROLE = "Dungeon_Merchant";
 
     private List<Ref<EntityStore>> activeRefs = List.of();
 

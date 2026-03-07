@@ -52,7 +52,10 @@ public class MerchantService {
     private static final String COLOR_GRAY = "#AAAAAA";
 
     /** Default number of sell-zone slots in the merchant container. */
-    private static final short DEFAULT_SELL_SLOTS = 8;
+    private static final short DEFAULT_SELL_SLOTS = 3;
+
+    /** Maximum number of buy-zone slots in the merchant container. */
+    private static final int MAX_BUY_SLOTS = 24;
 
     /** Key for buy-price metadata on merchant display items. */
     static final String META_BUY_PRICE = "merchant_buy_price";
@@ -101,16 +104,21 @@ public class MerchantService {
         // Close existing session if any
         closeMerchant(playerId);
 
+        // Cap catalog to max buy slots
+        List<CatalogEntry> effectiveCatalog = catalog.size() > MAX_BUY_SLOTS
+                ? catalog.subList(0, MAX_BUY_SLOTS)
+                : catalog;
+
         // Create container
-        short buySlots = (short) catalog.size();
+        short buySlots = (short) effectiveCatalog.size();
         MerchantContainer container = new MerchantContainer(buySlots, DEFAULT_SELL_SLOTS,
                 priceRegistry, goldService);
         container.setPlayerId(playerId);
 
         // Populate buy zone with display items
         long currentGold = goldService.getBalance(playerId);
-        for (short i = 0; i < catalog.size(); i++) {
-            CatalogEntry entry = catalog.get(i);
+        for (short i = 0; i < effectiveCatalog.size(); i++) {
+            CatalogEntry entry = effectiveCatalog.get(i);
             ItemStack displayItem = createDisplayItem(entry, currentGold);
             if (displayItem != null) {
                 container.addItemStackToSlot(i, displayItem, false, false);
@@ -120,16 +128,43 @@ public class MerchantService {
         // Register change event for buy/sell handling
         MerchantWindow window = new MerchantWindow(container, playerId, this);
         container.registerChangeEvent(event ->
-                handleContainerChange(playerId, event, container, catalog, playerRef));
+                handleContainerChange(playerId, event, container, effectiveCatalog, playerRef));
 
         // Open the window
         player.getPageManager().setPageWithWindows(ref, store, Page.Bench, true, window);
 
         // Track session
-        openSessions.put(playerId, new MerchantSession(playerId, container, window, catalog));
+        openSessions.put(playerId, new MerchantSession(playerId, container, window, effectiveCatalog));
 
         LOGGER.at(Level.INFO).log("Opened merchant for %s with %d items",
                 playerRef.getUsername(), catalog.size());
+    }
+
+    /**
+     * Opens a merchant window with a full catalog. Used by dungeon merchant NPCs
+     * where the floor level is known from the {@link MerchantComponent}.
+     *
+     * @param player     the player component
+     * @param playerRef  the player reference
+     * @param ref        the player entity reference
+     * @param store      the entity store
+     * @param floorLevel the dungeon floor level (for future catalog filtering)
+     */
+    public void openMerchant(@Nonnull Player player,
+                             @Nonnull PlayerRef playerRef,
+                             @Nonnull Ref<EntityStore> ref,
+                             @Nonnull Store<EntityStore> store,
+                             int floorLevel) {
+        // Build catalog with floor level and cap to MAX_BUY_SLOTS
+        java.util.List<CatalogEntry> catalog = new java.util.ArrayList<>();
+        for (String itemId : priceRegistry.getItemIds()) {
+            catalog.add(CatalogEntry.of(itemId, floorLevel));
+        }
+        catalog.sort(java.util.Comparator.comparingLong(e -> priceRegistry.getBuyPrice(e.itemId())));
+        if (catalog.size() > MAX_BUY_SLOTS) {
+            catalog = catalog.subList(0, MAX_BUY_SLOTS);
+        }
+        openMerchant(player, playerRef, ref, store, catalog);
     }
 
     /**
@@ -336,7 +371,10 @@ public class MerchantService {
         // Add level metadata if this is a leveled item
         // (Merchant items don't have variance — they're display templates)
         if (entry.level() > 0) {
-            stack = stack.withMetadata("zsquad_weapon_level", Codec.INTEGER, entry.level());
+            String levelKey = entry.itemId().startsWith("Armor_")
+                    ? "zsquad_armor_level"
+                    : "zsquad_weapon_level";
+            stack = stack.withMetadata(levelKey, Codec.INTEGER, entry.level());
         }
 
         // Merchant-specific metadata for tooltip provider

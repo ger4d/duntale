@@ -32,6 +32,9 @@ import com.hypixel.hytale.server.core.universe.world.storage.EntityStore;
 import com.duntale.zsquad.rpg.RpgService;
 import com.duntale.zsquad.rpg.RpgStat;
 import com.duntale.zsquad.rpg.RpgStatEffects;
+import com.duntale.zsquad.merchant.MerchantComponent;
+import com.duntale.zsquad.merchant.MerchantService;
+import com.duntale.zsquad.ZSquadPlugin;
 import com.hypixel.hytale.protocol.SoundCategory;
 import com.hypixel.hytale.protocol.packets.entities.PlayAnimation;
 import com.hypixel.hytale.protocol.packets.interface_.Page;
@@ -369,6 +372,31 @@ public class ClickToMoveManager {
             }
         }
 
+        // ── Merchant-entity range check ──────────────────────────────
+        Ref<EntityStore> merchantEntity = state.targetMerchantEntity;
+        if (merchantEntity != null && merchantEntity.isValid()) {
+            TransformComponent mTransform = store.getComponent(merchantEntity, TransformComponent.getComponentType());
+            if (mTransform != null) {
+                Vector3d mPos = mTransform.getPosition();
+                double mdx = mPos.x - pos.x;
+                double mdz = mPos.z - pos.z;
+                double merchantDistSq = mdx * mdx + mdz * mdz;
+
+                if (merchantDistSq <= ATTACK_RANGE_SQ) {
+                    tryOpenMerchant(state, store, ref, merchantEntity);
+                    state.targetMerchantEntity = null;
+                    MovementHelper.stopMovement(state, store, ref, playerRef);
+                    return;
+                }
+
+                // Still walking toward merchant
+                state.targetPosition = new Vector3d(mPos.x, pos.y, mPos.z);
+                target = state.targetPosition;
+            } else {
+                state.targetMerchantEntity = null;
+            }
+        }
+
         // ── Block-interaction range check ────────────────────────────
         Vector3i interactBlock = state.targetInteractBlock;
         if (interactBlock != null) {
@@ -416,6 +444,32 @@ public class ClickToMoveManager {
         String anim = MovementHelper.chooseAnimation(transform, dx, dz);
         MovementHelper.updateAnimation(state, store, ref, anim);
         MovementHelper.setMovingStates(store, ref);
+    }
+
+    /**
+     * Opens the merchant UI for the player if not throttled.
+     */
+    private void tryOpenMerchant(@Nonnull PlayerState state,
+                                 @Nonnull Store<EntityStore> store,
+                                 @Nonnull Ref<EntityStore> playerRef,
+                                 @Nonnull Ref<EntityStore> merchantRef) {
+        long now = System.nanoTime();
+        if (now - state.lastAttackNanos < ATTACK_THROTTLE_NS) return;
+        state.lastAttackNanos = now;
+
+        MerchantComponent mc = store.getComponent(merchantRef, MerchantComponent.getComponentType());
+        if (mc == null) return;
+
+        PlayerRef pRef = store.getComponent(playerRef, PlayerRef.getComponentType());
+        if (pRef == null) return;
+
+        Player player = store.getComponent(playerRef, Player.getComponentType());
+        if (player == null) return;
+
+        MerchantService merchantService = ZSquadPlugin.get().getMerchantService();
+        if (merchantService == null) return;
+
+        merchantService.openMerchant(player, pRef, playerRef, store, mc.getFloorLevel());
     }
 
     /**
@@ -541,6 +595,14 @@ public class ClickToMoveManager {
                 && player.getPageManager().getCustomPage() != null;
         if (customPageOpen) return true;
 
+        // Check merchant session — the shop uses Page.Bench which can be
+        // incorrectly cleared by the stale recovery logic below.
+        PlayerRef pRef = store.getComponent(ref, PlayerRef.getComponentType());
+        if (pRef != null) {
+            MerchantService ms = ZSquadPlugin.get().getMerchantService();
+            if (ms != null && ms.hasOpenSession(pRef.getUuid())) return true;
+        }
+
         if (state.activePage != Page.None) {
             if (recoverStale) {
                 // Built-in page close is invisible to the server (client-side only).
@@ -590,6 +652,24 @@ public class ClickToMoveManager {
                 double edz = ePos.z - pos.z;
                 double entityDistSq = edx * edx + edz * edz;
 
+                // Check if entity is a merchant NPC → open merchant UI instead of attacking
+                MerchantComponent mc = store.getComponent(targetEntityRef, MerchantComponent.getComponentType());
+                if (mc != null) {
+                    LOGGER.atInfo().log("[CTM] Target is a merchant NPC");
+
+                    if (entityDistSq <= ATTACK_RANGE_SQ) {
+                        tryOpenMerchant(state, store, ref, targetEntityRef);
+                        MovementHelper.stopMovement(state, store, ref, playerRef);
+                        return;
+                    }
+                    // Walk toward merchant
+                    state.targetMerchantEntity = targetEntityRef;
+                    state.targetEntity = null;
+                    MovementHelper.beginMovement(state, playerRef, transform, store, ref, pos,
+                            new Vector3d(ePos.x, pos.y, ePos.z), getPlayerMoveSpeed(playerRef.getUuid()));
+                    return;
+                }
+
                 AttackHandler.AttackResult result = AttackHandler.tryAttack(
                         state, store, ref,
                         entityDistSq <= ATTACK_RANGE_SQ,
@@ -611,6 +691,7 @@ public class ClickToMoveManager {
 
         // No entity target — clear any previous entity/interact tracking
         state.targetEntity = null;
+        state.targetMerchantEntity = null;
         state.targetInteractBlock = null;
 
         if (targetBlock == null) return;

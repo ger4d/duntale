@@ -27,6 +27,7 @@ import com.duntale.zsquad.merchant.MerchantComponent;
 import com.duntale.zsquad.merchant.MerchantNpcSpawner;
 import com.duntale.zsquad.merchant.MerchantPriceRegistry;
 import com.duntale.zsquad.merchant.MerchantService;
+import com.duntale.zsquad.merchant.BuilderActionOpenDungeonMerchant;
 import com.duntale.zsquad.merchant.MerchantTooltipProvider;
 import com.duntale.zsquad.progression.CombatScalingSystem;
 import com.duntale.zsquad.progression.ProgressionRepository;
@@ -58,6 +59,7 @@ import com.hypixel.hytale.server.core.universe.PlayerRef;
 import com.hypixel.hytale.server.core.universe.Universe;
 import com.hypixel.hytale.server.core.universe.world.World;
 import com.hypixel.hytale.server.core.universe.world.storage.EntityStore;
+import com.hypixel.hytale.server.npc.NPCPlugin;
 
 import javax.annotation.Nonnull;
 import java.nio.file.Path;
@@ -219,6 +221,17 @@ public class ZSquadPlugin extends JavaPlugin {
     }
 
     /**
+     * Returns the merchant service for buy/sell transactions.
+     *
+     * @return the merchant service
+     * @since 1.3.0
+     */
+    @Nonnull
+    public MerchantService getMerchantService() {
+        return merchantService;
+    }
+
+    /**
      * Returns the dungeon generation orchestrator.
      *
      * @return the generation orchestrator
@@ -298,6 +311,8 @@ public class ZSquadPlugin extends JavaPlugin {
         // ── Merchant NPC System ──────────────────────────────────────
         this.merchantComponentType = this.getEntityStoreRegistry().registerComponent(MerchantComponent.class, MerchantComponent::new);
         this.merchantNpcSpawner = new MerchantNpcSpawner();
+        NPCPlugin.get().registerCoreComponentType("OpenDungeonMerchant",
+                BuilderActionOpenDungeonMerchant::new);
 
         // -- Dungeon Generation ----------------------------------------
         // Deferred to start() — DungeonSettingsConfig asset store not available during setup()
