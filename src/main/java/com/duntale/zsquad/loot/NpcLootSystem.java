@@ -34,6 +34,7 @@ import com.hypixel.hytale.server.npc.systems.NPCDamageSystems;
 
 import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
@@ -146,9 +147,20 @@ public class NpcLootSystem extends DeathSystems.OnDeathSystem {
         }
 
         // ── 4. Roll loot ─────────────────────────────────────────────
-        List<ItemStack> drops = lootTable.roll(levelData.level(), luckLevel);
-        if (drops.isEmpty()) {
+        List<ItemStack> rolledDrops = lootTable.roll(levelData.level(), luckLevel);
+        if (rolledDrops.isEmpty()) {
             return;
+        }
+
+        // ── 4b. Scale gold quantities linearly by NPC level ──────────
+        int npcLevel = levelData.level();
+        List<ItemStack> drops = new ArrayList<>(rolledDrops.size());
+        for (ItemStack drop : rolledDrops) {
+            if ("Gold_Coin".equals(drop.getItemId()) && npcLevel > 1) {
+                drops.add(new ItemStack(drop.getItemId(), drop.getQuantity() * npcLevel));
+            } else {
+                drops.add(drop);
+            }
         }
 
         // ── 5. Spawn item entities at the NPC's position ─────────────
