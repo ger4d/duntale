@@ -1,6 +1,7 @@
 package com.duntale.zsquad.merchant;
 
 import com.duntale.zsquad.economy.GoldService;
+import com.hypixel.hytale.codec.Codec;
 import com.hypixel.hytale.logger.HytaleLogger;
 import com.hypixel.hytale.server.core.inventory.ItemStack;
 import com.hypixel.hytale.server.core.inventory.container.SimpleItemContainer;
@@ -138,10 +139,14 @@ public class MerchantContainer extends SimpleItemContainer {
         }
 
         if (isSellSlot(slot)) {
-            // Only accept items the registry knows how to price
             if (itemStack == null) {
                 return true;
             }
+            // Reject buy-zone display items dragged directly into sell slots
+            if (itemStack.getFromMetadataOrNull(MerchantService.META_BUY_PRICE, Codec.LONG) != null) {
+                return true;
+            }
+            // Only accept items the registry knows how to price
             boolean sellable = priceRegistry.isSellable(itemStack.getItemId());
             if (!sellable) {
                 LOGGER.atInfo().log("[Merchant] Rejected unsellable item: '%s'", itemStack.getItemId());
