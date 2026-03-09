@@ -5,6 +5,8 @@ import com.hypixel.hytale.logger.HytaleLogger;
 
 import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
@@ -34,6 +36,7 @@ public class MerchantPriceRegistry {
     private static final long MIN_BUY_PRICE = 5L;
 
     private final Map<String, Long> buyPriceCache = new ConcurrentHashMap<>();
+    private final Map<String, Integer> itemLevelCache = new ConcurrentHashMap<>();
 
     /**
      * Populates the price cache from all weapons and armor in the scaling database.
@@ -49,8 +52,10 @@ public class MerchantPriceRegistry {
             if (isExcluded(row.quality()) || isNpcItem(row.name())) {
                 continue;
             }
+            String assetId = toAssetId(row.name());
             long price = computeWeaponPrice(row.itemLevel(), row.quality());
-            buyPriceCache.put(toAssetId(row.name()), price);
+            buyPriceCache.put(assetId, price);
+            itemLevelCache.put(assetId, row.itemLevel());
             weaponCount++;
         }
 
@@ -59,8 +64,10 @@ public class MerchantPriceRegistry {
             if (isExcluded(row.quality()) || isNpcItem(row.name())) {
                 continue;
             }
+            String assetId = toAssetId(row.name());
             long price = computeArmorPrice(row.itemLevel(), row.quality(), row.slot());
-            buyPriceCache.put(toAssetId(row.name()), price);
+            buyPriceCache.put(assetId, price);
+            itemLevelCache.put(assetId, row.itemLevel());
             armorCount++;
         }
 
@@ -118,6 +125,36 @@ public class MerchantPriceRegistry {
      */
     public boolean isSellable(@Nonnull String itemId) {
         return buyPriceCache.containsKey(itemId);
+    }
+
+    /**
+     * Returns the base item level for the given item from the scaling database.
+     *
+     * @param itemId the item asset ID
+     * @return the item level, or {@code 0} if the item is not in the registry
+     */
+    public int getItemLevel(@Nonnull String itemId) {
+        Integer level = itemLevelCache.get(itemId);
+        return level != null ? level : 0;
+    }
+
+    /**
+     * Returns all item IDs whose base level falls within the given range (inclusive).
+     *
+     * @param minLevel the minimum item level (inclusive)
+     * @param maxLevel the maximum item level (inclusive)
+     * @return a mutable list of matching item IDs
+     */
+    @Nonnull
+    public List<String> getItemsByLevelRange(int minLevel, int maxLevel) {
+        List<String> result = new ArrayList<>();
+        for (Map.Entry<String, Integer> entry : itemLevelCache.entrySet()) {
+            int level = entry.getValue();
+            if (level >= minLevel && level <= maxLevel) {
+                result.add(entry.getKey());
+            }
+        }
+        return result;
     }
 
     /**

@@ -119,7 +119,11 @@ public class MerchantContainer extends SimpleItemContainer {
             if (item == null) {
                 return true;
             }
-            long price = priceRegistry.getBuyPrice(item.getItemId());
+            // Read pre-computed buy price from item metadata
+            Long price = item.getFromMetadataOrNull(MerchantService.META_BUY_PRICE, Codec.LONG);
+            if (price == null || price <= 0) {
+                return true;
+            }
             return !goldService.hasEnough(playerId, price);
         }
 

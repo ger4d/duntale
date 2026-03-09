@@ -32,6 +32,7 @@ import com.hypixel.hytale.server.core.universe.world.storage.EntityStore;
 import com.duntale.zsquad.rpg.RpgService;
 import com.duntale.zsquad.rpg.RpgStat;
 import com.duntale.zsquad.rpg.RpgStatEffects;
+import com.duntale.zsquad.merchant.CatalogEntry;
 import com.duntale.zsquad.merchant.MerchantComponent;
 import com.duntale.zsquad.merchant.MerchantService;
 import com.duntale.zsquad.ZSquadPlugin;
@@ -469,7 +470,17 @@ public class ClickToMoveManager {
         MerchantService merchantService = ZSquadPlugin.get().getMerchantService();
         if (merchantService == null) return;
 
-        merchantService.openMerchant(player, pRef, playerRef, store, mc.getFloorLevel());
+        int floorLevel = mc.getFloorLevel();
+        java.util.List<CatalogEntry> catalog;
+        if (mc.hasCatalog()) {
+            catalog = mc.getCatalog();
+        } else {
+            long seed = merchantRef.hashCode();
+            catalog = ZSquadPlugin.get().getCatalogGenerator().generate(floorLevel, seed);
+            mc.setCatalog(catalog);
+        }
+
+        merchantService.openMerchant(player, pRef, playerRef, store, catalog);
     }
 
     /**

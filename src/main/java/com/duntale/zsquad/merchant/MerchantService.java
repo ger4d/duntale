@@ -52,10 +52,9 @@ public class MerchantService {
     private static final String COLOR_GRAY = "#AAAAAA";
 
     /** Default number of sell-zone slots in the merchant container. */
-    private static final short DEFAULT_SELL_SLOTS = 3;
+    private static final short DEFAULT_SELL_SLOTS = 2;
 
-    /** Maximum number of buy-zone slots in the merchant container. */
-    private static final int MAX_BUY_SLOTS = 24;
+
 
     /** Key for buy-price metadata on merchant display items. */
     static final String META_BUY_PRICE = "merchant_buy_price";
@@ -105,8 +104,8 @@ public class MerchantService {
         closeMerchant(playerId);
 
         // Cap catalog to max buy slots
-        List<CatalogEntry> effectiveCatalog = catalog.size() > MAX_BUY_SLOTS
-                ? catalog.subList(0, MAX_BUY_SLOTS)
+        List<CatalogEntry> effectiveCatalog = catalog.size() > CatalogGenerator.MAX_BUY_SLOTS
+                ? catalog.subList(0, CatalogGenerator.MAX_BUY_SLOTS)
                 : catalog;
 
         // Create container
@@ -138,33 +137,6 @@ public class MerchantService {
 
         LOGGER.at(Level.INFO).log("Opened merchant for %s with %d items",
                 playerRef.getUsername(), catalog.size());
-    }
-
-    /**
-     * Opens a merchant window with a full catalog. Used by dungeon merchant NPCs
-     * where the floor level is known from the {@link MerchantComponent}.
-     *
-     * @param player     the player component
-     * @param playerRef  the player reference
-     * @param ref        the player entity reference
-     * @param store      the entity store
-     * @param floorLevel the dungeon floor level (for future catalog filtering)
-     */
-    public void openMerchant(@Nonnull Player player,
-                             @Nonnull PlayerRef playerRef,
-                             @Nonnull Ref<EntityStore> ref,
-                             @Nonnull Store<EntityStore> store,
-                             int floorLevel) {
-        // Build catalog with floor level and cap to MAX_BUY_SLOTS
-        java.util.List<CatalogEntry> catalog = new java.util.ArrayList<>();
-        for (String itemId : priceRegistry.getItemIds()) {
-            catalog.add(CatalogEntry.of(itemId, floorLevel));
-        }
-        catalog.sort(java.util.Comparator.comparingLong(e -> priceRegistry.getBuyPrice(e.itemId())));
-        if (catalog.size() > MAX_BUY_SLOTS) {
-            catalog = catalog.subList(0, MAX_BUY_SLOTS);
-        }
-        openMerchant(player, playerRef, ref, store, catalog);
     }
 
     /**
@@ -252,7 +224,7 @@ public class MerchantService {
         }
 
         CatalogEntry entry = catalog.get(slot);
-        long price = priceRegistry.getBuyPrice(entry.itemId());
+        long price = entry.buyPrice();
         if (price <= 0) {
             return;
         }
@@ -365,7 +337,7 @@ public class MerchantService {
             return null;
         }
 
-        long buyPrice = priceRegistry.getBuyPrice(entry.itemId());
+        long buyPrice = entry.buyPrice();
         ItemStack stack = new ItemStack(item.getId(), 1);
 
         // Add level metadata if this is a leveled item

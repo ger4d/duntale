@@ -1,5 +1,6 @@
 package com.duntale.zsquad.merchant;
 
+import com.duntale.zsquad.ZSquadPlugin;
 import com.hypixel.hytale.component.Ref;
 import com.hypixel.hytale.component.Store;
 import com.hypixel.hytale.server.core.entity.entities.Player;
@@ -11,6 +12,7 @@ import com.hypixel.hytale.server.npc.role.Role;
 import com.hypixel.hytale.server.npc.sensorinfo.InfoProvider;
 
 import javax.annotation.Nonnull;
+import java.util.List;
 
 /**
  * NPC action that opens the dungeon custom merchant UI for the interacting player.
@@ -50,9 +52,22 @@ public class ActionOpenDungeonMerchant extends ActionBase {
         MerchantComponent merchantComp = store.getComponent(ref, MerchantComponent.getComponentType());
         int floorLevel = merchantComp != null ? merchantComp.getFloorLevel() : 1;
 
-        // Open the custom merchant UI
-        MerchantService merchantService = com.duntale.zsquad.ZSquadPlugin.get().getMerchantService();
-        merchantService.openMerchant(player, playerRefComp, playerReference, store, floorLevel);
+        // Generate catalog on first interaction, then reuse
+        ZSquadPlugin plugin = ZSquadPlugin.get();
+        MerchantService merchantService = plugin.getMerchantService();
+
+        List<CatalogEntry> catalog;
+        if (merchantComp != null && merchantComp.hasCatalog()) {
+            catalog = merchantComp.getCatalog();
+        } else {
+            long seed = ref.hashCode();
+            catalog = plugin.getCatalogGenerator().generate(floorLevel, seed);
+            if (merchantComp != null) {
+                merchantComp.setCatalog(catalog);
+            }
+        }
+
+        merchantService.openMerchant(player, playerRefComp, playerReference, store, catalog);
 
         return true;
     }

@@ -11,8 +11,6 @@ import com.hypixel.hytale.server.core.universe.world.World;
 import com.hypixel.hytale.server.core.universe.world.storage.EntityStore;
 
 import javax.annotation.Nonnull;
-import java.util.ArrayList;
-import java.util.Comparator;
 import java.util.List;
 
 /**
@@ -29,26 +27,23 @@ public class MerchantCommand extends AbstractPlayerCommand {
     private static final String COLOR_GREEN = "#55FF55";
     private static final String COLOR_RED = "#FF5555";
 
-    /** Maximum items shown in the merchant buy zone. */
-    private static final int MAX_CATALOG_SIZE = 24;
-
     private final MerchantService merchantService;
-    private final MerchantPriceRegistry priceRegistry;
+    private final CatalogGenerator catalogGenerator;
 
-    /** Lazily built catalog from the price registry. */
+    /** Lazily built catalog. */
     private List<CatalogEntry> catalog;
 
     /**
      * Creates a new /merchant debug command.
      *
-     * @param merchantService the merchant service for opening the window
-     * @param priceRegistry   the price registry for building the catalog
+     * @param merchantService  the merchant service for opening the window
+     * @param catalogGenerator the catalog generator for building test catalogs
      */
     public MerchantCommand(@Nonnull MerchantService merchantService,
-                           @Nonnull MerchantPriceRegistry priceRegistry) {
+                           @Nonnull CatalogGenerator catalogGenerator) {
         super("merchant", "Open a test merchant window");
         this.merchantService = merchantService;
-        this.priceRegistry = priceRegistry;
+        this.catalogGenerator = catalogGenerator;
     }
 
     @Override
@@ -68,7 +63,7 @@ public class MerchantCommand extends AbstractPlayerCommand {
     }
 
     /**
-     * Lazily builds the catalog from all priced items, sorted by price ascending.
+     * Lazily builds the catalog using the merchant catalog generator at floor level 15.
      */
     @Nonnull
     private List<CatalogEntry> getCatalog() {
@@ -76,20 +71,7 @@ public class MerchantCommand extends AbstractPlayerCommand {
             return catalog;
         }
 
-        List<CatalogEntry> entries = new ArrayList<>();
-        for (String itemId : priceRegistry.getItemIds()) {
-            entries.add(CatalogEntry.of(itemId));
-        }
-
-        // Sort by buy price so cheapest items appear first
-        entries.sort(Comparator.comparingLong(e -> priceRegistry.getBuyPrice(e.itemId())));
-
-        // Cap to avoid oversized container
-        if (entries.size() > MAX_CATALOG_SIZE) {
-            entries = new ArrayList<>(entries.subList(0, MAX_CATALOG_SIZE));
-        }
-
-        this.catalog = List.copyOf(entries);
+        this.catalog = catalogGenerator.generate(15, 42L);
         return this.catalog;
     }
 }

@@ -22,6 +22,7 @@ import com.duntale.zsquad.loot.LootTable;
 import com.duntale.zsquad.loot.LootTableRegistry;
 import com.duntale.zsquad.loot.NpcLootSystem;
 import com.duntale.zsquad.db.DatabaseConnection;
+import com.duntale.zsquad.merchant.CatalogGenerator;
 import com.duntale.zsquad.merchant.MerchantCommand;
 import com.duntale.zsquad.merchant.MerchantComponent;
 import com.duntale.zsquad.merchant.MerchantNpcSpawner;
@@ -99,6 +100,7 @@ public class ZSquadPlugin extends JavaPlugin {
     private ComponentType<EntityStore, MerchantComponent> merchantComponentType;
     private MerchantNpcSpawner merchantNpcSpawner;
     private MerchantPriceRegistry merchantPriceRegistry;
+    private CatalogGenerator catalogGenerator;
     private MerchantService merchantService;
 
     // HUD scoreboards per player
@@ -232,6 +234,16 @@ public class ZSquadPlugin extends JavaPlugin {
     }
 
     /**
+     * Returns the catalog generator for merchant inventories.
+     *
+     * @return the catalog generator
+     */
+    @Nonnull
+    public CatalogGenerator getCatalogGenerator() {
+        return catalogGenerator;
+    }
+
+    /**
      * Returns the dungeon generation orchestrator.
      *
      * @return the generation orchestrator
@@ -288,6 +300,7 @@ public class ZSquadPlugin extends JavaPlugin {
         // ── Merchant System ──────────────────────────────────────────
         this.merchantPriceRegistry = new MerchantPriceRegistry();
         this.merchantPriceRegistry.initialize(scalingDataCache);
+        this.catalogGenerator = new CatalogGenerator(merchantPriceRegistry);
         this.merchantService = new MerchantService(merchantPriceRegistry, goldService);
 
         // ── ECS Component Registration ───────────────────────────────
@@ -327,7 +340,7 @@ public class ZSquadPlugin extends JavaPlugin {
         this.getCommandRegistry().registerCommand(new GenerateCommand());
         this.getCommandRegistry().registerCommand(new GoldCommand(goldService));
         this.getCommandRegistry().registerCommand(new RpgStatCommand(rpgService));
-        this.getCommandRegistry().registerCommand(new MerchantCommand(merchantService, merchantPriceRegistry));
+        this.getCommandRegistry().registerCommand(new MerchantCommand(merchantService, catalogGenerator));
         this.getCommandRegistry().registerCommand(new StatAssignCommand(rpgService));
 
         // ── Player join/leave events ─────────────────────────────────
