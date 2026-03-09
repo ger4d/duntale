@@ -5,7 +5,6 @@ import com.hypixel.hytale.component.Ref;
 import com.hypixel.hytale.component.Store;
 import com.hypixel.hytale.logger.HytaleLogger;
 import com.hypixel.hytale.protocol.ClientCameraView;
-import com.hypixel.hytale.protocol.Position;
 import com.hypixel.hytale.protocol.Direction;
 import com.hypixel.hytale.protocol.MouseInputType;
 import com.hypixel.hytale.protocol.MovementForceRotationType;
@@ -345,16 +344,27 @@ public class CameraCommand extends CommandBase {
 
             float elevation = elevationArg.provided(context) ? elevationArg.get(context) : 0.0F;
 
-            ServerCameraSettings settings = createBaseOverheadSettings(distance, camRelative, clickMove);
-            settings.rotation = new Direction(yaw, ISO_PITCH, 0.0F);
+            // Adjust pitch and distance to compensate for elevation, keeping the
+            // orbit center at the player so the character stays screen-centered.
+            float pitch;
+            float effectiveDistance;
             if (elevation != 0.0F) {
-                settings.positionOffset = new Position(0.0, elevation, 0.0);
+                double horizDist = distance * Math.cos(-ISO_PITCH);
+                double vertDist  = distance * Math.sin(-ISO_PITCH) + elevation;
+                pitch = (float) -Math.atan2(vertDist, horizDist);
+                effectiveDistance = (float) Math.sqrt(horizDist * horizDist + vertDist * vertDist);
+            } else {
+                pitch = ISO_PITCH;
+                effectiveDistance = distance;
             }
+
+            ServerCameraSettings settings = createBaseOverheadSettings(effectiveDistance, camRelative, clickMove);
+            settings.rotation = new Direction(yaw, pitch, 0.0F);
 
             applyCamera(playerRef, settings);
             adjustMovementForMode(camRelative, store, ref, playerRef);
             enableOptionalFeatures(playerRef, world, store, ref, clickMove, xray,
-                    yaw, ISO_PITCH, distance);
+                    yaw, pitch, effectiveDistance);
 
             StringBuilder info = new StringBuilder("Switched to Isometric Camera (");
             info.append(angleKey.toUpperCase());
