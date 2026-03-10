@@ -317,12 +317,12 @@ public class ZSquadPlugin extends JavaPlugin {
         this.getEntityStoreRegistry().registerSystem(new PlayerDeathPenaltySystem(goldService));
 
         // ── Spawner System ───────────────────────────────────────────
-        this.spawnerComponentType = this.getEntityStoreRegistry().registerComponent(SpawnerComponent.class, SpawnerComponent::new);
+        this.spawnerComponentType = this.getEntityStoreRegistry().registerComponent(SpawnerComponent.class, "SpawnerComponent", SpawnerComponent.CODEC);
         this.spawnerFactory = new SpawnerFactory();
         this.getEntityStoreRegistry().registerSystem(new SpawnerTickSystem(leveledNpcSpawner));
 
         // ── Merchant NPC System ──────────────────────────────────────
-        this.merchantComponentType = this.getEntityStoreRegistry().registerComponent(MerchantComponent.class, MerchantComponent::new);
+        this.merchantComponentType = this.getEntityStoreRegistry().registerComponent(MerchantComponent.class, "MerchantComponent", MerchantComponent.CODEC);
         this.merchantNpcSpawner = new MerchantNpcSpawner();
         NPCPlugin.get().registerCoreComponentType("OpenDungeonMerchant",
                 BuilderActionOpenDungeonMerchant::new);

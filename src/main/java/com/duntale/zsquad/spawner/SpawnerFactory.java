@@ -5,7 +5,6 @@ import com.duntale.dungeongen.model.DungeonBlueprint;
 import com.duntale.dungeongen.model.SpawnerDefinition;
 import com.hypixel.hytale.component.AddReason;
 import com.hypixel.hytale.component.Holder;
-import com.hypixel.hytale.component.NonSerialized;
 import com.hypixel.hytale.component.Ref;
 import com.hypixel.hytale.component.RemoveReason;
 import com.hypixel.hytale.component.Store;
@@ -79,7 +78,6 @@ public class SpawnerFactory {
             holder.addComponent(SpawnerComponent.getComponentType(), new SpawnerComponent(def));
             holder.addComponent(TransformComponent.getComponentType(),
                     new TransformComponent(new Vector3d(wx + 0.5, wy, wz + 0.5), new Vector3f()));
-            holder.addComponent(EntityStore.REGISTRY.getNonSerializedComponentType(), NonSerialized.get());
 
             Ref<EntityStore> ref = store.addEntity(holder, AddReason.SPAWN);
             refs.add(ref);

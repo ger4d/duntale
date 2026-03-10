@@ -3,6 +3,9 @@ package com.duntale.zsquad.spawner;
 import com.duntale.dungeongen.config.Vec3i;
 import com.duntale.dungeongen.model.SpawnerDefinition;
 import com.duntale.zsquad.ZSquadPlugin;
+import com.hypixel.hytale.codec.Codec;
+import com.hypixel.hytale.codec.KeyedCodec;
+import com.hypixel.hytale.codec.builder.BuilderCodec;
 import com.hypixel.hytale.component.Component;
 import com.hypixel.hytale.component.ComponentType;
 import com.hypixel.hytale.component.Ref;
@@ -20,7 +23,33 @@ import java.util.List;
  */
 public class SpawnerComponent implements Component<EntityStore> {
 
-    private final SpawnerDefinition definition;
+    /** Codec for serialization during chunk save/load. Persists definition and runtime progress. */
+    @Nonnull
+    public static final BuilderCodec<SpawnerComponent> CODEC = BuilderCodec.builder(
+                    SpawnerComponent.class, SpawnerComponent::new)
+            .append(new KeyedCodec<>("Definition", SpawnerDefinitionCodec.INSTANCE),
+                    (c, v) -> c.definition = v,
+                    c -> c.definition)
+            .add()
+            .append(new KeyedCodec<>("State", Codec.STRING),
+                    (c, v) -> c.state = SpawnerState.valueOf(v),
+                    c -> c.state.name())
+            .add()
+            .append(new KeyedCodec<>("SpawnedCount", Codec.INTEGER),
+                    (c, v) -> c.spawnedCount = v,
+                    c -> c.spawnedCount)
+            .add()
+            .append(new KeyedCodec<>("SpawnBudgetRemaining", Codec.INTEGER),
+                    (c, v) -> c.spawnBudgetRemaining = v,
+                    c -> c.spawnBudgetRemaining)
+            .add()
+            .append(new KeyedCodec<>("SpawnOffsetIndex", Codec.INTEGER),
+                    (c, v) -> c.spawnOffsetIndex = v,
+                    c -> c.spawnOffsetIndex)
+            .add()
+            .build();
+
+    private SpawnerDefinition definition;
     private SpawnerState state;
     private int spawnedCount;
     private int spawnBudgetRemaining;
@@ -203,7 +232,11 @@ public class SpawnerComponent implements Component<EntityStore> {
     @Nullable
     @Override
     public Component<EntityStore> clone() {
-        // Spawners are non-serialized, no need to clone state
-        return new SpawnerComponent(definition);
+        SpawnerComponent copy = new SpawnerComponent(definition);
+        copy.state = this.state;
+        copy.spawnedCount = this.spawnedCount;
+        copy.spawnBudgetRemaining = this.spawnBudgetRemaining;
+        copy.spawnOffsetIndex = this.spawnOffsetIndex;
+        return copy;
     }
 }

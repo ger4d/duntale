@@ -1,6 +1,9 @@
 package com.duntale.zsquad.merchant;
 
 import com.duntale.zsquad.ZSquadPlugin;
+import com.hypixel.hytale.codec.Codec;
+import com.hypixel.hytale.codec.KeyedCodec;
+import com.hypixel.hytale.codec.builder.BuilderCodec;
 import com.hypixel.hytale.component.Component;
 import com.hypixel.hytale.component.ComponentType;
 import com.hypixel.hytale.server.core.universe.world.storage.EntityStore;
@@ -17,7 +20,16 @@ import java.util.List;
  */
 public class MerchantComponent implements Component<EntityStore> {
 
-    private final int floorLevel;
+    /** Codec for serialization during chunk save/load. Only persists floor level; catalog is regenerated. */
+    @Nonnull
+    public static final BuilderCodec<MerchantComponent> CODEC = BuilderCodec.builder(
+                    MerchantComponent.class, MerchantComponent::new)
+            .append(new KeyedCodec<>("FloorLevel", Codec.INTEGER),
+                    (c, v) -> c.floorLevel = v, c -> c.floorLevel)
+            .add()
+            .build();
+
+    private int floorLevel;
 
     /** Lazily generated catalog — {@code null} until first merchant interaction. */
     @Nullable
