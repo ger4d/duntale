@@ -8,6 +8,10 @@ import com.duntale.zsquad.command.DGiveCommand;
 import com.duntale.zsquad.command.DListCommand;
 import com.duntale.zsquad.command.DSpawnCommand;
 import com.duntale.zsquad.command.GenerateCommand;
+import com.duntale.zsquad.companion.CompanionCommand;
+import com.duntale.zsquad.companion.CompanionComponent;
+import com.duntale.zsquad.companion.CompanionDeathProtectionSystem;
+import com.duntale.zsquad.companion.CompanionService;
 import com.duntale.dungeongen.generator.GenerationOrchestrator;
 import com.duntale.dungeongen.util.BlockResolver;
 import com.duntale.zsquad.economy.CurrencyDrop;
@@ -51,6 +55,7 @@ import com.hypixel.hytale.component.ComponentType;
 import com.hypixel.hytale.component.Ref;
 import com.hypixel.hytale.logger.HytaleLogger;
 import com.hypixel.hytale.server.core.entity.entities.Player;
+import com.hypixel.hytale.server.core.event.events.player.AddPlayerToWorldEvent;
 import com.hypixel.hytale.server.core.event.events.player.PlayerConnectEvent;
 import com.hypixel.hytale.server.core.event.events.player.PlayerDisconnectEvent;
 import com.hypixel.hytale.server.core.event.events.player.PlayerReadyEvent;
@@ -102,6 +107,10 @@ public class ZSquadPlugin extends JavaPlugin {
     private MerchantPriceRegistry merchantPriceRegistry;
     private CatalogGenerator catalogGenerator;
     private MerchantService merchantService;
+
+    // Companion system
+    private ComponentType<EntityStore, CompanionComponent> companionComponentType;
+    private CompanionService companionService;
 
     // HUD scoreboards per player
     private final Map<UUID, ZSquadScoreboard> scoreboards = new ConcurrentHashMap<>();
@@ -244,6 +253,17 @@ public class ZSquadPlugin extends JavaPlugin {
     }
 
     /**
+     * Returns the registered component type for {@link CompanionComponent}.
+     *
+     * @return the companion component type
+     * @since 1.4.0
+     */
+    @Nonnull
+    public ComponentType<EntityStore, CompanionComponent> getCompanionComponentType() {
+        return companionComponentType;
+    }
+
+    /**
      * Returns the dungeon generation orchestrator.
      *
      * @return the generation orchestrator
@@ -327,6 +347,13 @@ public class ZSquadPlugin extends JavaPlugin {
         NPCPlugin.get().registerCoreComponentType("OpenDungeonMerchant",
                 BuilderActionOpenDungeonMerchant::new);
 
+        // ── Companion System ─────────────────────────────────────────
+        this.companionComponentType = this.getEntityStoreRegistry().registerComponent(
+                CompanionComponent.class, "CompanionComponent", CompanionComponent.CODEC);
+        this.getEntityStoreRegistry().registerSystem(new CompanionDeathProtectionSystem(companionComponentType));
+        this.companionService = new CompanionService(
+                leveledNpcSpawner, progressionService, npcLevelRegistry, companionComponentType);
+
         // -- Dungeon Generation ----------------------------------------
         // Deferred to start() — DungeonSettingsConfig asset store not available during setup()
 
@@ -342,11 +369,13 @@ public class ZSquadPlugin extends JavaPlugin {
         this.getCommandRegistry().registerCommand(new RpgStatCommand(rpgService));
         this.getCommandRegistry().registerCommand(new MerchantCommand(merchantService, catalogGenerator));
         this.getCommandRegistry().registerCommand(new StatAssignCommand(rpgService));
+        this.getCommandRegistry().registerCommand(new CompanionCommand(companionService));
 
         // ── Player join/leave events ─────────────────────────────────
         this.getEventRegistry().register(PlayerConnectEvent.class, this::onPlayerConnect);
         this.getEventRegistry().registerGlobal(PlayerReadyEvent.class, this::onPlayerReady);
         this.getEventRegistry().register(PlayerDisconnectEvent.class, this::onPlayerDisconnect);
+        this.getEventRegistry().registerGlobal(AddPlayerToWorldEvent.class, this::onPlayerAddedToWorld);
 
         // ── Level-up listener: grant stat points + update scoreboard ──
         this.progressionService.setLevelUpListener((playerId, newLevel) -> {
@@ -442,8 +471,16 @@ public class ZSquadPlugin extends JavaPlugin {
         rpgService.onPlayerLeave(uuid);
         progressionService.onPlayerLeave(uuid);
         merchantService.closeMerchant(uuid);
+        companionService.dismiss(uuid);
         scoreboards.remove(uuid);
         LOGGER.atFine().log("Evicted RPG + progression data for %s", uuid);
+    }
+
+    private void onPlayerAddedToWorld(@Nonnull AddPlayerToWorldEvent event) {
+        PlayerRef playerRefComponent = event.getHolder().getComponent(PlayerRef.getComponentType());
+        if (playerRefComponent == null) return;
+        // Dismiss companion from previous world when player changes worlds
+        companionService.dismiss(playerRefComponent.getUuid());
     }
 
     /**
