@@ -12,6 +12,7 @@ import com.duntale.zsquad.companion.CompanionCommand;
 import com.duntale.zsquad.companion.CompanionComponent;
 import com.duntale.zsquad.companion.CompanionDeathProtectionSystem;
 import com.duntale.zsquad.companion.CompanionService;
+import com.duntale.zsquad.companion.CompanionTrapImmunitySystem;
 import com.duntale.dungeongen.generator.GenerationOrchestrator;
 import com.duntale.dungeongen.util.BlockResolver;
 import com.duntale.zsquad.economy.CurrencyDrop;
@@ -351,6 +352,7 @@ public class ZSquadPlugin extends JavaPlugin {
         this.companionComponentType = this.getEntityStoreRegistry().registerComponent(
                 CompanionComponent.class, "CompanionComponent", CompanionComponent.CODEC);
         this.getEntityStoreRegistry().registerSystem(new CompanionDeathProtectionSystem(companionComponentType));
+        this.getEntityStoreRegistry().registerSystem(new CompanionTrapImmunitySystem(companionComponentType));
         this.companionService = new CompanionService(
                 leveledNpcSpawner, progressionService, npcLevelRegistry, companionComponentType);
 
