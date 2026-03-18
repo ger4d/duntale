@@ -3,6 +3,7 @@ package com.duntale.zsquad.camera;
 import com.hypixel.hytale.component.Ref;
 import com.hypixel.hytale.component.Store;
 import com.hypixel.hytale.math.util.ChunkUtil;
+import com.duntale.zsquad.companion.CompanionComponent;
 import com.hypixel.hytale.math.vector.Vector3d;
 import com.hypixel.hytale.math.vector.Vector3i;
 import com.hypixel.hytale.protocol.InteractionType;
@@ -91,6 +92,7 @@ final class TargetResolver {
         for (Ref<EntityStore> entityRef : nearby) {
             if (entityRef == null || !entityRef.isValid()) continue;
             if (entityRef.equals(playerRef)) continue;
+            if (store.getComponent(entityRef, CompanionComponent.getComponentType()) != null) continue;
 
             BoundingBox bb = store.getComponent(entityRef, BoundingBox.getComponentType());
             if (bb == null) continue;

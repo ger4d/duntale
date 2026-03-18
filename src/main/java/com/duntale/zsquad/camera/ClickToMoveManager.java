@@ -33,6 +33,7 @@ import com.duntale.zsquad.rpg.RpgService;
 import com.duntale.zsquad.rpg.RpgStat;
 import com.duntale.zsquad.rpg.RpgStatEffects;
 import com.duntale.zsquad.merchant.CatalogEntry;
+import com.duntale.zsquad.companion.CompanionComponent;
 import com.duntale.zsquad.merchant.MerchantComponent;
 import com.duntale.zsquad.merchant.MerchantService;
 import com.duntale.zsquad.ZSquadPlugin;
@@ -652,6 +653,23 @@ public class ClickToMoveManager {
 
         Vector3d pos = transform.getPosition();
         int playerFootY = MathUtil.floor(pos.y) - 1;
+
+        // Skip any companion - not a valid attack target (co-op friendly).
+        // Redirect the click to the block below the companion so the player walks there.
+        if (targetEntityRef != null) {
+            if (store.getComponent(targetEntityRef, CompanionComponent.getComponentType()) != null) {
+                TransformComponent cTransform = store.getComponent(
+                        targetEntityRef, TransformComponent.getComponentType());
+                if (cTransform != null) {
+                    Vector3d cPos = cTransform.getPosition();
+                    targetBlock = new Vector3i(
+                            MathUtil.floor(cPos.x),
+                            MathUtil.floor(cPos.y) - 1,
+                            MathUtil.floor(cPos.z));
+                }
+                targetEntityRef = null;
+            }
+        }
 
         // ── Entity targeting ─────────────────────────────────────────
         if (targetEntityRef != null) {
