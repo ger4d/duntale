@@ -170,6 +170,8 @@ public class CompanionService {
     /**
      * Dismisses a player's active companion, removing it from the world.
      *
+     * <p>Safe to call from any thread — store operations are dispatched to the WorldThread.
+     *
      * @param playerId the player's UUID
      * @return {@code true} if a companion was dismissed, {@code false} if none existed
      */
@@ -179,22 +181,21 @@ public class CompanionService {
             return false;
         }
 
-        Store<EntityStore> store = companion.world().getEntityStore().getStore();
-
-        // Remove player from flock (if still in that world)
-        // We don't have the player ref here, so the flock membership will be
-        // cleaned up when the flock entity is dissolved after NPC removal.
-
-        // Remove the companion NPC entity
+        World world = companion.world();
         Ref<EntityStore> npcRef = companion.npcRef();
-        if (npcRef.isValid()) {
-            // Clean up NPC level registry
-            UUIDComponent uuidComp = store.getComponent(npcRef, UUIDComponent.getComponentType());
-            if (uuidComp != null) {
-                npcLevelRegistry.remove(uuidComp.getUuid());
+
+        // Dispatch store operations to WorldThread — this method may be called
+        // from non-world threads (e.g., PlayerDisconnectEvent on ServerWorkerGroup).
+        world.execute(() -> {
+            Store<EntityStore> store = world.getEntityStore().getStore();
+            if (npcRef.isValid()) {
+                UUIDComponent uuidComp = store.getComponent(npcRef, UUIDComponent.getComponentType());
+                if (uuidComp != null) {
+                    npcLevelRegistry.remove(uuidComp.getUuid());
+                }
+                store.removeEntity(npcRef, RemoveReason.REMOVE);
             }
-            store.removeEntity(npcRef, RemoveReason.REMOVE);
-        }
+        });
 
         LOGGER.atInfo().log("Dismissed companion for player %s", playerId);
         return true;
@@ -211,6 +212,9 @@ public class CompanionService {
      */
     public boolean dismiss(@Nonnull Store<EntityStore> store, @Nonnull Ref<EntityStore> playerRef,
                            @Nonnull UUID playerId) {
+
+        LOGGER.atInfo().log("Attempting to dismiss companion for player %s", playerId);
+
         ActiveCompanion companion = activeCompanions.remove(playerId);
         if (companion == null) {
             return false;
@@ -258,13 +262,128 @@ public class CompanionService {
     }
 
     /**
+     * Reconnects a player's companion flock after flock dissolution (e.g., player death/respawn
+     * or same-world re-join). Requires an existing {@code activeCompanions} entry.
+     *
+     * <p>No-op if the player has no tracked companion, the companion NPC ref is invalid,
+     * or the player and companion are already in the same flock.
+     *
+     * @param store     the entity store (must be on WorldThread)
+     * @param playerRef the player's entity reference
+     * @param playerId  the player's UUID
+     */
+    public void reconnect(
+            @Nonnull Store<EntityStore> store,
+            @Nonnull Ref<EntityStore> playerRef,
+            @Nonnull UUID playerId
+    ) {
+        ActiveCompanion existing = activeCompanions.get(playerId);
+        if (existing == null) { 
+            LOGGER.atWarning().log("No existing companion to reconnect for player %s", playerId);
+            return;
+        }
+
+        Ref<EntityStore> npcRef = existing.npcRef();
+        if (!npcRef.isValid()) {
+            LOGGER.atWarning().log("Unable to reconnect to NPC Entity (no longer valid)");
+            activeCompanions.remove(playerId);
+            return;
+        }
+
+        // Already in same flock? No-op.
+        FlockMembership npcMembership = store.getComponent(npcRef, FlockMembership.getComponentType());
+        FlockMembership playerMembership = store.getComponent(playerRef, FlockMembership.getComponentType());
+        if (npcMembership != null && playerMembership != null
+                && npcMembership.getFlockId().equals(playerMembership.getFlockId())) {
+            LOGGER.atInfo().log("Player and companion are already in the same flock - no reconnect needed");
+            return;
+        }
+
+        // Verify companion still belongs to this player
+        CompanionComponent comp = store.getComponent(npcRef, companionComponentType);
+        if (comp == null || !playerId.equals(comp.getOwnerUuid())) {
+            LOGGER.atWarning().log("Companion NPC no longer has a valid CompanionComponent - removing from tracking");
+            activeCompanions.remove(playerId);
+            return;
+        }
+
+        // Create new flock
+        NPCEntity npcEntity = store.getComponent(npcRef, NPCEntity.getComponentType());
+        if (npcEntity == null || npcEntity.getRole() == null) {
+            LOGGER.atWarning().log("Companion NPC no longer has a valid NPCEntity or role - removing from tracking");
+            activeCompanions.remove(playerId);
+            return;
+        }
+
+        Ref<EntityStore> flockRef = FlockPlugin.createFlock(store, npcEntity.getRole());
+        FlockMembershipSystems.join(playerRef, flockRef, store);
+        FlockMembershipSystems.join(npcRef, flockRef, store);
+
+        // Update cache
+        activeCompanions.put(playerId, new ActiveCompanion(
+                npcRef, flockRef, existing.world(), existing.roleName(), existing.level()));
+
+        LOGGER.atInfo().log("Reconnected companion %s for player %s", existing.roleName(), playerId);
+    }
+
+    /**
+     * Rebuilds companion tracking and flock from live entity data, used when no
+     * {@code activeCompanions} entry exists (e.g., server restart, state desync).
+     *
+     * <p>If an entry already exists, delegates to {@link #reconnect(Store, Ref, UUID)}.
+     *
+     * @param store        the entity store (must be on WorldThread)
+     * @param companionRef the companion NPC's entity reference
+     * @param playerRef    the owner player's entity reference
+     * @param comp         the companion component read from the NPC entity
+     */
+    public void reconnectFromEntity(
+            @Nonnull Store<EntityStore> store,
+            @Nonnull Ref<EntityStore> companionRef,
+            @Nonnull Ref<EntityStore> playerRef,
+            @Nonnull CompanionComponent comp
+    ) {
+        UUID playerId = comp.getOwnerUuid();
+
+        // Already in same flock? Just rebuild tracking, don't create new flock.
+        FlockMembership npcMembership = store.getComponent(companionRef, FlockMembership.getComponentType());
+        FlockMembership playerMembership = store.getComponent(playerRef, FlockMembership.getComponentType());
+
+        Ref<EntityStore> flockRef;
+        if (npcMembership != null && playerMembership != null
+                && npcMembership.getFlockId().equals(playerMembership.getFlockId())) {
+            flockRef = npcMembership.getFlockRef();
+        } else {
+            // Create new flock
+            NPCEntity npcEntity = store.getComponent(companionRef, NPCEntity.getComponentType());
+            if (npcEntity == null || npcEntity.getRole() == null) {
+                LOGGER.atWarning().log("Companion NPC no longer has a valid NPCEntity or role - cannot reconnect");
+                activeCompanions.remove(playerId);
+                return;
+            }
+
+            flockRef = FlockPlugin.createFlock(store, npcEntity.getRole());
+            FlockMembershipSystems.join(playerRef, flockRef, store);
+            FlockMembershipSystems.join(companionRef, flockRef, store);
+        }
+
+        // Build cache entry from entity data
+        World world = store.getExternalData().getWorld();
+        activeCompanions.put(playerId, new ActiveCompanion(
+                companionRef, flockRef, world, comp.getRoleName(), comp.getLevel()));
+
+        LOGGER.atInfo().log("Recovered companion %s for player %s from entity data",
+                comp.getRoleName(), playerId);
+    }
+
+    /**
      * Auto-cleans a stale companion entry if the NPC ref is no longer valid.
      */
     private void cleanIfInvalid(@Nonnull UUID playerId) {
         ActiveCompanion companion = activeCompanions.get(playerId);
         if (companion != null && !companion.npcRef().isValid()) {
             activeCompanions.remove(playerId);
-            LOGGER.atFine().log("Auto-cleaned stale companion entry for player %s", playerId);
+            LOGGER.atWarning().log("Auto-cleaned stale companion entry for player %s", playerId);
         }
     }
 }

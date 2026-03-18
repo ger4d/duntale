@@ -11,6 +11,8 @@ import com.duntale.zsquad.command.GenerateCommand;
 import com.duntale.zsquad.companion.CompanionCommand;
 import com.duntale.zsquad.companion.CompanionComponent;
 import com.duntale.zsquad.companion.CompanionDeathProtectionSystem;
+import com.duntale.zsquad.companion.CompanionReloadSystem;
+import com.duntale.zsquad.companion.CompanionRespawnSystem;
 import com.duntale.zsquad.companion.CompanionService;
 import com.duntale.zsquad.companion.CompanionTrapImmunitySystem;
 import com.duntale.dungeongen.generator.GenerationOrchestrator;
@@ -56,7 +58,6 @@ import com.hypixel.hytale.component.ComponentType;
 import com.hypixel.hytale.component.Ref;
 import com.hypixel.hytale.logger.HytaleLogger;
 import com.hypixel.hytale.server.core.entity.entities.Player;
-import com.hypixel.hytale.server.core.event.events.player.AddPlayerToWorldEvent;
 import com.hypixel.hytale.server.core.event.events.player.PlayerConnectEvent;
 import com.hypixel.hytale.server.core.event.events.player.PlayerDisconnectEvent;
 import com.hypixel.hytale.server.core.event.events.player.PlayerReadyEvent;
@@ -355,6 +356,8 @@ public class ZSquadPlugin extends JavaPlugin {
         this.getEntityStoreRegistry().registerSystem(new CompanionTrapImmunitySystem(companionComponentType));
         this.companionService = new CompanionService(
                 leveledNpcSpawner, progressionService, npcLevelRegistry, companionComponentType);
+        this.getEntityStoreRegistry().registerSystem(new CompanionRespawnSystem(companionService));
+        this.getEntityStoreRegistry().registerSystem(new CompanionReloadSystem(companionComponentType, companionService));
 
         // -- Dungeon Generation ----------------------------------------
         // Deferred to start() — DungeonSettingsConfig asset store not available during setup()
@@ -377,7 +380,6 @@ public class ZSquadPlugin extends JavaPlugin {
         this.getEventRegistry().register(PlayerConnectEvent.class, this::onPlayerConnect);
         this.getEventRegistry().registerGlobal(PlayerReadyEvent.class, this::onPlayerReady);
         this.getEventRegistry().register(PlayerDisconnectEvent.class, this::onPlayerDisconnect);
-        this.getEventRegistry().registerGlobal(AddPlayerToWorldEvent.class, this::onPlayerAddedToWorld);
 
         // ── Level-up listener: grant stat points + update scoreboard ──
         this.progressionService.setLevelUpListener((playerId, newLevel) -> {
@@ -466,6 +468,17 @@ public class ZSquadPlugin extends JavaPlugin {
         player.getHudManager().setCustomHud(playerRef, scoreboard);
         scoreboard.updateData(buildScoreboardData(uuid));
         scoreboards.put(uuid, scoreboard);
+
+        // Companion reconnect
+        CompanionService.ActiveCompanion companion = companionService.getActiveCompanion(uuid);
+        if (companion != null) {
+            World currentWorld = ref.getStore().getExternalData().getWorld();
+            if (!companion.world().equals(currentWorld)) {
+                companionService.dismiss(uuid);
+            } else {
+                companionService.reconnect(ref.getStore(), ref, uuid);
+            }
+        }
     }
 
     private void onPlayerDisconnect(@Nonnull PlayerDisconnectEvent event) {
@@ -473,16 +486,11 @@ public class ZSquadPlugin extends JavaPlugin {
         rpgService.onPlayerLeave(uuid);
         progressionService.onPlayerLeave(uuid);
         merchantService.closeMerchant(uuid);
-        companionService.dismiss(uuid);
+        // TODO: We need to decide how to dungeons will be generated 
+        // (e.g. same world instance vs. separate instances) before we can implement proper cleanup of active dungeons on disconnect
+        // companionService.dismiss(uuid);
         scoreboards.remove(uuid);
         LOGGER.atFine().log("Evicted RPG + progression data for %s", uuid);
-    }
-
-    private void onPlayerAddedToWorld(@Nonnull AddPlayerToWorldEvent event) {
-        PlayerRef playerRefComponent = event.getHolder().getComponent(PlayerRef.getComponentType());
-        if (playerRefComponent == null) return;
-        // Dismiss companion from previous world when player changes worlds
-        companionService.dismiss(playerRefComponent.getUuid());
     }
 
     /**
