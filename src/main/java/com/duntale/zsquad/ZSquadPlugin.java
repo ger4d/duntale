@@ -11,7 +11,7 @@ import com.duntale.zsquad.command.GenerateCommand;
 import com.duntale.zsquad.companion.CompanionCommand;
 import com.duntale.zsquad.companion.CompanionComponent;
 import com.duntale.zsquad.companion.CompanionDeathProtectionSystem;
-import com.duntale.zsquad.companion.CompanionReloadSystem;
+import com.duntale.zsquad.companion.CompanionRepository;
 import com.duntale.zsquad.companion.CompanionRespawnSystem;
 import com.duntale.zsquad.companion.CompanionService;
 import com.duntale.zsquad.companion.CompanionTrapImmunitySystem;
@@ -61,6 +61,7 @@ import com.hypixel.hytale.server.core.entity.entities.Player;
 import com.hypixel.hytale.server.core.event.events.player.PlayerConnectEvent;
 import com.hypixel.hytale.server.core.event.events.player.PlayerDisconnectEvent;
 import com.hypixel.hytale.server.core.event.events.player.PlayerReadyEvent;
+import com.hypixel.hytale.server.core.event.events.player.RemovedPlayerFromWorldEvent;
 import com.hypixel.hytale.server.core.plugin.JavaPlugin;
 import com.hypixel.hytale.server.core.plugin.JavaPluginInit;
 import com.hypixel.hytale.server.core.universe.PlayerRef;
@@ -112,6 +113,7 @@ public class ZSquadPlugin extends JavaPlugin {
 
     // Companion system
     private ComponentType<EntityStore, CompanionComponent> companionComponentType;
+    private CompanionRepository companionRepository;
     private CompanionService companionService;
 
     // HUD scoreboards per player
@@ -302,11 +304,16 @@ public class ZSquadPlugin extends JavaPlugin {
             ProgressionRepository progressionRepo = new ProgressionRepository(databaseConnection);
             progressionRepo.initialize();
             this.progressionService = new ProgressionService(progressionRepo);
+
+            CompanionRepository companionRepo = new CompanionRepository(databaseConnection);
+            companionRepo.initialize();
+            this.companionRepository = companionRepo;
         } catch (SQLException e) {
             LOGGER.atSevere().log("Failed to initialize RPG database: %s", e.getMessage());
             this.rpgService = new RpgService(new RpgRepository(databaseConnection));
             this.goldService = new GoldService(new GoldRepository(databaseConnection));
             this.progressionService = new ProgressionService(new ProgressionRepository(databaseConnection));
+            this.companionRepository = new CompanionRepository(databaseConnection);
         }
         this.clickToMoveManager.setRpgService(rpgService);
 
@@ -354,10 +361,11 @@ public class ZSquadPlugin extends JavaPlugin {
                 CompanionComponent.class, "CompanionComponent", CompanionComponent.CODEC);
         this.getEntityStoreRegistry().registerSystem(new CompanionDeathProtectionSystem(companionComponentType));
         this.getEntityStoreRegistry().registerSystem(new CompanionTrapImmunitySystem(companionComponentType));
+
         this.companionService = new CompanionService(
-                leveledNpcSpawner, progressionService, npcLevelRegistry, companionComponentType);
+                leveledNpcSpawner, progressionService, npcLevelRegistry,
+                companionComponentType, companionRepository);
         this.getEntityStoreRegistry().registerSystem(new CompanionRespawnSystem(companionService));
-        this.getEntityStoreRegistry().registerSystem(new CompanionReloadSystem(companionComponentType, companionService));
 
         // -- Dungeon Generation ----------------------------------------
         // Deferred to start() — DungeonSettingsConfig asset store not available during setup()
@@ -380,6 +388,7 @@ public class ZSquadPlugin extends JavaPlugin {
         this.getEventRegistry().register(PlayerConnectEvent.class, this::onPlayerConnect);
         this.getEventRegistry().registerGlobal(PlayerReadyEvent.class, this::onPlayerReady);
         this.getEventRegistry().register(PlayerDisconnectEvent.class, this::onPlayerDisconnect);
+        this.getEventRegistry().registerGlobal(RemovedPlayerFromWorldEvent.class, this::onPlayerRemovedFromWorld);
 
         // ── Level-up listener: grant stat points + update scoreboard ──
         this.progressionService.setLevelUpListener((playerId, newLevel) -> {
@@ -469,16 +478,17 @@ public class ZSquadPlugin extends JavaPlugin {
         scoreboard.updateData(buildScoreboardData(uuid));
         scoreboards.put(uuid, scoreboard);
 
-        // Companion reconnect
-        CompanionService.ActiveCompanion companion = companionService.getActiveCompanion(uuid);
-        if (companion != null) {
-            World currentWorld = ref.getStore().getExternalData().getWorld();
-            if (!companion.world().equals(currentWorld)) {
-                companionService.dismiss(uuid);
-            } else {
-                companionService.reconnect(ref.getStore(), ref, uuid);
-            }
-        }
+        // Auto-spawn companion using stored preference
+        World currentWorld = ref.getStore().getExternalData().getWorld();
+        companionService.spawn(currentWorld, uuid);
+    }
+
+    private void onPlayerRemovedFromWorld(@Nonnull RemovedPlayerFromWorldEvent event) {
+        PlayerRef playerRef = (PlayerRef) event.getHolder().getComponent(PlayerRef.getComponentType());
+        if (playerRef == null) return;
+
+        UUID uuid = playerRef.getUuid();
+        companionService.dismiss(uuid);
     }
 
     private void onPlayerDisconnect(@Nonnull PlayerDisconnectEvent event) {
@@ -486,9 +496,6 @@ public class ZSquadPlugin extends JavaPlugin {
         rpgService.onPlayerLeave(uuid);
         progressionService.onPlayerLeave(uuid);
         merchantService.closeMerchant(uuid);
-        // TODO: We need to decide how to dungeons will be generated 
-        // (e.g. same world instance vs. separate instances) before we can implement proper cleanup of active dungeons on disconnect
-        // companionService.dismiss(uuid);
         scoreboards.remove(uuid);
         LOGGER.atFine().log("Evicted RPG + progression data for %s", uuid);
     }

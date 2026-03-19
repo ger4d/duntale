@@ -4,13 +4,16 @@ import com.duntale.zsquad.progression.LeveledNpcSpawner;
 import com.duntale.zsquad.progression.NpcLevelRegistry;
 import com.duntale.zsquad.progression.ProgressionService;
 import com.hypixel.hytale.component.ComponentType;
+import com.hypixel.hytale.component.NonSerialized;
 import com.hypixel.hytale.component.Ref;
 import com.hypixel.hytale.component.RemoveReason;
 import com.hypixel.hytale.component.Store;
 import com.hypixel.hytale.logger.HytaleLogger;
 import com.hypixel.hytale.math.vector.Vector3d;
 import com.hypixel.hytale.server.core.entity.UUIDComponent;
+import com.hypixel.hytale.server.core.universe.PlayerRef;
 import com.hypixel.hytale.server.core.modules.entity.component.TransformComponent;
+import com.hypixel.hytale.server.core.universe.Universe;
 import com.hypixel.hytale.server.core.universe.world.World;
 import com.hypixel.hytale.server.core.universe.world.storage.EntityStore;
 import com.hypixel.hytale.server.flock.FlockMembership;
@@ -18,21 +21,24 @@ import com.hypixel.hytale.server.flock.FlockMembershipSystems;
 import com.hypixel.hytale.server.flock.FlockPlugin;
 import com.hypixel.hytale.server.npc.NPCPlugin;
 import com.hypixel.hytale.server.npc.entities.NPCEntity;
-import com.hypixel.hytale.server.npc.role.Role;
 import it.unimi.dsi.fastutil.Pair;
 
 import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
-import java.util.HashMap;
+import java.sql.SQLException;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ThreadLocalRandom;
 
 /**
  * Manages player companion NPCs — spawning, dismissing, and tracking active companions.
  *
  * <p>Each player may have at most one active companion. Companions are world-scoped
- * and dismissed automatically on disconnect or world change.
+ * and dismissed automatically on world leave ({@code RemovedPlayerFromWorldEvent}).
+ * Companion entities are marked {@link NonSerialized} so they are never written to
+ * chunk data — eliminating orphan entities entirely.
  *
  * @since 1.4.0
  */
@@ -41,11 +47,15 @@ public class CompanionService {
     private static final HytaleLogger LOGGER = HytaleLogger.forEnclosingClass();
     private static final double SPAWN_OFFSET_RANGE = 1.5;
 
-    private final Map<UUID, ActiveCompanion> activeCompanions = new HashMap<>();
+    public static final String DEFAULT_COMPANION_ROLE = "Companion_Skeleton_Soldier";
+
+    private final Map<UUID, ActiveCompanion> activeCompanions = new ConcurrentHashMap<>();
+    private final Map<UUID, String> companionPreferences = new ConcurrentHashMap<>();
     private final LeveledNpcSpawner npcSpawner;
     private final ProgressionService progressionService;
     private final NpcLevelRegistry npcLevelRegistry;
     private final ComponentType<EntityStore, CompanionComponent> companionComponentType;
+    private final CompanionRepository companionRepository;
 
     /**
      * Tracks an active companion bound to a player.
@@ -53,35 +63,34 @@ public class CompanionService {
      * @param npcRef   the companion NPC entity reference
      * @param flockRef the flock entity reference binding player and companion
      * @param world    the world the companion was spawned in
-     * @param roleName the NPC role name
-     * @param level    the level the companion was spawned at
      */
     public record ActiveCompanion(
             @Nonnull Ref<EntityStore> npcRef,
             @Nonnull Ref<EntityStore> flockRef,
-            @Nonnull World world,
-            @Nonnull String roleName,
-            int level
+            @Nonnull World world
     ) {}
 
     /**
      * Creates a new companion service.
      *
-     * @param npcSpawner           the leveled NPC spawner
-     * @param progressionService   the progression service for player levels
-     * @param npcLevelRegistry     the NPC level registry for cleanup
+     * @param npcSpawner             the leveled NPC spawner
+     * @param progressionService     the progression service for player levels
+     * @param npcLevelRegistry       the NPC level registry for cleanup
      * @param companionComponentType the registered companion component type
+     * @param companionRepository    the companion preference repository
      */
     public CompanionService(
             @Nonnull LeveledNpcSpawner npcSpawner,
             @Nonnull ProgressionService progressionService,
             @Nonnull NpcLevelRegistry npcLevelRegistry,
-            @Nonnull ComponentType<EntityStore, CompanionComponent> companionComponentType
+            @Nonnull ComponentType<EntityStore, CompanionComponent> companionComponentType,
+            @Nonnull CompanionRepository companionRepository
     ) {
         this.npcSpawner = npcSpawner;
         this.progressionService = progressionService;
         this.npcLevelRegistry = npcLevelRegistry;
         this.companionComponentType = companionComponentType;
+        this.companionRepository = companionRepository;
     }
 
     /**
@@ -89,6 +98,8 @@ public class CompanionService {
      *
      * <p>The companion's level is derived from the player's progression level.
      * A flock is created with the player as leader and the companion as follower.
+     * The companion entity is marked {@link NonSerialized} so it is never written
+     * to chunk data.
      *
      * @param store     the entity store (must be on WorldThread)
      * @param playerRef the player's entity reference
@@ -151,6 +162,9 @@ public class CompanionService {
         store.putComponent(npcRef, companionComponentType,
                 new CompanionComponent(playerId, roleName, level));
 
+        // Mark as non-serialized — companion entities are never written to chunk data
+        store.putComponent(npcRef, EntityStore.REGISTRY.getNonSerializedComponentType(), NonSerialized.get());
+
         // Create flock using the NPC's role for proper allowed-roles config
         NPCEntity npcEntity = spawnResult.second();
         Ref<EntityStore> flockRef = FlockPlugin.createFlock(store, npcEntity.getRole());
@@ -160,11 +174,66 @@ public class CompanionService {
         // Get the world for tracking
         World world = store.getExternalData().getWorld();
 
-        ActiveCompanion companion = new ActiveCompanion(npcRef, flockRef, world, roleName, level);
+        ActiveCompanion companion = new ActiveCompanion(npcRef, flockRef, world);
         activeCompanions.put(playerId, companion);
+
+        // Store preference (cache + async DB)
+        setPreference(playerId, roleName);
 
         LOGGER.atInfo().log("Spawned companion %s Lv.%d for player %s", roleName, level, playerId);
         return companion;
+    }
+
+    /**
+     * Auto-spawns a companion for the player using their stored preference.
+     *
+     * <p>Fast path: if the preference is cached, spawns immediately (must be called
+     * on WorldThread). Slow path: reads preference from DB asynchronously, then
+     * dispatches spawn back to the world thread via {@code world.execute()}.
+     *
+     * @param world    the player's current world
+     * @param playerId the player's UUID
+     */
+    public void spawn(@Nonnull World world, @Nonnull UUID playerId) {
+        cleanIfInvalid(playerId);
+        if (hasCompanion(playerId)) return;
+
+        // Fast path: cache hit — spawn immediately (already on world thread)
+        String cached = companionPreferences.get(playerId);
+        if (cached != null) {
+            resolveAndSummon(world, playerId, cached);
+            return;
+        }
+
+        // Slow path: async DB read → dispatch spawn back to world thread
+        CompletableFuture.supplyAsync(() -> {
+            try {
+                return companionRepository.getPreference(playerId);
+            } catch (SQLException e) {
+                LOGGER.atWarning().log("Failed to load companion preference for %s: %s", playerId, e.getMessage());
+                return null;
+            }
+        }).thenAccept(dbValue -> {
+            String roleName = dbValue != null ? dbValue : DEFAULT_COMPANION_ROLE;
+            companionPreferences.put(playerId, roleName);
+
+            world.execute(() -> {
+                // Re-check: player may have disconnected, switched worlds,
+                // or already has a companion by the time the async callback fires
+                cleanIfInvalid(playerId);
+                if (hasCompanion(playerId)) return;
+
+                // Guard against world-switch race: verify the player is still in this world
+                PlayerRef playerRefComp = Universe.get().getPlayer(playerId);
+                if (playerRefComp == null) return;
+                Ref<EntityStore> playerRef = playerRefComp.getReference();
+                if (!playerRef.isValid()) return;
+                if (playerRef.getStore().getExternalData().getWorld() != world) return;
+
+                Store<EntityStore> store = world.getEntityStore().getStore();
+                summon(store, playerRef, playerId, roleName);
+            });
+        });
     }
 
     /**
@@ -185,7 +254,7 @@ public class CompanionService {
         Ref<EntityStore> npcRef = companion.npcRef();
 
         // Dispatch store operations to WorldThread — this method may be called
-        // from non-world threads (e.g., PlayerDisconnectEvent on ServerWorkerGroup).
+        // from non-world threads (e.g., RemovedPlayerFromWorldEvent).
         world.execute(() -> {
             Store<EntityStore> store = world.getEntityStore().getStore();
             if (npcRef.isValid()) {
@@ -250,18 +319,6 @@ public class CompanionService {
     }
 
     /**
-     * Returns the active companion for a player, or {@code null} if none exists.
-     *
-     * @param playerId the player's UUID
-     * @return the active companion data, or {@code null}
-     */
-    @Nullable
-    public ActiveCompanion getActiveCompanion(@Nonnull UUID playerId) {
-        cleanIfInvalid(playerId);
-        return activeCompanions.get(playerId);
-    }
-
-    /**
      * Reconnects a player's companion flock after flock dissolution (e.g., player death/respawn
      * or same-world re-join). Requires an existing {@code activeCompanions} entry.
      *
@@ -278,7 +335,7 @@ public class CompanionService {
             @Nonnull UUID playerId
     ) {
         ActiveCompanion existing = activeCompanions.get(playerId);
-        if (existing == null) { 
+        if (existing == null) {
             LOGGER.atWarning().log("No existing companion to reconnect for player %s", playerId);
             return;
         }
@@ -320,60 +377,40 @@ public class CompanionService {
         FlockMembershipSystems.join(npcRef, flockRef, store);
 
         // Update cache
-        activeCompanions.put(playerId, new ActiveCompanion(
-                npcRef, flockRef, existing.world(), existing.roleName(), existing.level()));
+        activeCompanions.put(playerId, new ActiveCompanion(npcRef, flockRef, existing.world()));
 
-        LOGGER.atInfo().log("Reconnected companion %s for player %s", existing.roleName(), playerId);
+        LOGGER.atInfo().log("Reconnected companion flock for player %s", playerId);
     }
 
     /**
-     * Rebuilds companion tracking and flock from live entity data, used when no
-     * {@code activeCompanions} entry exists (e.g., server restart, state desync).
-     *
-     * <p>If an entry already exists, delegates to {@link #reconnect(Store, Ref, UUID)}.
-     *
-     * @param store        the entity store (must be on WorldThread)
-     * @param companionRef the companion NPC's entity reference
-     * @param playerRef    the owner player's entity reference
-     * @param comp         the companion component read from the NPC entity
+     * Resolves the player's current entity reference and spawns the companion.
+     * Used only on the fast cache-hit path where we are already on the WorldThread.
      */
-    public void reconnectFromEntity(
-            @Nonnull Store<EntityStore> store,
-            @Nonnull Ref<EntityStore> companionRef,
-            @Nonnull Ref<EntityStore> playerRef,
-            @Nonnull CompanionComponent comp
-    ) {
-        UUID playerId = comp.getOwnerUuid();
+    private void resolveAndSummon(@Nonnull World world, @Nonnull UUID playerId, @Nonnull String roleName) {
+        PlayerRef playerRefComp = Universe.get().getPlayer(playerId);
+        if (playerRefComp == null) return;
 
-        // Already in same flock? Just rebuild tracking, don't create new flock.
-        FlockMembership npcMembership = store.getComponent(companionRef, FlockMembership.getComponentType());
-        FlockMembership playerMembership = store.getComponent(playerRef, FlockMembership.getComponentType());
+        Ref<EntityStore> playerRef = playerRefComp.getReference();
+        if (!playerRef.isValid()) return;
 
-        Ref<EntityStore> flockRef;
-        if (npcMembership != null && playerMembership != null
-                && npcMembership.getFlockId().equals(playerMembership.getFlockId())) {
-            flockRef = npcMembership.getFlockRef();
-        } else {
-            // Create new flock
-            NPCEntity npcEntity = store.getComponent(companionRef, NPCEntity.getComponentType());
-            if (npcEntity == null || npcEntity.getRole() == null) {
-                LOGGER.atWarning().log("Companion NPC no longer has a valid NPCEntity or role - cannot reconnect");
-                activeCompanions.remove(playerId);
-                return;
+        Store<EntityStore> store = world.getEntityStore().getStore();
+        summon(store, playerRef, playerId, roleName);
+    }
+
+    /**
+     * Stores the companion role preference for the player.
+     * Updates the in-memory cache immediately, then writes to DB
+     * asynchronously (fire-and-forget).
+     */
+    private void setPreference(@Nonnull UUID playerId, @Nonnull String roleName) {
+        companionPreferences.put(playerId, roleName);
+        CompletableFuture.runAsync(() -> {
+            try {
+                companionRepository.setPreference(playerId, roleName);
+            } catch (SQLException e) {
+                LOGGER.atWarning().log("Failed to save companion preference for %s: %s", playerId, e.getMessage());
             }
-
-            flockRef = FlockPlugin.createFlock(store, npcEntity.getRole());
-            FlockMembershipSystems.join(playerRef, flockRef, store);
-            FlockMembershipSystems.join(companionRef, flockRef, store);
-        }
-
-        // Build cache entry from entity data
-        World world = store.getExternalData().getWorld();
-        activeCompanions.put(playerId, new ActiveCompanion(
-                companionRef, flockRef, world, comp.getRoleName(), comp.getLevel()));
-
-        LOGGER.atInfo().log("Recovered companion %s for player %s from entity data",
-                comp.getRoleName(), playerId);
+        });
     }
 
     /**

@@ -91,7 +91,6 @@ public class CompanionCommand extends CommandBase {
             context.sendMessage(
                     Message.raw("Summoned companion ").color(GREEN)
                             .insert(Message.raw(roleName).color(CYAN))
-                            .insert(Message.raw(" Lv." + companion.level()).color(YELLOW))
             );
         }
     }
