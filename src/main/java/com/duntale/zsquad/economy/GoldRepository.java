@@ -1,14 +1,13 @@
 package com.duntale.zsquad.economy;
 
-import com.duntale.zsquad.db.DatabaseConnection;
+import com.duntale.zsquad.db.DatabaseProvider;
+import com.duntale.zsquad.rpg.RpgConstants;
 import com.hypixel.hytale.logger.HytaleLogger;
 
 import javax.annotation.Nonnull;
-import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
-import java.sql.Statement;
 import java.util.UUID;
 import java.util.logging.Level;
 
@@ -39,14 +38,14 @@ public class GoldRepository {
             "INSERT INTO player_gold (uuid, balance) VALUES (?, ?) "
                     + "ON CONFLICT(uuid) DO UPDATE SET balance = balance + ?";
 
-    private final DatabaseConnection database;
+    private final DatabaseProvider database;
 
     /**
-     * Creates a new gold repository backed by the given database connection.
+     * Creates a new gold repository backed by the given database provider.
      *
-     * @param database the shared database connection
+     * @param database the database provider
      */
-    public GoldRepository(@Nonnull DatabaseConnection database) {
+    public GoldRepository(@Nonnull DatabaseProvider database) {
         this.database = database;
     }
 
@@ -56,9 +55,11 @@ public class GoldRepository {
      * @throws SQLException if table creation fails
      */
     public void initialize() throws SQLException {
-        try (Statement stmt = database.getConnection().createStatement()) {
-            stmt.execute(CREATE_TABLE_SQL);
-        }
+        database.write(conn -> {
+            try (var stmt = conn.createStatement()) {
+                stmt.execute(CREATE_TABLE_SQL);
+            }
+        });
         LOGGER.at(Level.INFO).log("player_gold table initialized");
     }
 
@@ -70,15 +71,14 @@ public class GoldRepository {
      * @throws SQLException if the query fails
      */
     public long getBalance(@Nonnull UUID playerId) throws SQLException {
-        try (PreparedStatement ps = database.getConnection().prepareStatement(SELECT_BALANCE_SQL)) {
-            ps.setString(1, playerId.toString());
-            try (ResultSet rs = ps.executeQuery()) {
-                if (rs.next()) {
-                    return rs.getLong("balance");
+        return database.read(conn -> {
+            try (PreparedStatement ps = conn.prepareStatement(SELECT_BALANCE_SQL)) {
+                ps.setString(1, playerId.toString());
+                try (ResultSet rs = ps.executeQuery()) {
+                    return rs.next() ? rs.getLong("balance") : 0L;
                 }
-                return 0;
             }
-        }
+        });
     }
 
     /**
@@ -89,11 +89,13 @@ public class GoldRepository {
      * @throws SQLException if the upsert fails
      */
     public void setBalance(@Nonnull UUID playerId, long balance) throws SQLException {
-        try (PreparedStatement ps = database.getConnection().prepareStatement(UPSERT_BALANCE_SQL)) {
-            ps.setString(1, playerId.toString());
-            ps.setLong(2, balance);
-            ps.executeUpdate();
-        }
+        database.write(conn -> {
+            try (PreparedStatement ps = conn.prepareStatement(UPSERT_BALANCE_SQL)) {
+                ps.setString(1, playerId.toString());
+                ps.setLong(2, balance);
+                ps.executeUpdate();
+            }
+        });
     }
 
     /**
@@ -107,22 +109,86 @@ public class GoldRepository {
      * @throws SQLException if the upsert fails
      */
     public void addBalance(@Nonnull UUID playerId, long delta) throws SQLException {
-        try (PreparedStatement ps = database.getConnection().prepareStatement(ADD_BALANCE_SQL)) {
-            ps.setString(1, playerId.toString());
-            ps.setLong(2, delta);
-            ps.setLong(3, delta);
-            ps.executeUpdate();
-        }
+        database.write(conn -> {
+            try (PreparedStatement ps = conn.prepareStatement(ADD_BALANCE_SQL)) {
+                ps.setString(1, playerId.toString());
+                ps.setLong(2, delta);
+                ps.setLong(3, delta);
+                ps.executeUpdate();
+            }
+        });
     }
 
     /**
-     * Exposes the underlying JDBC connection for use in atomic multi-statement
-     * transactions (e.g., gold transfers between players).
+     * Atomically transfers gold from one player to another.
      *
-     * @return the active database connection
+     * <p>Returns {@code false} for business-rule rejection (insufficient funds) with a clean
+     * commit and no data changes. Throws {@link SQLException} only on actual database failures,
+     * causing the provider to roll back.
+     *
+     * @param from   the sender's UUID
+     * @param to     the receiver's UUID
+     * @param amount the amount of gold to transfer (must be positive)
+     * @return a {@link TransferResult} with balances on success, or {@link TransferResult#INSUFFICIENT_FUNDS} if the sender lacks funds
+     * @throws SQLException if a database access error occurs
      */
     @Nonnull
-    public Connection getDirectConnection() {
-        return database.getConnection();
+    public TransferResult transfer(@Nonnull UUID from, @Nonnull UUID to, long amount) throws SQLException {
+        return database.transaction(conn -> {
+            long fromBalance;
+            try (PreparedStatement ps = conn.prepareStatement(SELECT_BALANCE_SQL)) {
+                ps.setString(1, from.toString());
+                try (ResultSet rs = ps.executeQuery()) {
+                    fromBalance = rs.next() ? rs.getLong("balance") : 0L;
+                }
+            }
+
+            if (fromBalance < amount) {
+                return TransferResult.INSUFFICIENT_FUNDS;
+            }
+
+            long toBalance;
+            try (PreparedStatement ps = conn.prepareStatement(SELECT_BALANCE_SQL)) {
+                ps.setString(1, to.toString());
+                try (ResultSet rs = ps.executeQuery()) {
+                    toBalance = rs.next() ? rs.getLong("balance") : 0L;
+                }
+            }
+
+            long newFromBalance = fromBalance - amount;
+            long newToBalance = Math.min(toBalance + amount, RpgConstants.MAX_GOLD_BALANCE);
+
+            try (PreparedStatement ps = conn.prepareStatement(UPSERT_BALANCE_SQL)) {
+                ps.setString(1, from.toString());
+                ps.setLong(2, newFromBalance);
+                ps.executeUpdate();
+            }
+            try (PreparedStatement ps = conn.prepareStatement(UPSERT_BALANCE_SQL)) {
+                ps.setString(1, to.toString());
+                ps.setLong(2, newToBalance);
+                ps.executeUpdate();
+            }
+
+            return new TransferResult(true, fromBalance, newFromBalance, toBalance, newToBalance);
+        });
+    }
+
+    /**
+     * Result of a gold transfer operation.
+     *
+     * @param success        whether the transfer succeeded
+     * @param fromOldBalance the sender's balance before the transfer
+     * @param fromNewBalance the sender's balance after the transfer
+     * @param toOldBalance   the receiver's balance before the transfer
+     * @param toNewBalance   the receiver's balance after the transfer
+     */
+    public record TransferResult(
+            boolean success,
+            long fromOldBalance,
+            long fromNewBalance,
+            long toOldBalance,
+            long toNewBalance
+    ) {
+        static final TransferResult INSUFFICIENT_FUNDS = new TransferResult(false, 0, 0, 0, 0);
     }
 }

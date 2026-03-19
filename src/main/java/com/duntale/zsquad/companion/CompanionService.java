@@ -11,9 +11,9 @@ import com.hypixel.hytale.component.Store;
 import com.hypixel.hytale.logger.HytaleLogger;
 import com.hypixel.hytale.math.vector.Vector3d;
 import com.hypixel.hytale.server.core.entity.UUIDComponent;
-import com.hypixel.hytale.server.core.universe.PlayerRef;
+
 import com.hypixel.hytale.server.core.modules.entity.component.TransformComponent;
-import com.hypixel.hytale.server.core.universe.Universe;
+
 import com.hypixel.hytale.server.core.universe.world.World;
 import com.hypixel.hytale.server.core.universe.world.storage.EntityStore;
 import com.hypixel.hytale.server.flock.FlockMembership;
@@ -28,7 +28,6 @@ import javax.annotation.Nullable;
 import java.sql.SQLException;
 import java.util.Map;
 import java.util.UUID;
-import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ThreadLocalRandom;
 
@@ -177,63 +176,44 @@ public class CompanionService {
         ActiveCompanion companion = new ActiveCompanion(npcRef, flockRef, world);
         activeCompanions.put(playerId, companion);
 
-        // Store preference (cache + async DB)
-        setPreference(playerId, roleName);
-
         LOGGER.atInfo().log("Spawned companion %s Lv.%d for player %s", roleName, level, playerId);
         return companion;
     }
 
     /**
+     * Saves the player's companion role preference (cache + DB).
+     *
+     * <p>Should only be called when the player explicitly chooses a companion,
+     * not during auto-spawn — to avoid overwriting a stored preference with a
+     * fallback default on DB read errors.
+     *
+     * @param playerId the player's UUID
+     * @param roleName the NPC role name to persist
+     */
+    public void persistPreference(@Nonnull UUID playerId, @Nonnull String roleName) {
+        savePreference(playerId, roleName);
+    }
+
+    /**
      * Auto-spawns a companion for the player using their stored preference.
      *
-     * <p>Fast path: if the preference is cached, spawns immediately (must be called
-     * on WorldThread). Slow path: reads preference from DB asynchronously, then
-     * dispatches spawn back to the world thread via {@code world.execute()}.
+     * <p>Must be called on the WorldThread. Reads the preference from cache or DB
+     * synchronously, then spawns the companion immediately.
      *
-     * @param world    the player's current world
-     * @param playerId the player's UUID
+     * @param store     the entity store (must be on WorldThread)
+     * @param playerRef the player's entity reference
+     * @param playerId  the player's UUID
      */
-    public void spawn(@Nonnull World world, @Nonnull UUID playerId) {
+    public void spawn(
+            @Nonnull Store<EntityStore> store,
+            @Nonnull Ref<EntityStore> playerRef,
+            @Nonnull UUID playerId
+    ) {
         cleanIfInvalid(playerId);
         if (hasCompanion(playerId)) return;
 
-        // Fast path: cache hit — spawn immediately (already on world thread)
-        String cached = companionPreferences.get(playerId);
-        if (cached != null) {
-            resolveAndSummon(world, playerId, cached);
-            return;
-        }
-
-        // Slow path: async DB read → dispatch spawn back to world thread
-        CompletableFuture.supplyAsync(() -> {
-            try {
-                return companionRepository.getPreference(playerId);
-            } catch (SQLException e) {
-                LOGGER.atWarning().log("Failed to load companion preference for %s: %s", playerId, e.getMessage());
-                return null;
-            }
-        }).thenAccept(dbValue -> {
-            String roleName = dbValue != null ? dbValue : DEFAULT_COMPANION_ROLE;
-            companionPreferences.put(playerId, roleName);
-
-            world.execute(() -> {
-                // Re-check: player may have disconnected, switched worlds,
-                // or already has a companion by the time the async callback fires
-                cleanIfInvalid(playerId);
-                if (hasCompanion(playerId)) return;
-
-                // Guard against world-switch race: verify the player is still in this world
-                PlayerRef playerRefComp = Universe.get().getPlayer(playerId);
-                if (playerRefComp == null) return;
-                Ref<EntityStore> playerRef = playerRefComp.getReference();
-                if (!playerRef.isValid()) return;
-                if (playerRef.getStore().getExternalData().getWorld() != world) return;
-
-                Store<EntityStore> store = world.getEntityStore().getStore();
-                summon(store, playerRef, playerId, roleName);
-            });
-        });
+        String roleName = loadPreference(playerId);
+        summon(store, playerRef, playerId, roleName);
     }
 
     /**
@@ -383,34 +363,40 @@ public class CompanionService {
     }
 
     /**
-     * Resolves the player's current entity reference and spawns the companion.
-     * Used only on the fast cache-hit path where we are already on the WorldThread.
+     * Loads the companion role preference for the player.
+     * Checks the in-memory cache first, falls back to the database.
+     *
+     * @return the stored role name, or {@link #DEFAULT_COMPANION_ROLE} if none exists or on DB error
      */
-    private void resolveAndSummon(@Nonnull World world, @Nonnull UUID playerId, @Nonnull String roleName) {
-        PlayerRef playerRefComp = Universe.get().getPlayer(playerId);
-        if (playerRefComp == null) return;
+    @Nonnull
+    private String loadPreference(@Nonnull UUID playerId) {
+        String cached = companionPreferences.get(playerId);
+        if (cached != null) {
+            return cached;
+        }
 
-        Ref<EntityStore> playerRef = playerRefComp.getReference();
-        if (!playerRef.isValid()) return;
-
-        Store<EntityStore> store = world.getEntityStore().getStore();
-        summon(store, playerRef, playerId, roleName);
+        try {
+            String dbValue = companionRepository.getPreference(playerId);
+            String roleName = dbValue != null ? dbValue : DEFAULT_COMPANION_ROLE;
+            companionPreferences.put(playerId, roleName);
+            return roleName;
+        } catch (SQLException e) {
+            LOGGER.atWarning().log("Failed to load companion preference for %s: %s", playerId, e.getMessage());
+            return DEFAULT_COMPANION_ROLE;
+        }
     }
 
     /**
      * Stores the companion role preference for the player.
-     * Updates the in-memory cache immediately, then writes to DB
-     * asynchronously (fire-and-forget).
+     * Updates the in-memory cache and writes to the database synchronously.
      */
-    private void setPreference(@Nonnull UUID playerId, @Nonnull String roleName) {
+    private void savePreference(@Nonnull UUID playerId, @Nonnull String roleName) {
         companionPreferences.put(playerId, roleName);
-        CompletableFuture.runAsync(() -> {
-            try {
-                companionRepository.setPreference(playerId, roleName);
-            } catch (SQLException e) {
-                LOGGER.atWarning().log("Failed to save companion preference for %s: %s", playerId, e.getMessage());
-            }
-        });
+        try {
+            companionRepository.setPreference(playerId, roleName);
+        } catch (SQLException e) {
+            LOGGER.atWarning().log("Failed to save companion preference for %s: %s", playerId, e.getMessage());
+        }
     }
 
     /**

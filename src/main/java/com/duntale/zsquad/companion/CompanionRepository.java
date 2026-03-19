@@ -1,6 +1,6 @@
 package com.duntale.zsquad.companion;
 
-import com.duntale.zsquad.db.DatabaseConnection;
+import com.duntale.zsquad.db.DatabaseProvider;
 import com.hypixel.hytale.logger.HytaleLogger;
 
 import javax.annotation.Nonnull;
@@ -8,7 +8,6 @@ import javax.annotation.Nullable;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
-import java.sql.Statement;
 import java.util.UUID;
 import java.util.logging.Level;
 
@@ -17,9 +16,6 @@ import java.util.logging.Level;
  *
  * <p>Backs the {@code companion_preferences} table keyed by player UUID.
  * All operations use {@link PreparedStatement} with try-with-resources.
- *
- * <p>All JDBC calls are wrapped with {@link DatabaseConnection#withJdbcClassLoader}
- * so methods are safe to call from any thread (including off-WorldThread async tasks).
  *
  * @since 1.5.0
  */
@@ -43,22 +39,15 @@ public class CompanionRepository {
     private static final String DELETE_PREFERENCE_SQL =
             "DELETE FROM companion_preferences WHERE uuid = ?";
 
-    private final DatabaseConnection database;
+    private final DatabaseProvider database;
 
     /**
-     * Creates a new companion repository backed by the given database connection.
+     * Creates a new companion repository backed by the given database provider.
      *
-     * @param database the shared database connection
+     * @param database the database provider
      */
-    public CompanionRepository(@Nonnull DatabaseConnection database) {
+    public CompanionRepository(@Nonnull DatabaseProvider database) {
         this.database = database;
-    }
-
-    private static SQLException unwrapSQLException(@Nonnull RuntimeException exception) {
-        if (exception.getCause() instanceof SQLException sqlException) {
-            return sqlException;
-        }
-        throw exception;
     }
 
     /**
@@ -67,19 +56,12 @@ public class CompanionRepository {
      * @throws SQLException if table creation fails
      */
     public void initialize() throws SQLException {
-        try {
-            database.withJdbcClassLoader(() -> {
-                try (Statement stmt = database.getConnection().createStatement()) {
-                    stmt.execute(CREATE_TABLE_SQL);
-                } catch (SQLException e) {
-                    throw new RuntimeException(e);
-                }
-                LOGGER.at(Level.INFO).log("companion_preferences table initialized");
-                return null;
-            });
-        } catch (RuntimeException e) {
-            throw unwrapSQLException(e);
-        }
+        database.write(conn -> {
+            try (var stmt = conn.createStatement()) {
+                stmt.execute(CREATE_TABLE_SQL);
+            }
+        });
+        LOGGER.at(Level.INFO).log("companion_preferences table initialized");
     }
 
     /**
@@ -91,23 +73,14 @@ public class CompanionRepository {
      */
     @Nullable
     public String getPreference(@Nonnull UUID playerId) throws SQLException {
-        try {
-            return database.withJdbcClassLoader(() -> {
-                try (PreparedStatement ps = database.getConnection().prepareStatement(SELECT_PREFERENCE_SQL)) {
-                    ps.setString(1, playerId.toString());
-                    try (ResultSet rs = ps.executeQuery()) {
-                        if (rs.next()) {
-                            return rs.getString("role_name");
-                        }
-                        return null;
-                    }
-                } catch (SQLException e) {
-                    throw new RuntimeException(e);
+        return database.read(conn -> {
+            try (PreparedStatement ps = conn.prepareStatement(SELECT_PREFERENCE_SQL)) {
+                ps.setString(1, playerId.toString());
+                try (ResultSet rs = ps.executeQuery()) {
+                    return rs.next() ? rs.getString("role_name") : null;
                 }
-            });
-        } catch (RuntimeException e) {
-            throw unwrapSQLException(e);
-        }
+            }
+        });
     }
 
     /**
@@ -118,20 +91,13 @@ public class CompanionRepository {
      * @throws SQLException if the upsert fails
      */
     public void setPreference(@Nonnull UUID playerId, @Nonnull String roleName) throws SQLException {
-        try {
-            database.withJdbcClassLoader(() -> {
-                try (PreparedStatement ps = database.getConnection().prepareStatement(UPSERT_PREFERENCE_SQL)) {
-                    ps.setString(1, playerId.toString());
-                    ps.setString(2, roleName);
-                    ps.executeUpdate();
-                } catch (SQLException e) {
-                    throw new RuntimeException(e);
-                }
-                return null;
-            });
-        } catch (RuntimeException e) {
-            throw unwrapSQLException(e);
-        }
+        database.write(conn -> {
+            try (PreparedStatement ps = conn.prepareStatement(UPSERT_PREFERENCE_SQL)) {
+                ps.setString(1, playerId.toString());
+                ps.setString(2, roleName);
+                ps.executeUpdate();
+            }
+        });
     }
 
     /**
@@ -141,18 +107,11 @@ public class CompanionRepository {
      * @throws SQLException if the delete fails
      */
     public void deletePreference(@Nonnull UUID playerId) throws SQLException {
-        try {
-            database.withJdbcClassLoader(() -> {
-                try (PreparedStatement ps = database.getConnection().prepareStatement(DELETE_PREFERENCE_SQL)) {
-                    ps.setString(1, playerId.toString());
-                    ps.executeUpdate();
-                } catch (SQLException e) {
-                    throw new RuntimeException(e);
-                }
-                return null;
-            });
-        } catch (RuntimeException e) {
-            throw unwrapSQLException(e);
-        }
+        database.write(conn -> {
+            try (PreparedStatement ps = conn.prepareStatement(DELETE_PREFERENCE_SQL)) {
+                ps.setString(1, playerId.toString());
+                ps.executeUpdate();
+            }
+        });
     }
 }

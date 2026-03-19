@@ -5,7 +5,6 @@ import com.hypixel.hytale.logger.HytaleLogger;
 
 import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
-import java.sql.Connection;
 import java.sql.SQLException;
 import java.util.UUID;
 import java.util.logging.Level;
@@ -146,44 +145,23 @@ public class GoldService {
             return false;
         }
 
-        Connection conn = repository.getDirectConnection();
         try {
-            conn.setAutoCommit(false);
-            try {
-                long fromBalance = repository.getBalance(from);
-                if (fromBalance < amount) {
-                    conn.rollback();
-                    return false;
-                }
-
-                long toBalance = repository.getBalance(to);
-                long newFromBalance = fromBalance - amount;
-                long newToBalance = Math.min(toBalance + amount, RpgConstants.MAX_GOLD_BALANCE);
-
-                repository.setBalance(from, newFromBalance);
-                repository.setBalance(to, newToBalance);
-                conn.commit();
-
-                LOGGER.at(Level.INFO).log(
-                        "transfer from=%s to=%s amount=%d fromOld=%d fromNew=%d toOld=%d toNew=%d",
-                        from, to, amount, fromBalance, newFromBalance, toBalance, newToBalance);
-                notifyChange(from, newFromBalance);
-                notifyChange(to, newToBalance);
-                return true;
-            } catch (SQLException e) {
-                conn.rollback();
-                LOGGER.at(Level.SEVERE).log("Transfer failed, rolled back: %s", e.getMessage());
+            GoldRepository.TransferResult result = repository.transfer(from, to, amount);
+            if (!result.success()) {
                 return false;
             }
+
+            LOGGER.at(Level.INFO).log(
+                    "transfer from=%s to=%s amount=%d fromOld=%d fromNew=%d toOld=%d toNew=%d",
+                    from, to, amount,
+                    result.fromOldBalance(), result.fromNewBalance(),
+                    result.toOldBalance(), result.toNewBalance());
+            notifyChange(from, result.fromNewBalance());
+            notifyChange(to, result.toNewBalance());
+            return true;
         } catch (SQLException e) {
-            LOGGER.at(Level.SEVERE).log("Failed to manage transaction for transfer: %s", e.getMessage());
+            LOGGER.at(Level.SEVERE).log("Transfer failed: %s", e.getMessage());
             return false;
-        } finally {
-            try {
-                conn.setAutoCommit(true);
-            } catch (SQLException e) {
-                LOGGER.at(Level.WARNING).log("Failed to restore auto-commit: %s", e.getMessage());
-            }
         }
     }
 

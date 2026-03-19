@@ -28,7 +28,7 @@ import com.duntale.zsquad.loot.LootEntry.GearType;
 import com.duntale.zsquad.loot.LootTable;
 import com.duntale.zsquad.loot.LootTableRegistry;
 import com.duntale.zsquad.loot.NpcLootSystem;
-import com.duntale.zsquad.db.DatabaseConnection;
+import com.duntale.zsquad.db.DatabaseProvider;
 import com.duntale.zsquad.merchant.CatalogGenerator;
 import com.duntale.zsquad.merchant.MerchantCommand;
 import com.duntale.zsquad.merchant.MerchantComponent;
@@ -95,7 +95,7 @@ public class ZSquadPlugin extends JavaPlugin {
     private LootTableRegistry lootTableRegistry;
 
     // RPG system
-    private DatabaseConnection databaseConnection;
+    private DatabaseProvider databaseProvider;
     private RpgService rpgService;
     private GoldService goldService;
     private ProgressionService progressionService;
@@ -289,31 +289,32 @@ public class ZSquadPlugin extends JavaPlugin {
         LOGGER.atInfo().log("Data directory: %s", getDataDirectory().toAbsolutePath());
 
         // ── RPG System ───────────────────────────────────────────────
-        this.databaseConnection = new DatabaseConnection();
+        this.databaseProvider = new DatabaseProvider();
         try {
             Path dbPath = getDataDirectory().resolve("zsquad.db");
-            databaseConnection.initialize(dbPath);
-            RpgRepository rpgRepo = new RpgRepository(databaseConnection);
+            databaseProvider.initialize(dbPath);
+
+            RpgRepository rpgRepo = new RpgRepository(databaseProvider);
             rpgRepo.initialize();
             this.rpgService = new RpgService(rpgRepo);
 
-            GoldRepository goldRepo = new GoldRepository(databaseConnection);
+            GoldRepository goldRepo = new GoldRepository(databaseProvider);
             goldRepo.initialize();
             this.goldService = new GoldService(goldRepo);
 
-            ProgressionRepository progressionRepo = new ProgressionRepository(databaseConnection);
+            ProgressionRepository progressionRepo = new ProgressionRepository(databaseProvider);
             progressionRepo.initialize();
             this.progressionService = new ProgressionService(progressionRepo);
 
-            CompanionRepository companionRepo = new CompanionRepository(databaseConnection);
+            CompanionRepository companionRepo = new CompanionRepository(databaseProvider);
             companionRepo.initialize();
             this.companionRepository = companionRepo;
         } catch (SQLException e) {
             LOGGER.atSevere().log("Failed to initialize RPG database: %s", e.getMessage());
-            this.rpgService = new RpgService(new RpgRepository(databaseConnection));
-            this.goldService = new GoldService(new GoldRepository(databaseConnection));
-            this.progressionService = new ProgressionService(new ProgressionRepository(databaseConnection));
-            this.companionRepository = new CompanionRepository(databaseConnection);
+            this.rpgService = new RpgService(new RpgRepository(databaseProvider));
+            this.goldService = new GoldService(new GoldRepository(databaseProvider));
+            this.progressionService = new ProgressionService(new ProgressionRepository(databaseProvider));
+            this.companionRepository = new CompanionRepository(databaseProvider);
         }
         this.clickToMoveManager.setRpgService(rpgService);
 
@@ -452,8 +453,8 @@ public class ZSquadPlugin extends JavaPlugin {
         if (npcLevelRegistry != null) {
             npcLevelRegistry.clear();
         }
-        if (databaseConnection != null) {
-            databaseConnection.close();
+        if (databaseProvider != null) {
+            databaseProvider.close();
         }
     }
 
@@ -479,8 +480,7 @@ public class ZSquadPlugin extends JavaPlugin {
         scoreboards.put(uuid, scoreboard);
 
         // Auto-spawn companion using stored preference
-        World currentWorld = ref.getStore().getExternalData().getWorld();
-        companionService.spawn(currentWorld, uuid);
+        companionService.spawn(ref.getStore(), ref, uuid);
     }
 
     private void onPlayerRemovedFromWorld(@Nonnull RemovedPlayerFromWorldEvent event) {

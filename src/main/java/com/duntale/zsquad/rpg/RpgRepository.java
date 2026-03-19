@@ -1,13 +1,12 @@
 package com.duntale.zsquad.rpg;
 
-import com.duntale.zsquad.db.DatabaseConnection;
+import com.duntale.zsquad.db.DatabaseProvider;
 import com.hypixel.hytale.logger.HytaleLogger;
 
 import javax.annotation.Nonnull;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
-import java.sql.Statement;
 import java.util.EnumMap;
 import java.util.Map;
 import java.util.UUID;
@@ -48,14 +47,14 @@ public class RpgRepository {
             "INSERT INTO player_stats (uuid, stat, value) VALUES (?, '" + UNASSIGNED_POINTS_KEY + "', ?) "
                     + "ON CONFLICT(uuid, stat) DO UPDATE SET value = excluded.value";
 
-    private final DatabaseConnection database;
+    private final DatabaseProvider database;
 
     /**
-     * Creates a new RPG repository backed by the given database connection.
+     * Creates a new RPG repository backed by the given database provider.
      *
-     * @param database the shared database connection
+     * @param database the database provider
      */
-    public RpgRepository(@Nonnull DatabaseConnection database) {
+    public RpgRepository(@Nonnull DatabaseProvider database) {
         this.database = database;
     }
 
@@ -65,9 +64,11 @@ public class RpgRepository {
      * @throws SQLException if table creation fails
      */
     public void initialize() throws SQLException {
-        try (Statement stmt = database.getConnection().createStatement()) {
-            stmt.execute(CREATE_TABLE_SQL);
-        }
+        database.write(conn -> {
+            try (var stmt = conn.createStatement()) {
+                stmt.execute(CREATE_TABLE_SQL);
+            }
+        });
         LOGGER.at(Level.INFO).log("player_stats table initialized");
     }
 
@@ -82,28 +83,29 @@ public class RpgRepository {
      */
     @Nonnull
     public RpgProfile loadProfile(@Nonnull UUID playerId) throws SQLException {
-        Map<RpgStat, Integer> stats = new EnumMap<>(RpgStat.class);
-        try (PreparedStatement ps = database.getConnection().prepareStatement(SELECT_PROFILE_SQL)) {
-            ps.setString(1, playerId.toString());
-            try (ResultSet rs = ps.executeQuery()) {
-                while (rs.next()) {
-                    String statName = rs.getString("stat");
-                    int value = rs.getInt("value");
-                    // Skip the special unassigned-points key
-                    if (UNASSIGNED_POINTS_KEY.equals(statName)) {
-                        continue;
-                    }
-                    try {
-                        RpgStat stat = RpgStat.valueOf(statName);
-                        stats.put(stat, value);
-                    } catch (IllegalArgumentException e) {
-                        LOGGER.at(Level.WARNING).log(
-                                "Unknown stat '%s' for player %s — skipping", statName, playerId);
+        return database.read(conn -> {
+            Map<RpgStat, Integer> stats = new EnumMap<>(RpgStat.class);
+            try (PreparedStatement ps = conn.prepareStatement(SELECT_PROFILE_SQL)) {
+                ps.setString(1, playerId.toString());
+                try (ResultSet rs = ps.executeQuery()) {
+                    while (rs.next()) {
+                        String statName = rs.getString("stat");
+                        int value = rs.getInt("value");
+                        if (UNASSIGNED_POINTS_KEY.equals(statName)) {
+                            continue;
+                        }
+                        try {
+                            RpgStat stat = RpgStat.valueOf(statName);
+                            stats.put(stat, value);
+                        } catch (IllegalArgumentException e) {
+                            LOGGER.at(Level.WARNING).log(
+                                    "Unknown stat '%s' for player %s — skipping", statName, playerId);
+                        }
                     }
                 }
             }
-        }
-        return stats.isEmpty() ? new RpgProfile() : new RpgProfile(stats);
+            return stats.isEmpty() ? new RpgProfile() : new RpgProfile(stats);
+        });
     }
 
     /**
@@ -115,12 +117,14 @@ public class RpgRepository {
      * @throws SQLException if the upsert fails
      */
     public void saveStat(@Nonnull UUID playerId, @Nonnull RpgStat stat, int value) throws SQLException {
-        try (PreparedStatement ps = database.getConnection().prepareStatement(UPSERT_STAT_SQL)) {
-            ps.setString(1, playerId.toString());
-            ps.setString(2, stat.name());
-            ps.setInt(3, value);
-            ps.executeUpdate();
-        }
+        database.write(conn -> {
+            try (PreparedStatement ps = conn.prepareStatement(UPSERT_STAT_SQL)) {
+                ps.setString(1, playerId.toString());
+                ps.setString(2, stat.name());
+                ps.setInt(3, value);
+                ps.executeUpdate();
+            }
+        });
     }
 
     /**
@@ -131,15 +135,14 @@ public class RpgRepository {
      * @throws SQLException if the query fails
      */
     public int loadUnassignedPoints(@Nonnull UUID playerId) throws SQLException {
-        try (PreparedStatement ps = database.getConnection().prepareStatement(SELECT_UNASSIGNED_SQL)) {
-            ps.setString(1, playerId.toString());
-            try (ResultSet rs = ps.executeQuery()) {
-                if (rs.next()) {
-                    return rs.getInt("value");
+        return database.read(conn -> {
+            try (PreparedStatement ps = conn.prepareStatement(SELECT_UNASSIGNED_SQL)) {
+                ps.setString(1, playerId.toString());
+                try (ResultSet rs = ps.executeQuery()) {
+                    return rs.next() ? rs.getInt("value") : 0;
                 }
             }
-        }
-        return 0;
+        });
     }
 
     /**
@@ -150,11 +153,13 @@ public class RpgRepository {
      * @throws SQLException if the upsert fails
      */
     public void saveUnassignedPoints(@Nonnull UUID playerId, int points) throws SQLException {
-        try (PreparedStatement ps = database.getConnection().prepareStatement(UPSERT_UNASSIGNED_SQL)) {
-            ps.setString(1, playerId.toString());
-            ps.setInt(2, points);
-            ps.executeUpdate();
-        }
+        database.write(conn -> {
+            try (PreparedStatement ps = conn.prepareStatement(UPSERT_UNASSIGNED_SQL)) {
+                ps.setString(1, playerId.toString());
+                ps.setInt(2, points);
+                ps.executeUpdate();
+            }
+        });
     }
 
     /**
@@ -167,15 +172,17 @@ public class RpgRepository {
      * @throws SQLException if the batch upsert fails
      */
     public void saveProfile(@Nonnull UUID playerId, @Nonnull RpgProfile profile) throws SQLException {
-        try (PreparedStatement ps = database.getConnection().prepareStatement(UPSERT_STAT_SQL)) {
-            String uuid = playerId.toString();
-            for (Map.Entry<RpgStat, Integer> entry : profile.getAll().entrySet()) {
-                ps.setString(1, uuid);
-                ps.setString(2, entry.getKey().name());
-                ps.setInt(3, entry.getValue());
-                ps.addBatch();
+        database.write(conn -> {
+            try (PreparedStatement ps = conn.prepareStatement(UPSERT_STAT_SQL)) {
+                String uuid = playerId.toString();
+                for (Map.Entry<RpgStat, Integer> entry : profile.getAll().entrySet()) {
+                    ps.setString(1, uuid);
+                    ps.setString(2, entry.getKey().name());
+                    ps.setInt(3, entry.getValue());
+                    ps.addBatch();
+                }
+                ps.executeBatch();
             }
-            ps.executeBatch();
-        }
+        });
     }
 }

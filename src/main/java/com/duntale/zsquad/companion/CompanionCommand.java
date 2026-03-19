@@ -88,6 +88,9 @@ public class CompanionCommand extends CommandBase {
                 return;
             }
 
+            // Persist preference only on explicit player choice
+            companionService.persistPreference(playerId, roleName);
+
             context.sendMessage(
                     Message.raw("Summoned companion ").color(GREEN)
                             .insert(Message.raw(roleName).color(CYAN))

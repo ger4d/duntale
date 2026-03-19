@@ -1,6 +1,6 @@
 package com.duntale.zsquad.progression;
 
-import com.duntale.zsquad.db.DatabaseConnection;
+import com.duntale.zsquad.db.DatabaseProvider;
 import com.hypixel.hytale.logger.HytaleLogger;
 
 import javax.annotation.Nonnull;
@@ -30,7 +30,7 @@ public class ProgressionRepository {
 
     private static final HytaleLogger LOGGER = HytaleLogger.forEnclosingClass();
 
-    private final DatabaseConnection database;
+    private final DatabaseProvider database;
 
     /** Cached level thresholds (level → xp required). */
     private final NavigableMap<Integer, Long> levelThresholds = new TreeMap<>();
@@ -38,9 +38,9 @@ public class ProgressionRepository {
     /**
      * Creates a new progression repository.
      *
-     * @param database the shared database connection
+     * @param database the database provider
      */
-    public ProgressionRepository(@Nonnull DatabaseConnection database) {
+    public ProgressionRepository(@Nonnull DatabaseProvider database) {
         this.database = database;
     }
 
@@ -75,11 +75,13 @@ public class ProgressionRepository {
                 """
         };
 
-        try (Statement stmt = database.getConnection().createStatement()) {
-            for (String sql : schemas) {
-                stmt.execute(sql);
+        database.write(conn -> {
+            try (Statement stmt = conn.createStatement()) {
+                for (String sql : schemas) {
+                    stmt.execute(sql);
+                }
             }
-        }
+        });
         LOGGER.atInfo().log("Progression schema created/verified");
     }
 
@@ -91,11 +93,16 @@ public class ProgressionRepository {
     public void reloadLevelThresholds() {
         levelThresholds.clear();
         String sql = "SELECT level, xp_required FROM levels ORDER BY level";
-        try (Statement stmt = database.getConnection().createStatement();
-             ResultSet rs = stmt.executeQuery(sql)) {
-            while (rs.next()) {
-                levelThresholds.put(rs.getInt("level"), rs.getLong("xp_required"));
-            }
+        try {
+            database.read(conn -> {
+                try (Statement stmt = conn.createStatement();
+                     ResultSet rs = stmt.executeQuery(sql)) {
+                    while (rs.next()) {
+                        levelThresholds.put(rs.getInt("level"), rs.getLong("xp_required"));
+                    }
+                }
+                return null;
+            });
         } catch (SQLException e) {
             LOGGER.atSevere().log("Failed to load level thresholds: %s", e.getMessage());
         }
@@ -169,11 +176,15 @@ public class ProgressionRepository {
      */
     public int getLevel(@Nonnull UUID playerId) {
         String sql = "SELECT level FROM player_progression WHERE player_uuid = ?";
-        try (PreparedStatement stmt = database.getConnection().prepareStatement(sql)) {
-            stmt.setString(1, playerId.toString());
-            try (ResultSet rs = stmt.executeQuery()) {
-                return rs.next() ? rs.getInt("level") : 1;
-            }
+        try {
+            return database.read(conn -> {
+                try (PreparedStatement stmt = conn.prepareStatement(sql)) {
+                    stmt.setString(1, playerId.toString());
+                    try (ResultSet rs = stmt.executeQuery()) {
+                        return rs.next() ? rs.getInt("level") : 1;
+                    }
+                }
+            });
         } catch (SQLException e) {
             LOGGER.atWarning().log("Error getting level for %s: %s", playerId, e.getMessage());
             return 1;
@@ -188,11 +199,15 @@ public class ProgressionRepository {
      */
     public long getXP(@Nonnull UUID playerId) {
         String sql = "SELECT xp FROM player_progression WHERE player_uuid = ?";
-        try (PreparedStatement stmt = database.getConnection().prepareStatement(sql)) {
-            stmt.setString(1, playerId.toString());
-            try (ResultSet rs = stmt.executeQuery()) {
-                return rs.next() ? rs.getLong("xp") : 0;
-            }
+        try {
+            return database.read(conn -> {
+                try (PreparedStatement stmt = conn.prepareStatement(sql)) {
+                    stmt.setString(1, playerId.toString());
+                    try (ResultSet rs = stmt.executeQuery()) {
+                        return rs.next() ? rs.getLong("xp") : 0L;
+                    }
+                }
+            });
         } catch (SQLException e) {
             LOGGER.atWarning().log("Error getting XP for %s: %s", playerId, e.getMessage());
             return 0;
@@ -207,11 +222,15 @@ public class ProgressionRepository {
      */
     public int getSeason(@Nonnull UUID playerId) {
         String sql = "SELECT season FROM player_progression WHERE player_uuid = ?";
-        try (PreparedStatement stmt = database.getConnection().prepareStatement(sql)) {
-            stmt.setString(1, playerId.toString());
-            try (ResultSet rs = stmt.executeQuery()) {
-                return rs.next() ? rs.getInt("season") : 1;
-            }
+        try {
+            return database.read(conn -> {
+                try (PreparedStatement stmt = conn.prepareStatement(sql)) {
+                    stmt.setString(1, playerId.toString());
+                    try (ResultSet rs = stmt.executeQuery()) {
+                        return rs.next() ? rs.getInt("season") : 1;
+                    }
+                }
+            });
         } catch (SQLException e) {
             LOGGER.atWarning().log("Error getting season for %s: %s", playerId, e.getMessage());
             return 1;
@@ -229,9 +248,13 @@ public class ProgressionRepository {
                 VALUES (?, 1, 0, CURRENT_TIMESTAMP)
                 ON CONFLICT (player_uuid) DO NOTHING
                 """;
-        try (PreparedStatement stmt = database.getConnection().prepareStatement(sql)) {
-            stmt.setString(1, playerId.toString());
-            stmt.executeUpdate();
+        try {
+            database.write(conn -> {
+                try (PreparedStatement stmt = conn.prepareStatement(sql)) {
+                    stmt.setString(1, playerId.toString());
+                    stmt.executeUpdate();
+                }
+            });
         } catch (SQLException e) {
             LOGGER.atWarning().log("Failed to ensure player exists for %s: %s", playerId, e.getMessage());
         }
@@ -251,13 +274,17 @@ public class ProgressionRepository {
                 ON CONFLICT (player_uuid)
                 DO UPDATE SET level = ?, xp = ?, updated_at = CURRENT_TIMESTAMP
                 """;
-        try (PreparedStatement stmt = database.getConnection().prepareStatement(sql)) {
-            stmt.setString(1, playerId.toString());
-            stmt.setInt(2, level);
-            stmt.setLong(3, xp);
-            stmt.setInt(4, level);
-            stmt.setLong(5, xp);
-            stmt.executeUpdate();
+        try {
+            database.write(conn -> {
+                try (PreparedStatement stmt = conn.prepareStatement(sql)) {
+                    stmt.setString(1, playerId.toString());
+                    stmt.setInt(2, level);
+                    stmt.setLong(3, xp);
+                    stmt.setInt(4, level);
+                    stmt.setLong(5, xp);
+                    stmt.executeUpdate();
+                }
+            });
         } catch (SQLException e) {
             LOGGER.atWarning().log("Failed to save progress for %s: %s", playerId, e.getMessage());
         }
