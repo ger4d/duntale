@@ -12,7 +12,7 @@ import com.hypixel.hytale.server.core.Message;
 import com.hypixel.hytale.server.core.asset.type.item.config.Item;
 import com.hypixel.hytale.server.core.entity.entities.Player;
 import com.hypixel.hytale.server.core.entity.entities.player.windows.ContainerWindow;
-import com.hypixel.hytale.server.core.inventory.Inventory;
+import com.hypixel.hytale.server.core.inventory.InventoryComponent;
 import com.hypixel.hytale.server.core.inventory.ItemStack;
 import com.hypixel.hytale.server.core.inventory.container.ItemContainer;
 import com.hypixel.hytale.server.core.inventory.transaction.Transaction;
@@ -373,12 +373,14 @@ public class MerchantService {
         Ref<EntityStore> ref = playerRef.getReference();
         if (ref == null || !ref.isValid()) return;
 
-        Player player = ref.getStore().getComponent(ref, Player.getComponentType());
-        if (player == null) return;
-
-        Inventory inventory = player.getInventory();
-        tagFirstMatchInContainer(inventory.getHotbar(), itemId, sellPrice);
-        tagFirstMatchInContainer(inventory.getStorage(), itemId, sellPrice);
+        InventoryComponent.Hotbar hotbar = ref.getStore().getComponent(ref, InventoryComponent.Hotbar.getComponentType());
+        if (hotbar != null) {
+            tagFirstMatchInContainer(hotbar.getInventory(), itemId, sellPrice);
+        }
+        InventoryComponent.Storage storage = ref.getStore().getComponent(ref, InventoryComponent.Storage.getComponentType());
+        if (storage != null) {
+            tagFirstMatchInContainer(storage.getInventory(), itemId, sellPrice);
+        }
     }
 
     /**
@@ -422,9 +424,14 @@ public class MerchantService {
         Player player = accessor.getComponent(ref, Player.getComponentType());
         if (player == null) return;
 
-        Inventory inventory = player.getInventory();
-        stripMerchantMeta(inventory.getHotbar());
-        stripMerchantMeta(inventory.getStorage());
+        InventoryComponent.Hotbar hotbar = accessor.getComponent(ref, InventoryComponent.Hotbar.getComponentType());
+        if (hotbar != null) {
+            stripMerchantMeta(hotbar.getInventory());
+        }
+        InventoryComponent.Storage storage = accessor.getComponent(ref, InventoryComponent.Storage.getComponentType());
+        if (storage != null) {
+            stripMerchantMeta(storage.getInventory());
+        }
     }
 
     /**

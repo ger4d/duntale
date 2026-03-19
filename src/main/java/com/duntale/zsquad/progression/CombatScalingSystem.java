@@ -4,16 +4,13 @@ import com.hypixel.hytale.component.ArchetypeChunk;
 import com.hypixel.hytale.component.CommandBuffer;
 import com.hypixel.hytale.component.Ref;
 import com.hypixel.hytale.component.Store;
-import com.hypixel.hytale.component.SystemGroup;
 import com.hypixel.hytale.component.dependency.Dependency;
 import com.hypixel.hytale.component.dependency.Order;
 import com.hypixel.hytale.component.dependency.SystemGroupDependency;
 import com.hypixel.hytale.component.query.Query;
 import com.hypixel.hytale.logger.HytaleLogger;
-import com.hypixel.hytale.server.core.entity.EntityUtils;
-import com.hypixel.hytale.server.core.entity.LivingEntity;
 import com.hypixel.hytale.server.core.entity.UUIDComponent;
-import com.hypixel.hytale.server.core.inventory.Inventory;
+import com.hypixel.hytale.server.core.inventory.InventoryComponent;
 import com.hypixel.hytale.server.core.inventory.ItemStack;
 import com.hypixel.hytale.server.core.inventory.container.ItemContainer;
 import com.hypixel.hytale.server.core.modules.entity.AllLegacyLivingEntityTypesQuery;
@@ -25,7 +22,6 @@ import com.hypixel.hytale.server.core.universe.world.storage.EntityStore;
 import com.hypixel.hytale.server.npc.entities.NPCEntity;
 
 import javax.annotation.Nonnull;
-import javax.annotation.Nullable;
 import java.util.Set;
 import java.util.UUID;
 import java.util.logging.Level;
@@ -118,10 +114,13 @@ public class CombatScalingSystem extends DamageEventSystem {
                     amount = Math.min(amount, 500f);
 
                     // Apply player's leveled armor DR
-                    float armorDr = computePlayerArmorDR(targetRef, commandBuffer);
+                    float armorDr = computePlayerArmorDR(targetRef, store);
                     if (armorDr > 0f) {
                         amount *= (1f - armorDr);
                     }
+
+                    LOGGER.atInfo().log("NPC attacker damage scaling: base=%.2f, levelMult=%.2f, armorDr=%.2f, final=%.2f",
+                            damage.getAmount(), data.damageMultiplier(), armorDr, amount);
 
                     damage.setAmount(Math.max(amount, 0f));
                 }
@@ -133,7 +132,7 @@ public class CombatScalingSystem extends DamageEventSystem {
         //   Scale damage by the player's held weapon level multiplier × variance.
         NPCEntity targetNpc = store.getComponent(targetRef, NPCEntity.getComponentType());
         if (targetNpc != null) {
-            float weaponMult = computePlayerWeaponMult(attackerRef, commandBuffer);
+            float weaponMult = computePlayerWeaponMult(attackerRef, store);
             if (weaponMult > 0f) {
                 damage.setAmount(damage.getAmount() * weaponMult);
             }
@@ -153,13 +152,8 @@ public class CombatScalingSystem extends DamageEventSystem {
      * @return the weapon multiplier (including variance), or {@code 0} if no leveled weapon
      */
     private float computePlayerWeaponMult(@Nonnull Ref<EntityStore> attackerRef,
-                                          @Nonnull CommandBuffer<EntityStore> commandBuffer) {
-        if (!(EntityUtils.getEntity(attackerRef, commandBuffer) instanceof LivingEntity attacker)) {
-            return 0f;
-        }
-
-        Inventory inventory = attacker.getInventory();
-        ItemStack heldItem = inventory.getItemInHand();
+                                          @Nonnull Store<EntityStore> store) {
+        ItemStack heldItem = InventoryComponent.getItemInHand(store, attackerRef);
         if (ItemStack.isEmpty(heldItem)) {
             return 0f;
         }
@@ -193,12 +187,13 @@ public class CombatScalingSystem extends DamageEventSystem {
      * @return the combined DR (0.0–0.65), or {@code 0} if no leveled armor
      */
     private float computePlayerArmorDR(@Nonnull Ref<EntityStore> targetRef,
-                                       @Nonnull CommandBuffer<EntityStore> commandBuffer) {
-        if (!(EntityUtils.getEntity(targetRef, commandBuffer) instanceof LivingEntity target)) {
+                                       @Nonnull Store<EntityStore> store) {
+        InventoryComponent.Armor armorComponent = store.getComponent(targetRef, InventoryComponent.Armor.getComponentType());
+        if (armorComponent == null) {
             return 0f;
         }
 
-        ItemContainer armorContainer = target.getInventory().getArmor();
+        ItemContainer armorContainer = armorComponent.getInventory();
         float totalDr = 0f;
 
         for (short slot = 0; slot < armorContainer.getCapacity(); slot++) {

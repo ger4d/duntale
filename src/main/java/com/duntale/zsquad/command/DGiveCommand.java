@@ -12,8 +12,9 @@ import com.hypixel.hytale.server.core.command.system.arguments.types.ArgTypes;
 import com.hypixel.hytale.server.core.command.system.basecommands.AbstractPlayerCommand;
 import com.hypixel.hytale.server.core.command.system.basecommands.CommandBase;
 import com.hypixel.hytale.server.core.entity.entities.Player;
-import com.hypixel.hytale.server.core.inventory.Inventory;
+import com.hypixel.hytale.server.core.inventory.InventoryComponent;
 import com.hypixel.hytale.server.core.inventory.ItemStack;
+import com.hypixel.hytale.server.core.inventory.container.CombinedItemContainer;
 import com.hypixel.hytale.server.core.universe.PlayerRef;
 import com.hypixel.hytale.server.core.universe.world.World;
 import com.hypixel.hytale.server.core.universe.world.storage.EntityStore;
@@ -107,9 +108,9 @@ public class DGiveCommand extends CommandBase {
             stack = GearLevelService.setWeaponLevel(stack, level);
             stack = GearLevelService.setWeaponVariance(stack, variance);
 
-            Inventory inventory = player.getInventory();
+            CombinedItemContainer combined = InventoryComponent.getCombined(store, ref, InventoryComponent.HOTBAR_FIRST);
             try {
-                inventory.getCombinedEverything().addItemStack(stack);
+                combined.addItemStack(stack);
             } catch (Exception e) {
                 context.sendMessage(Message.raw("Failed to add item: " + e.getMessage()).color(RED));
                 return;
@@ -182,9 +183,9 @@ public class DGiveCommand extends CommandBase {
             stack = GearLevelService.setArmorLevel(stack, level);
             stack = GearLevelService.setArmorVariance(stack, variance);
 
-            Inventory inventory = player.getInventory();
+            CombinedItemContainer combined = InventoryComponent.getCombined(store, ref, InventoryComponent.HOTBAR_FIRST);
             try {
-                inventory.getCombinedEverything().addItemStack(stack);
+                combined.addItemStack(stack);
             } catch (Exception e) {
                 context.sendMessage(Message.raw("Failed to add item: " + e.getMessage()).color(RED));
                 return;

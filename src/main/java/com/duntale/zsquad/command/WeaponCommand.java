@@ -9,8 +9,9 @@ import com.hypixel.hytale.server.core.command.system.arguments.types.ArgTypes;
 import com.hypixel.hytale.server.core.command.system.basecommands.AbstractPlayerCommand;
 import com.hypixel.hytale.server.core.command.system.basecommands.CommandBase;
 import com.hypixel.hytale.server.core.entity.entities.Player;
-import com.hypixel.hytale.server.core.inventory.Inventory;
+import com.hypixel.hytale.server.core.inventory.InventoryComponent;
 import com.hypixel.hytale.server.core.inventory.ItemStack;
+import com.hypixel.hytale.server.core.inventory.container.CombinedItemContainer;
 import com.hypixel.hytale.server.core.universe.PlayerRef;
 import com.hypixel.hytale.server.core.universe.world.World;
 import com.hypixel.hytale.server.core.universe.world.storage.EntityStore;
@@ -52,14 +53,14 @@ public class WeaponCommand extends CommandBase {
             Player player = store.getComponent(ref, Player.getComponentType());
             if (player == null) return;
 
-            Inventory inventory = player.getInventory();
+            CombinedItemContainer combined = InventoryComponent.getCombined(store, ref, InventoryComponent.HOTBAR_FIRST);
             int addedCount = 0;
 
             for (String id : WEAPON_IDS) {
                 Item item = Item.getAssetMap().getAsset(id);
                 if (item != null) {
                     try {
-                        inventory.getCombinedEverything().addItemStack(new ItemStack(item.getId(), 1));
+                        combined.addItemStack(new ItemStack(item.getId(), 1));
                         addedCount++;
                     } catch (Exception e) {
                         context.sendMessage(Message.raw("Failed to add " + id + ": " + e.getMessage()));
@@ -75,7 +76,7 @@ public class WeaponCommand extends CommandBase {
             for (Item item : Item.getAssetMap().getAssetMap().values()) {
                 if (item.getId().contains("Ammo") || item.getId().equals("Weapon_Arrow_Crude") || item.getId().equals("Weapon_Arrow") || item.getId().equals("Weapon_Ball_Iron")) {
                      try {
-                        inventory.getCombinedEverything().addItemStack(new ItemStack(item.getId(), 64));
+                        combined.addItemStack(new ItemStack(item.getId(), 64));
                         ammoAdded++;
                     } catch (Exception e) {
                         // ignore failed ammo additions

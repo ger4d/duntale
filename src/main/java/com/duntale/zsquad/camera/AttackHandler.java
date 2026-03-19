@@ -13,7 +13,10 @@ import com.hypixel.hytale.math.vector.Vector3i;
 import com.hypixel.hytale.protocol.BlockPosition;
 import com.hypixel.hytale.protocol.InteractionType;
 import com.hypixel.hytale.server.core.universe.world.World;
+import com.hypixel.hytale.server.core.universe.world.chunk.section.BlockSection;
+import com.hypixel.hytale.server.core.universe.world.storage.ChunkStore;
 import com.hypixel.hytale.server.core.universe.world.storage.EntityStore;
+import com.hypixel.hytale.server.core.util.FillerBlockUtil;
 
 import javax.annotation.Nonnull;
 import java.util.Arrays;
@@ -163,7 +166,16 @@ final class AttackHandler {
         BlockPosition rawPos = new BlockPosition(
                 blockPos.getX(), blockPos.getY(), blockPos.getZ());
         World world = store.getExternalData().getWorld();
-        BlockPosition basePos = world.getBaseBlock(rawPos);
+        Ref<ChunkStore> sectionRef = world.getChunkStore().getChunkSectionReferenceAtBlock(rawPos.x, rawPos.y, rawPos.z);
+        BlockSection blockSection = sectionRef != null
+                ? sectionRef.getStore().getComponent(sectionRef, BlockSection.getComponentType()) : null;
+        int filler = blockSection != null ? blockSection.getFiller(rawPos.x, rawPos.y, rawPos.z) : 0;
+        BlockPosition basePos = filler != 0
+                ? new BlockPosition(
+                    rawPos.x - FillerBlockUtil.unpackX(filler),
+                    rawPos.y - FillerBlockUtil.unpackY(filler),
+                    rawPos.z - FillerBlockUtil.unpackZ(filler))
+                : rawPos;
 
         ctx.getMetaStore().putMetaObject(Interaction.TARGET_BLOCK, basePos);
         ctx.getMetaStore().putMetaObject(Interaction.TARGET_BLOCK_RAW, rawPos);
