@@ -1,7 +1,8 @@
 package com.duntale.zsquad.command;
 
+import com.duntale.zsquad.progression.AssetCatalog;
+import com.duntale.zsquad.progression.CombatScaling;
 import com.duntale.zsquad.progression.LeveledNpcSpawner;
-import com.duntale.zsquad.progression.ScalingDataCache;
 import com.hypixel.hytale.component.Ref;
 import com.hypixel.hytale.component.Store;
 import com.hypixel.hytale.math.vector.Vector3d;
@@ -27,11 +28,13 @@ import javax.annotation.Nonnull;
  *
  * <p>Usage:
  * <ul>
- *   <li>{@code /dspawn <npc> <count> <level> [--elite]} -- Spawn leveled NPCs near the player</li>
- *   <li>{@code /dspawn info <npc> <level>} -- Show scaled stats without spawning</li>
+ *   <li>{@code /dspawn <npc> <count> <level> [--elite | --boss]} -- Spawn leveled NPCs near the player</li>
+ *   <li>{@code /dspawn info <npc> <level>} -- Show scaled stats for all variants</li>
  * </ul>
  */
 public class DSpawnCommand extends CommandBase {
+
+    private static final String COMPANION_ROLE_PREFIX = "Companion_";
 
     private static final String GOLD = "#FFD700";
     private static final String WHITE = "#FFFFFF";
@@ -41,18 +44,18 @@ public class DSpawnCommand extends CommandBase {
     private static final String RED = "#FF5555";
 
     private final LeveledNpcSpawner spawner;
-    private final ScalingDataCache scalingCache;
+    private final AssetCatalog assetCatalog;
 
     /**
      * Creates a new /dspawn command.
      *
      * @param spawner      the leveled NPC spawner
-     * @param scalingCache the scaling data cache
+     * @param assetCatalog the asset catalog for base HP lookups
      */
-    public DSpawnCommand(@Nonnull LeveledNpcSpawner spawner, @Nonnull ScalingDataCache scalingCache) {
+    public DSpawnCommand(@Nonnull LeveledNpcSpawner spawner, @Nonnull AssetCatalog assetCatalog) {
         super("dspawn", "Dungeon scaling test commands");
         this.spawner = spawner;
-        this.scalingCache = scalingCache;
+        this.assetCatalog = assetCatalog;
 
         this.addSubCommand(new SpawnSubCommand());
         this.addSubCommand(new InfoSubCommand());
@@ -61,8 +64,15 @@ public class DSpawnCommand extends CommandBase {
     @Override
     protected void executeSync(@Nonnull CommandContext context) {
         context.sendMessage(Message.raw("Usage:").color(YELLOW));
-        context.sendMessage(Message.raw("  /dspawn <npc> <count> <level> [--elite]").color(GRAY));
+        context.sendMessage(Message.raw("  /dspawn <npc> <count> <level> [--elite | --boss]").color(GRAY));
         context.sendMessage(Message.raw("  /dspawn info <npc> <level>").color(GRAY));
+    }
+
+    /**
+     * Resolves the base HP for an NPC role without spawning it.
+     */
+    private int resolveBaseHp(@Nonnull String roleName) {
+        return assetCatalog.getMonsterBaseHp(roleName);
     }
 
     // -- Spawn subcommand (default) -----------------------------------
@@ -76,6 +86,8 @@ public class DSpawnCommand extends CommandBase {
                 this.withRequiredArg("level", "Dungeon level (1-60)", ArgTypes.INTEGER);
         private final FlagArg eliteFlag =
                 this.withFlagArg("elite", "Spawn as elite variant (1.2x scale)");
+        private final FlagArg bossFlag =
+                this.withFlagArg("boss", "Spawn as boss variant");
 
         SpawnSubCommand() {
             super("spawn", "Spawn leveled NPCs near you");
@@ -93,6 +105,17 @@ public class DSpawnCommand extends CommandBase {
             int count = countArg.get(context);
             int level = levelArg.get(context);
             boolean elite = eliteFlag.get(context);
+            boolean boss = bossFlag.get(context);
+
+            // Mutually exclusive flags
+            if (elite && boss) {
+                context.sendMessage(Message.raw("Cannot use --elite and --boss together.").color(RED));
+                return;
+            }
+
+            CombatScaling.NpcVariant variant = boss ? CombatScaling.NpcVariant.BOSS
+                    : elite ? CombatScaling.NpcVariant.ELITE
+                    : CombatScaling.NpcVariant.NORMAL;
 
             // Validation
             if (level < 1 || level > 60) {
@@ -117,7 +140,8 @@ public class DSpawnCommand extends CommandBase {
             }
 
             Vector3d basePos = transform.getPosition();
-            String label = elite ? "ELITE " + npc : npc;
+            String label = variant != CombatScaling.NpcVariant.NORMAL
+                    ? variant.name() + " " + npc : npc;
             context.sendMessage(
                     Message.raw("Spawning " + count + "x ").color(YELLOW)
                             .insert(Message.raw(label).color(GOLD).bold(true))
@@ -134,14 +158,13 @@ public class DSpawnCommand extends CommandBase {
                         (Math.random() - 0.5) * 6
                 );
 
-                Pair<Ref<EntityStore>, NPCEntity> result = spawner.spawn(store, npc, pos, level, elite);
+                Pair<Ref<EntityStore>, NPCEntity> result = spawner.spawn(store, npc, pos, level, variant);
                 if (result != null) {
                     succeeded++;
                 }
             }
 
             long elapsed = (System.nanoTime() - startTime) / 1_000_000;
-            ScalingDataCache.MonsterScaledData data = scalingCache.getMonsterScaled(npc, level);
 
             context.sendMessage(
                     Message.raw("Spawned " + succeeded + "/" + count + " ").color(GREEN)
@@ -149,11 +172,12 @@ public class DSpawnCommand extends CommandBase {
                             .insert(Message.raw(" Lv." + level + " in " + elapsed + "ms").color(GREEN))
             );
 
-            int hp = elite ? data.eliteHp() : data.scaledHp();
-            float dmg = elite ? data.eliteDamage() : data.scaledDamage();
+            // Post-spawn feedback using runtime computation
+            int baseHp = resolveBaseHp(npc);
+            int scaledHp = CombatScaling.npcScaledHp(baseHp, level, variant);
+            float damageMult = CombatScaling.npcDamageMult(level, variant);
             context.sendMessage(
-                    Message.raw("  HP: " + hp + " | Dmg: " + String.format("%.1f", dmg)
-                            + " | DmgMult: x" + String.format("%.2f", data.damageMult())).color(GRAY)
+                    Message.raw("  HP: " + scaledHp + " | DmgMult: x" + String.format("%.2f", damageMult)).color(GRAY)
             );
         }
     }
@@ -167,7 +191,7 @@ public class DSpawnCommand extends CommandBase {
                 this.withRequiredArg("level", "Dungeon level (1-60)", ArgTypes.INTEGER);
 
         InfoSubCommand() {
-            super("info", "Show scaled stats without spawning");
+            super("info", "Show scaled stats for all variants");
         }
 
         @Override
@@ -180,6 +204,7 @@ public class DSpawnCommand extends CommandBase {
         ) {
             String npc = npcArg.get(context);
             int level = levelArg.get(context);
+            boolean companionRole = npc.startsWith(COMPANION_ROLE_PREFIX);
 
             if (level < 1 || level > 60) {
                 context.sendMessage(Message.raw("Level must be between 1 and 60.").color(RED));
@@ -192,23 +217,26 @@ public class DSpawnCommand extends CommandBase {
                 return;
             }
 
-            ScalingDataCache.MonsterScaledData data = scalingCache.getMonsterScaled(npc, level);
-
             context.sendMessage(
                     Message.raw("--- ").color(GRAY)
                             .insert(Message.raw(npc + " at Lv." + level).color(GOLD).bold(true))
                             .insert(Message.raw(" ---").color(GRAY))
             );
-            context.sendMessage(statLine("Scaled HP", String.valueOf(data.scaledHp())));
-            context.sendMessage(statLine("Scaled Damage", String.format("%.1f", data.scaledDamage())));
-            context.sendMessage(statLine("Damage Mult", String.format("x%.3f", data.damageMult())));
-            context.sendMessage(statLine("Elite HP", String.valueOf(data.eliteHp())));
-            context.sendMessage(statLine("Elite Damage", String.format("%.1f", data.eliteDamage())));
 
-            if (data.scaledHp() == 0) {
-                context.sendMessage(
-                        Message.raw("  (No scaling data found -- is the database populated?)").color(RED)
-                );
+            int baseHp = resolveBaseHp(npc);
+            if (companionRole) {
+                int hp = CombatScaling.companionScaledHp(baseHp, level);
+                float dmg = CombatScaling.companionDamageMult(level);
+                context.sendMessage(statLine("COMPANION",
+                    "HP: " + hp + " | DmgMult: x" + String.format("%.2f", dmg)));
+                return;
+            }
+
+            for (CombatScaling.NpcVariant v : CombatScaling.NpcVariant.values()) {
+                int hp = CombatScaling.npcScaledHp(baseHp, level, v);
+                float dmg = CombatScaling.npcDamageMult(level, v);
+                context.sendMessage(statLine(v.name(),
+                        "HP: " + hp + " | DmgMult: x" + String.format("%.2f", dmg)));
             }
         }
 

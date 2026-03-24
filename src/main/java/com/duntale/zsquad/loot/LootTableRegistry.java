@@ -9,7 +9,7 @@ import java.util.concurrent.ConcurrentHashMap;
  *
  * <p>Tables are registered programmatically at plugin startup.
  * When a leveled NPC dies, the {@link NpcLootSystem} looks up the table
- * by the dead NPC's role name (from {@link com.duntale.zsquad.progression.NpcLevelRegistry}).
+ * by the dead NPC's role name (from the {@link com.duntale.zsquad.progression.CombatScalingComponent}).
  *
  * <p>If no table is registered for a role, the default engine drops are suppressed
  * and nothing drops — this is by design for an RPG where only configured mobs yield loot.

@@ -1,7 +1,8 @@
 package com.duntale.zsquad.command;
 
+import com.duntale.zsquad.progression.AssetCatalog;
+import com.duntale.zsquad.progression.CombatScaling;
 import com.duntale.zsquad.progression.GearLevelService;
-import com.duntale.zsquad.progression.ScalingDataCache;
 import com.hypixel.hytale.component.Ref;
 import com.hypixel.hytale.component.Store;
 import com.hypixel.hytale.server.core.Message;
@@ -40,16 +41,16 @@ public class DGiveCommand extends CommandBase {
     private static final String RED = "#FF5555";
     private static final String CYAN = "#55FFFF";
 
-    private final ScalingDataCache scalingCache;
+    private final AssetCatalog assetCatalog;
 
     /**
      * Creates a new /dgive command.
      *
-     * @param scalingCache the scaling data cache
+     * @param assetCatalog the asset catalog
      */
-    public DGiveCommand(@Nonnull ScalingDataCache scalingCache) {
+    public DGiveCommand(@Nonnull AssetCatalog assetCatalog) {
         super("dgive", "Give leveled gear for dungeon testing");
-        this.scalingCache = scalingCache;
+        this.assetCatalog = assetCatalog;
 
         this.addSubCommand(new WeaponSubCommand());
         this.addSubCommand(new ArmorSubCommand());
@@ -117,8 +118,8 @@ public class DGiveCommand extends CommandBase {
             }
 
             // Fetch scaling data for feedback
-            float damageMult = scalingCache.getWeaponMultiplier(weaponId, level);
-            ScalingDataCache.WeaponBaseRow base = scalingCache.getWeaponBase(weaponId);
+            float damageMult = CombatScaling.weaponMult(level);
+            AssetCatalog.WeaponBaseRow base = assetCatalog.getWeaponBase(weaponId);
 
             context.sendMessage(
                     Message.raw("Gave ").color(GREEN)
@@ -192,8 +193,9 @@ public class DGiveCommand extends CommandBase {
             }
 
             // Fetch scaling data for feedback
-            float effectiveDr = scalingCache.getArmorDR(armorId, level) * variance;
-            ScalingDataCache.ArmorBaseRow base = scalingCache.getArmorBase(armorId);
+            AssetCatalog.ArmorBaseRow base = assetCatalog.getArmorBase(armorId);
+            float baseResist = base != null ? base.physResist() : 0f;
+            float effectiveDr = CombatScaling.armorDR(baseResist, level) * variance;
 
             context.sendMessage(
                     Message.raw("Gave ").color(GREEN)

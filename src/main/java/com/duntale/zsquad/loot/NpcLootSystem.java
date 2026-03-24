@@ -1,7 +1,7 @@
 package com.duntale.zsquad.loot;
 
 import com.duntale.zsquad.economy.CurrencyDrop;
-import com.duntale.zsquad.progression.NpcLevelRegistry;
+import com.duntale.zsquad.progression.CombatScalingComponent;
 import com.duntale.zsquad.progression.ProgressionService;
 import com.duntale.zsquad.rpg.RpgService;
 import com.duntale.zsquad.rpg.RpgStat;
@@ -29,6 +29,7 @@ import com.hypixel.hytale.server.core.modules.entity.damage.DeathSystems;
 import com.hypixel.hytale.server.core.modules.entity.item.ItemComponent;
 import com.hypixel.hytale.server.core.modules.entity.item.PreventPickup;
 import com.hypixel.hytale.server.core.universe.world.storage.EntityStore;
+import com.hypixel.hytale.server.npc.NPCPlugin;
 import com.hypixel.hytale.server.npc.entities.NPCEntity;
 import com.hypixel.hytale.server.npc.systems.NPCDamageSystems;
 
@@ -46,7 +47,7 @@ import java.util.UUID;
  * Sets {@link DeathConfig.ItemsLossMode#NONE} on the {@link DeathComponent} to suppress
  * the default drop logic, then spawns custom items from the matching {@link LootTable}.
  *
- * <p>Only applies to leveled NPCs tracked by {@link NpcLevelRegistry}. Untracked NPCs
+ * <p>Only applies to leveled NPCs that have a {@link CombatScalingComponent}. Untracked NPCs
  * are left untouched and will still have their default drops suppressed (nothing drops
  * for unregistered mobs — intentional for an RPG game mode).
  */
@@ -71,7 +72,6 @@ public class NpcLootSystem extends DeathSystems.OnDeathSystem {
     private static final long BASE_XP_PER_KILL = 10;
 
     private final LootTableRegistry lootTableRegistry;
-    private final NpcLevelRegistry npcLevelRegistry;
     private final RpgService rpgService;
     private final ProgressionService progressionService;
 
@@ -79,16 +79,13 @@ public class NpcLootSystem extends DeathSystems.OnDeathSystem {
      * Creates a new NPC loot system.
      *
      * @param lootTableRegistry    the registry of custom loot tables
-     * @param npcLevelRegistry     the registry tracking spawned NPC levels
      * @param rpgService           the RPG service for attacker stat lookups
      * @param progressionService   the progression service for granting XP on kill
      */
     public NpcLootSystem(@Nonnull LootTableRegistry lootTableRegistry,
-                         @Nonnull NpcLevelRegistry npcLevelRegistry,
                          @Nonnull RpgService rpgService,
                          @Nonnull ProgressionService progressionService) {
         this.lootTableRegistry = lootTableRegistry;
-        this.npcLevelRegistry = npcLevelRegistry;
         this.rpgService = rpgService;
         this.progressionService = progressionService;
     }
@@ -112,18 +109,27 @@ public class NpcLootSystem extends DeathSystems.OnDeathSystem {
             @Nonnull Store<EntityStore> store,
             @Nonnull CommandBuffer<EntityStore> commandBuffer
     ) {
-        // ── 1. Look up the NPC's level data ──────────────────────────
-        UUIDComponent uuidComponent = store.getComponent(ref, UUIDComponent.getComponentType());
-        if (uuidComponent == null) {
+        // ── 1. Look up the NPC's scaling data from ECS component ─────
+        CombatScalingComponent scalingComp = store.getComponent(ref, CombatScalingComponent.getComponentType());
+        if (scalingComp == null || scalingComp.isCompanion()) {
+            // Untracked NPC or companion — leave untouched
             return;
         }
 
-        UUID uuid = uuidComponent.getUuid();
-        NpcLevelRegistry.NpcLevelData levelData = npcLevelRegistry.get(uuid);
-        if (levelData == null) {
-            // Untracked NPC — leave default drops untouched
+        int npcLevel = scalingComp.getLevel();
+
+        // Get the NPC role name from NPCEntity
+        NPCEntity npcEntity = store.getComponent(ref, NPCEntity.getComponentType());
+        if (npcEntity == null) {
             return;
         }
+        String npcId = NPCPlugin.get().getName(npcEntity.getRoleIndex());
+        if (npcId == null) {
+            return;
+        }
+
+        LOGGER.atInfo().log("Handling death of %s (Lv.%d) — applying custom loot logic",
+                npcId, npcLevel);
 
         // ── 2. Suppress default NPC drops for all tracked NPCs ──────
         component.setItemsLossMode(DeathConfig.ItemsLossMode.NONE);
@@ -135,25 +141,24 @@ public class NpcLootSystem extends DeathSystems.OnDeathSystem {
             luckLevel = rpgService.getStat(attackerUuid, RpgStat.LUCK);
 
             // Grant XP based on NPC level
-            long xpAmount = BASE_XP_PER_KILL * levelData.level();
+            long xpAmount = BASE_XP_PER_KILL * npcLevel;
             progressionService.grantXP(attackerUuid, xpAmount);
         }
 
         // ── 3. Look up the loot table for this NPC role ──────────────
-        LootTable lootTable = lootTableRegistry.get(levelData.npcId());
+        LootTable lootTable = lootTableRegistry.get(npcId);
         if (lootTable == null) {
             // No custom table — default drops already suppressed, nothing else to do
             return;
         }
 
         // ── 4. Roll loot ─────────────────────────────────────────────
-        List<ItemStack> rolledDrops = lootTable.roll(levelData.level(), luckLevel);
+        List<ItemStack> rolledDrops = lootTable.roll(npcLevel, luckLevel);
         if (rolledDrops.isEmpty()) {
             return;
         }
 
         // ── 4b. Scale gold quantities linearly by NPC level ──────────
-        int npcLevel = levelData.level();
         List<ItemStack> drops = new ArrayList<>(rolledDrops.size());
         for (ItemStack drop : rolledDrops) {
             if ("Gold_Coin".equals(drop.getItemId()) && npcLevel > 1) {
@@ -187,7 +192,7 @@ public class NpcLootSystem extends DeathSystems.OnDeathSystem {
         commandBuffer.addEntities(itemEntities, AddReason.SPAWN);
 
         LOGGER.atInfo().log("Dropped %d custom loot item(s) for %s Lv.%d",
-                drops.size(), levelData.npcId(), levelData.level());
+                drops.size(), npcId, npcLevel);
     }
 
     /**

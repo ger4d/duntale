@@ -1,9 +1,9 @@
 package com.duntale.zsquad.command;
 
-import com.duntale.zsquad.progression.ScalingDataCache;
-import com.duntale.zsquad.progression.ScalingDataCache.ArmorBaseRow;
-import com.duntale.zsquad.progression.ScalingDataCache.MonsterBaseRow;
-import com.duntale.zsquad.progression.ScalingDataCache.WeaponBaseRow;
+import com.duntale.zsquad.progression.AssetCatalog;
+import com.duntale.zsquad.progression.AssetCatalog.ArmorBaseRow;
+import com.duntale.zsquad.progression.AssetCatalog.MonsterBaseRow;
+import com.duntale.zsquad.progression.AssetCatalog.WeaponBaseRow;
 import com.hypixel.hytale.server.core.Message;
 import com.hypixel.hytale.server.core.command.system.CommandContext;
 import com.hypixel.hytale.server.core.command.system.arguments.system.OptionalArg;
@@ -33,16 +33,16 @@ public class DListCommand extends CommandBase {
     private static final String YELLOW = "#FFEE55";
     private static final String RED = "#FF5555";
 
-    private final ScalingDataCache scalingCache;
+    private final AssetCatalog assetCatalog;
 
     /**
      * Creates a new /dlist command.
      *
-     * @param scalingCache the scaling data cache for DB queries
+     * @param assetCatalog the asset catalog for DB queries
      */
-    public DListCommand(@Nonnull ScalingDataCache scalingCache) {
+    public DListCommand(@Nonnull AssetCatalog assetCatalog) {
         super("dlist", "List scaling database assets");
-        this.scalingCache = scalingCache;
+        this.assetCatalog = assetCatalog;
 
         this.addSubCommand(new NpcSubCommand());
         this.addSubCommand(new WeaponSubCommand());
@@ -52,9 +52,9 @@ public class DListCommand extends CommandBase {
     @Override
     protected void executeSync(@Nonnull CommandContext context) {
         context.sendMessage(Message.raw("Usage: /dlist npc|weapon|armor [--sort=X] [--order=asc|desc] [--count=N]").color(YELLOW));
-        context.sendMessage(Message.raw("  NPC sorts: " + String.join(", ", ScalingDataCache.npcSortKeys())).color(GRAY));
-        context.sendMessage(Message.raw("  Weapon sorts: " + String.join(", ", ScalingDataCache.weaponSortKeys())).color(GRAY));
-        context.sendMessage(Message.raw("  Armor sorts: " + String.join(", ", ScalingDataCache.armorSortKeys())).color(GRAY));
+        context.sendMessage(Message.raw("  NPC sorts: " + String.join(", ", AssetCatalog.npcSortKeys())).color(GRAY));
+        context.sendMessage(Message.raw("  Weapon sorts: " + String.join(", ", AssetCatalog.weaponSortKeys())).color(GRAY));
+        context.sendMessage(Message.raw("  Armor sorts: " + String.join(", ", AssetCatalog.armorSortKeys())).color(GRAY));
     }
 
     // ── Helpers ──────────────────────────────────────────────────────
@@ -128,7 +128,7 @@ public class DListCommand extends CommandBase {
                 tier = Character.toUpperCase(tier.charAt(0)) + tier.substring(1).toLowerCase();
             }
 
-            List<MonsterBaseRow> rows = scalingCache.listMonsters(sort, ascending, count, tier, category);
+            List<MonsterBaseRow> rows = assetCatalog.listMonsters(sort, ascending, count, tier, category);
 
             if (rows.isEmpty()) {
                 context.sendMessage(Message.raw("No NPCs found.").color(RED));
@@ -189,7 +189,7 @@ public class DListCommand extends CommandBase {
                 family = Character.toUpperCase(family.charAt(0)) + family.substring(1).toLowerCase();
             }
 
-            List<WeaponBaseRow> rows = scalingCache.listWeapons(sort, ascending, count, family);
+            List<WeaponBaseRow> rows = assetCatalog.listWeapons(sort, ascending, count, family);
 
             if (rows.isEmpty()) {
                 context.sendMessage(Message.raw("No weapons found.").color(RED));
@@ -248,7 +248,7 @@ public class DListCommand extends CommandBase {
                 slot = Character.toUpperCase(slot.charAt(0)) + slot.substring(1).toLowerCase();
             }
 
-            List<ArmorBaseRow> rows = scalingCache.listArmor(sort, ascending, count, slot);
+            List<ArmorBaseRow> rows = assetCatalog.listArmor(sort, ascending, count, slot);
 
             if (rows.isEmpty()) {
                 context.sendMessage(Message.raw("No armor found.").color(RED));

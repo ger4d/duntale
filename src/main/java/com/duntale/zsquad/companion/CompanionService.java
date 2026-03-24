@@ -1,7 +1,7 @@
 package com.duntale.zsquad.companion;
 
-import com.duntale.zsquad.progression.LeveledNpcSpawner;
-import com.duntale.zsquad.progression.NpcLevelRegistry;
+import com.duntale.zsquad.progression.CombatScaling;
+import com.duntale.zsquad.progression.CombatScalingComponent;
 import com.duntale.zsquad.progression.ProgressionService;
 import com.hypixel.hytale.component.ComponentType;
 import com.hypixel.hytale.component.NonSerialized;
@@ -10,10 +10,11 @@ import com.hypixel.hytale.component.RemoveReason;
 import com.hypixel.hytale.component.Store;
 import com.hypixel.hytale.logger.HytaleLogger;
 import com.hypixel.hytale.math.vector.Vector3d;
-import com.hypixel.hytale.server.core.entity.UUIDComponent;
-
 import com.hypixel.hytale.server.core.modules.entity.component.TransformComponent;
-
+import com.hypixel.hytale.server.core.modules.entitystats.EntityStatMap;
+import com.hypixel.hytale.server.core.modules.entitystats.asset.EntityStatType;
+import com.hypixel.hytale.server.core.modules.entitystats.modifier.Modifier;
+import com.hypixel.hytale.server.core.modules.entitystats.modifier.StaticModifier;
 import com.hypixel.hytale.server.core.universe.world.World;
 import com.hypixel.hytale.server.core.universe.world.storage.EntityStore;
 import com.hypixel.hytale.server.flock.FlockMembership;
@@ -21,6 +22,7 @@ import com.hypixel.hytale.server.flock.FlockMembershipSystems;
 import com.hypixel.hytale.server.flock.FlockPlugin;
 import com.hypixel.hytale.server.npc.NPCPlugin;
 import com.hypixel.hytale.server.npc.entities.NPCEntity;
+import com.hypixel.hytale.server.npc.role.Role;
 import it.unimi.dsi.fastutil.Pair;
 
 import javax.annotation.Nonnull;
@@ -45,14 +47,14 @@ public class CompanionService {
 
     private static final HytaleLogger LOGGER = HytaleLogger.forEnclosingClass();
     private static final double SPAWN_OFFSET_RANGE = 1.5;
+    private static final String LEVEL_SCALE_MODIFIER_KEY = "ZSquad_LevelScale";
 
     public static final String DEFAULT_COMPANION_ROLE = "Companion_Skeleton_Soldier";
 
     private final Map<UUID, ActiveCompanion> activeCompanions = new ConcurrentHashMap<>();
     private final Map<UUID, String> companionPreferences = new ConcurrentHashMap<>();
-    private final LeveledNpcSpawner npcSpawner;
+    private final CompanionSpawner companionSpawner;
     private final ProgressionService progressionService;
-    private final NpcLevelRegistry npcLevelRegistry;
     private final ComponentType<EntityStore, CompanionComponent> companionComponentType;
     private final CompanionRepository companionRepository;
 
@@ -72,22 +74,19 @@ public class CompanionService {
     /**
      * Creates a new companion service.
      *
-     * @param npcSpawner             the leveled NPC spawner
+     * @param companionSpawner       the companion NPC spawner
      * @param progressionService     the progression service for player levels
-     * @param npcLevelRegistry       the NPC level registry for cleanup
      * @param companionComponentType the registered companion component type
      * @param companionRepository    the companion preference repository
      */
     public CompanionService(
-            @Nonnull LeveledNpcSpawner npcSpawner,
+            @Nonnull CompanionSpawner companionSpawner,
             @Nonnull ProgressionService progressionService,
-            @Nonnull NpcLevelRegistry npcLevelRegistry,
             @Nonnull ComponentType<EntityStore, CompanionComponent> companionComponentType,
             @Nonnull CompanionRepository companionRepository
     ) {
-        this.npcSpawner = npcSpawner;
+        this.companionSpawner = companionSpawner;
         this.progressionService = progressionService;
-        this.npcLevelRegistry = npcLevelRegistry;
         this.companionComponentType = companionComponentType;
         this.companionRepository = companionRepository;
     }
@@ -145,8 +144,8 @@ public class CompanionService {
                 playerPos.getZ() + offsetZ
         );
 
-        // Spawn the NPC with level scaling
-        Pair<Ref<EntityStore>, NPCEntity> spawnResult = npcSpawner.spawn(store, roleName, spawnPos, level, false);
+        // Spawn the companion with level scaling
+        Pair<Ref<EntityStore>, NPCEntity> spawnResult = companionSpawner.spawn(store, roleName, spawnPos, level);
         if (spawnResult == null) {
             LOGGER.atWarning().log("Failed to spawn companion NPC: %s at level %d", roleName, level);
             return null;
@@ -238,10 +237,6 @@ public class CompanionService {
         world.execute(() -> {
             Store<EntityStore> store = world.getEntityStore().getStore();
             if (npcRef.isValid()) {
-                UUIDComponent uuidComp = store.getComponent(npcRef, UUIDComponent.getComponentType());
-                if (uuidComp != null) {
-                    npcLevelRegistry.remove(uuidComp.getUuid());
-                }
                 store.removeEntity(npcRef, RemoveReason.REMOVE);
             }
         });
@@ -272,13 +267,9 @@ public class CompanionService {
         // Remove player from flock
         store.tryRemoveComponent(playerRef, FlockMembership.getComponentType());
 
-        // Remove the companion NPC entity
+        // Remove the companion NPC entity (CombatScalingComponent dies with it)
         Ref<EntityStore> npcRef = companion.npcRef();
         if (npcRef.isValid()) {
-            UUIDComponent uuidComp = store.getComponent(npcRef, UUIDComponent.getComponentType());
-            if (uuidComp != null) {
-                npcLevelRegistry.remove(uuidComp.getUuid());
-            }
             store.removeEntity(npcRef, RemoveReason.REMOVE);
         }
 
@@ -296,6 +287,50 @@ public class CompanionService {
     public boolean hasCompanion(@Nonnull UUID playerId) {
         cleanIfInvalid(playerId);
         return activeCompanions.containsKey(playerId);
+    }
+
+    /**
+     * Updates a companion's scaling when its owner levels up.
+     *
+     * @param store    the entity store (must be on WorldThread)
+     * @param playerId the player's UUID
+     * @param newLevel the player's new level
+     */
+    public void onPlayerLevelUp(@Nonnull Store<EntityStore> store, @Nonnull UUID playerId, int newLevel) {
+        ActiveCompanion active = activeCompanions.get(playerId);
+        if (active == null || !active.npcRef().isValid()) return;
+
+        Ref<EntityStore> npcRef = active.npcRef();
+
+        // Update CombatScalingComponent
+        float newMult = CombatScaling.companionDamageMult(newLevel);
+        store.putComponent(npcRef, CombatScalingComponent.getComponentType(),
+                new CombatScalingComponent(newLevel, newMult, true));
+
+        // Re-apply HP scaling
+        NPCEntity npcEntity = store.getComponent(npcRef, NPCEntity.getComponentType());
+        if (npcEntity == null) return;
+        Role role = npcEntity.getRole();
+        int baseHp = role != null ? role.getInitialMaxHealth() : 20;
+        int targetHp = CombatScaling.companionScaledHp(baseHp, newLevel);
+
+        int initialMaxHealth = role != null ? role.getInitialMaxHealth() : 20;
+        if (targetHp > initialMaxHealth) {
+            EntityStatMap statMap = store.getComponent(npcRef, EntityStatMap.getComponentType());
+            if (statMap != null) {
+                int healthIndex = EntityStatType.getAssetMap().getIndex("Health");
+                float delta = targetHp - initialMaxHealth;
+                StaticModifier modifier = new StaticModifier(
+                        Modifier.ModifierTarget.MAX,
+                        StaticModifier.CalculationType.ADDITIVE,
+                        delta
+                );
+                statMap.putModifier(healthIndex, LEVEL_SCALE_MODIFIER_KEY, modifier);
+                statMap.maximizeStatValue(healthIndex);
+            }
+        }
+
+        LOGGER.atInfo().log("Updated companion scaling for player %s to Lv.%d", playerId, newLevel);
     }
 
     /**

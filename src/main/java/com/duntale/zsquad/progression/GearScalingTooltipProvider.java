@@ -27,15 +27,15 @@ public class GearScalingTooltipProvider implements TooltipProvider {
     private static final String COLOR_WHITE = "#FFFFFF";
     private static final String COLOR_YELLOW = "#FFEE55";
 
-    private final ScalingDataCache scalingCache;
+    private final AssetCatalog assetCatalog;
 
     /**
-     * Creates a new tooltip provider backed by the given scaling cache.
+     * Creates a new tooltip provider backed by the given asset catalog.
      *
-     * @param scalingCache the scaling data cache for weapon/armor lookups
+     * @param assetCatalog the asset catalog for weapon/armor lookups
      */
-    public GearScalingTooltipProvider(@Nonnull ScalingDataCache scalingCache) {
-        this.scalingCache = scalingCache;
+    public GearScalingTooltipProvider(@Nonnull AssetCatalog assetCatalog) {
+        this.assetCatalog = assetCatalog;
     }
 
     @Nonnull
@@ -85,8 +85,8 @@ public class GearScalingTooltipProvider implements TooltipProvider {
      */
     @Nullable
     private TooltipData buildWeaponTooltip(@Nonnull String itemId, int level, float variance) {
-        ScalingDataCache.WeaponBaseRow base = scalingCache.getWeaponBase(itemId);
-        float damageMult = scalingCache.getWeaponMultiplier(itemId, level);
+        AssetCatalog.WeaponBaseRow base = assetCatalog.getWeaponBase(itemId);
+        float damageMult = CombatScaling.weaponMult(level);
 
         // Include variance in hash so different rolls get distinct virtual IDs
         int varHash = Math.round(variance * 1000);
@@ -121,8 +121,9 @@ public class GearScalingTooltipProvider implements TooltipProvider {
      */
     @Nullable
     private TooltipData buildArmorTooltip(@Nonnull String itemId, int level, float variance) {
-        ScalingDataCache.ArmorBaseRow base = scalingCache.getArmorBase(itemId);
-        float effectiveDr = scalingCache.getArmorDR(itemId, level) * variance;
+        AssetCatalog.ArmorBaseRow base = assetCatalog.getArmorBase(itemId);
+        float baseResist = base != null ? base.physResist() : 0f;
+        float effectiveDr = CombatScaling.armorDR(baseResist, level) * variance;
 
         int varHash = Math.round(variance * 1000);
         TooltipData.Builder builder = TooltipData.builder()

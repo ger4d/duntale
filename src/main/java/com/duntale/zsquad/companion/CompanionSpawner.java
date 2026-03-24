@@ -1,5 +1,7 @@
-package com.duntale.zsquad.progression;
+package com.duntale.zsquad.companion;
 
+import com.duntale.zsquad.progression.CombatScaling;
+import com.duntale.zsquad.progression.CombatScalingComponent;
 import com.hypixel.hytale.component.ComponentType;
 import com.hypixel.hytale.component.Holder;
 import com.hypixel.hytale.component.Ref;
@@ -7,7 +9,6 @@ import com.hypixel.hytale.component.Store;
 import com.hypixel.hytale.logger.HytaleLogger;
 import com.hypixel.hytale.math.vector.Vector3d;
 import com.hypixel.hytale.server.core.entity.nameplate.Nameplate;
-import com.hypixel.hytale.server.core.modules.entity.component.EntityScaleComponent;
 import com.hypixel.hytale.server.core.modules.entitystats.EntityStatMap;
 import com.hypixel.hytale.server.core.modules.entitystats.asset.EntityStatType;
 import com.hypixel.hytale.server.core.modules.entitystats.modifier.Modifier;
@@ -23,41 +24,38 @@ import javax.annotation.Nullable;
 import java.util.logging.Level;
 
 /**
- * Spawns enemy NPCs with scaled stats for a given dungeon level.
+ * Spawns companion NPCs with level-scaled stats.
  *
- * <p>Uses {@link NPCPlugin#spawnEntity} with pre/post callbacks to:
- * <ol>
- *   <li>Compute HP and damage multiplier via {@link CombatScaling}</li>
- *   <li>Apply an HP modifier via {@link EntityStatMap#putModifier}</li>
- *   <li>Attach a {@link CombatScalingComponent} for damage-time lookups</li>
- *   <li>Set a display name with level prefix and variant indicator</li>
- *   <li>Optionally scale elite NPCs visually</li>
- * </ol>
+ * <p>Companion scaling uses its own constants (independent of enemy NPC scaling).
+ * The companion's base HP always comes from its own role definition, fixing the
+ * low-level HP mismatch that occurred when companions shared the enemy scaling pipeline.
+ *
+ * @since 1.5.0
  */
-public class LeveledNpcSpawner {
+public class CompanionSpawner {
 
     private static final HytaleLogger LOGGER = HytaleLogger.forEnclosingClass();
     private static final String LEVEL_SCALE_MODIFIER_KEY = "ZSquad_LevelScale";
+    private static final String COMPANION_ROLE_PREFIX = "Companion_";
 
     private final ComponentType<EntityStore, CombatScalingComponent> combatScalingType;
 
     /**
-     * Creates a new spawner.
+     * Creates a new companion spawner.
      *
      * @param combatScalingType the registered combat scaling component type
      */
-    public LeveledNpcSpawner(@Nonnull ComponentType<EntityStore, CombatScalingComponent> combatScalingType) {
+    public CompanionSpawner(@Nonnull ComponentType<EntityStore, CombatScalingComponent> combatScalingType) {
         this.combatScalingType = combatScalingType;
     }
 
     /**
-     * Spawns a leveled enemy NPC at the given position.
+     * Spawns a companion NPC at the given position with level-scaled stats.
      *
      * @param store    the entity store
-     * @param roleName the NPC role name (e.g. "Zombie")
+     * @param roleName the NPC role name (e.g. "Companion_Skeleton_Soldier")
      * @param position the spawn position
-     * @param level    the dungeon level (1-60)
-     * @param variant  the NPC variant (NORMAL, ELITE, or BOSS)
+     * @param level    the companion's level (derived from player level)
      * @return the spawned entity pair, or {@code null} if spawning failed
      */
     @Nullable
@@ -65,65 +63,59 @@ public class LeveledNpcSpawner {
             @Nonnull Store<EntityStore> store,
             @Nonnull String roleName,
             @Nonnull Vector3d position,
-            int level,
-            @Nonnull CombatScaling.NpcVariant variant
+            int level
     ) {
         NPCPlugin npcPlugin = NPCPlugin.get();
         if (npcPlugin == null) {
-            LOGGER.at(Level.WARNING).log("NPCPlugin not available — cannot spawn %s", roleName);
+            LOGGER.at(Level.WARNING).log("NPCPlugin not available — cannot spawn companion %s", roleName);
             return null;
         }
 
         int roleIndex = npcPlugin.getIndex(roleName);
         if (roleIndex < 0) {
-            LOGGER.at(Level.WARNING).log("Unknown NPC role: %s", roleName);
+            LOGGER.at(Level.WARNING).log("Unknown companion role: %s", roleName);
             return null;
         }
 
         return npcPlugin.spawnEntity(store, roleIndex, position, null, null,
                 (npcEntity, holder, s) -> {
-                    applyPreAdd(holder, roleName, level, variant);
+                    applyPreAdd(holder, roleName, level);
                 },
                 (npcEntity, ref, s) -> {
-                    applyPostSpawn(npcEntity, ref, s, roleName, level, variant);
+                    applyPostSpawn(npcEntity, ref, s, level);
                 });
     }
 
     private void applyPreAdd(
             @Nonnull Holder<EntityStore> holder,
             @Nonnull String roleName,
-            int level,
-            @Nonnull CombatScaling.NpcVariant variant
+            int level
     ) {
-        String nameplate = switch (variant) {
-            case ELITE -> "[Lv." + level + " *] " + roleName;
-            case BOSS  -> "[Lv." + level + " BOSS] " + roleName;
-            default    -> "[Lv." + level + "] " + roleName;
-        };
-        holder.putComponent(Nameplate.getComponentType(), new Nameplate(nameplate));
-
-        if (variant == CombatScaling.NpcVariant.ELITE) {
-            holder.putComponent(EntityScaleComponent.getComponentType(),
-                    new EntityScaleComponent(CombatScaling.ELITE_VISUAL_SCALE));
+        // Display name: strip "Companion_" prefix, replace "_" with space
+        String displayName = roleName;
+        if (displayName.startsWith(COMPANION_ROLE_PREFIX)) {
+            displayName = displayName.substring(COMPANION_ROLE_PREFIX.length());
         }
+        displayName = displayName.replace('_', ' ');
+
+        String nameplate = "[Lv." + level + "] " + displayName;
+        holder.putComponent(Nameplate.getComponentType(), new Nameplate(nameplate));
     }
 
     private void applyPostSpawn(
             @Nonnull NPCEntity npcEntity,
             @Nonnull Ref<EntityStore> ref,
             @Nonnull Store<EntityStore> store,
-            @Nonnull String roleName,
-            int level,
-            @Nonnull CombatScaling.NpcVariant variant
+            int level
     ) {
+        // Companion base HP from its own role definition
         Role role = npcEntity.getRole();
         int baseHp = role != null ? role.getInitialMaxHealth() : 20;
 
-        // Single call handles base curve + variant multipliers
-        int targetHp = CombatScaling.npcScaledHp(baseHp, level, variant);
-        float damageMult = CombatScaling.npcDamageMult(level, variant);
+        int targetHp = CombatScaling.companionScaledHp(baseHp, level);
+        float damageMult = CombatScaling.companionDamageMult(level);
 
-        // Apply +-5% variance
+        // Apply variance
         targetHp = Math.round(CombatScaling.applyVariance(targetHp));
         damageMult = CombatScaling.applyVariance(damageMult);
 
@@ -149,12 +141,11 @@ public class LeveledNpcSpawner {
             }
         }
 
-        // Attach ECS component (replaces NpcLevelRegistry.register)
+        // Attach ECS component
         store.putComponent(ref, combatScalingType,
-                new CombatScalingComponent(level, damageMult, false));
+                new CombatScalingComponent(level, damageMult, true));
 
-        LOGGER.atInfo().log("Spawned %s%s Lv.%d — HP: %d, DmgMult: %.2f",
-                variant != CombatScaling.NpcVariant.NORMAL ? variant.name() + " " : "",
-                roleName, level, targetHp, damageMult);
+        LOGGER.at(Level.INFO).log("Spawned companion Lv.%d — HP: %d, DmgMult: %.2f",
+                level, targetHp, damageMult);
     }
 }

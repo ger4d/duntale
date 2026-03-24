@@ -1,6 +1,6 @@
 package com.duntale.zsquad.merchant;
 
-import com.duntale.zsquad.progression.ScalingDataCache;
+import com.duntale.zsquad.progression.AssetCatalog;
 import com.hypixel.hytale.logger.HytaleLogger;
 
 import javax.annotation.Nonnull;
@@ -15,14 +15,14 @@ import java.util.logging.Level;
 /**
  * Computes and caches buy/sell prices for all weapons and armor.
  *
- * <p>Prices are derived from {@link ScalingDataCache}'s weapon/armor base tables
+ * <p>Prices are derived from {@link AssetCatalog}'s weapon/armor base tables
  * using the formula:
  * <pre>
  * buyPrice  = itemLevel² × qualityCoefficient [× slotMultiplier for armor]
  * sellPrice = floor(buyPrice × SELL_RATIO)
  * </pre>
  *
- * <p>Initialise once at plugin startup via {@link #initialize(ScalingDataCache)}.
+ * <p>Initialise once at plugin startup via {@link #initialize(AssetCatalog)}.
  * All subsequent lookups are O(1) from cache.
  */
 public class MerchantPriceRegistry {
@@ -39,16 +39,16 @@ public class MerchantPriceRegistry {
     private final Map<String, Integer> itemLevelCache = new ConcurrentHashMap<>();
 
     /**
-     * Populates the price cache from all weapons and armor in the scaling database.
+     * Populates the price cache from all weapons and armor in the asset catalog.
      *
-     * @param scalingCache the scaling data cache (must already be initialised)
+     * @param assetCatalog the asset catalog (must already be initialised)
      */
-    public void initialize(@Nonnull ScalingDataCache scalingCache) {
+    public void initialize(@Nonnull AssetCatalog assetCatalog) {
         int weaponCount = 0;
         int armorCount = 0;
 
         // Load all weapons (limit 500 to cover the full catalog)
-        for (ScalingDataCache.WeaponBaseRow row : scalingCache.listWeapons("name", true, 500, null)) {
+        for (AssetCatalog.WeaponBaseRow row : assetCatalog.listWeapons("name", true, 500, null)) {
             if (isExcluded(row.quality()) || isNpcItem(row.name())) {
                 continue;
             }
@@ -60,7 +60,7 @@ public class MerchantPriceRegistry {
         }
 
         // Load all armor
-        for (ScalingDataCache.ArmorBaseRow row : scalingCache.listArmor("name", true, 500, null)) {
+        for (AssetCatalog.ArmorBaseRow row : assetCatalog.listArmor("name", true, 500, null)) {
             if (isExcluded(row.quality()) || isNpcItem(row.name())) {
                 continue;
             }

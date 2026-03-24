@@ -8,6 +8,9 @@ import com.duntale.zsquad.command.DGiveCommand;
 import com.duntale.zsquad.command.DListCommand;
 import com.duntale.zsquad.command.DSpawnCommand;
 import com.duntale.zsquad.command.GenerateCommand;
+import com.duntale.zsquad.command.CameraCommand;
+import com.duntale.zsquad.command.SpawnCommand;
+import com.duntale.zsquad.command.WeaponCommand;
 import com.duntale.zsquad.companion.CompanionCommand;
 import com.duntale.zsquad.companion.CompanionComponent;
 import com.duntale.zsquad.companion.CompanionDeathProtectionSystem;
@@ -37,18 +40,20 @@ import com.duntale.zsquad.merchant.MerchantPriceRegistry;
 import com.duntale.zsquad.merchant.MerchantService;
 import com.duntale.zsquad.merchant.BuilderActionOpenDungeonMerchant;
 import com.duntale.zsquad.merchant.MerchantTooltipProvider;
+import com.duntale.zsquad.progression.AssetCatalog;
+import com.duntale.zsquad.progression.CombatScalingComponent;
 import com.duntale.zsquad.progression.CombatScalingSystem;
+import com.duntale.zsquad.progression.GearScalingTooltipProvider;
+import com.duntale.zsquad.progression.LeveledNpcSpawner;
 import com.duntale.zsquad.progression.ProgressionRepository;
 import com.duntale.zsquad.progression.ProgressionService;
+import com.duntale.zsquad.companion.CompanionSpawner;
 import com.duntale.zsquad.rpg.RpgDamageScalingSystem;
 import com.duntale.zsquad.rpg.RpgProfile;
 import com.duntale.zsquad.rpg.RpgRepository;
 import com.duntale.zsquad.rpg.RpgService;
 import com.duntale.zsquad.rpg.RpgStatCommand;
 import com.duntale.zsquad.rpg.StatAssignCommand;
-import com.duntale.zsquad.progression.LeveledNpcSpawner;
-import com.duntale.zsquad.progression.NpcLevelRegistry;
-import com.duntale.zsquad.progression.ScalingDataCache;
 import com.duntale.zsquad.spawner.SpawnerComponent;
 import com.duntale.zsquad.spawner.SpawnerFactory;
 import com.duntale.zsquad.spawner.SpawnerTickSystem;
@@ -69,6 +74,7 @@ import com.hypixel.hytale.server.core.universe.Universe;
 import com.hypixel.hytale.server.core.universe.world.World;
 import com.hypixel.hytale.server.core.universe.world.storage.EntityStore;
 import com.hypixel.hytale.server.npc.NPCPlugin;
+import org.herolias.tooltips.api.DynamicTooltipsApiProvider;
 
 import javax.annotation.Nonnull;
 import java.nio.file.Path;
@@ -87,9 +93,10 @@ public class ZSquadPlugin extends JavaPlugin {
     private BlockOcclusionManager blockOcclusionManager;
 
     // Progression system
-    private ScalingDataCache scalingDataCache;
-    private NpcLevelRegistry npcLevelRegistry;
+    private AssetCatalog assetCatalog;
+    private ComponentType<EntityStore, CombatScalingComponent> combatScalingComponentType;
     private LeveledNpcSpawner leveledNpcSpawner;
+    private CompanionSpawner companionSpawner;
 
     // Loot system
     private LootTableRegistry lootTableRegistry;
@@ -152,23 +159,24 @@ public class ZSquadPlugin extends JavaPlugin {
     }
 
     /**
-     * Returns the scaling data cache.
+     * Returns the asset catalog.
      *
-     * @return the scaling data cache
+     * @return the asset catalog
      */
     @Nonnull
-    public ScalingDataCache getScalingDataCache() {
-        return scalingDataCache;
+    public AssetCatalog getAssetCatalog() {
+        return assetCatalog;
     }
 
     /**
-     * Returns the NPC level registry.
+     * Returns the registered component type for {@link CombatScalingComponent}.
      *
-     * @return the NPC level registry
+     * @return the combat scaling component type
+     * @since 1.5.0
      */
     @Nonnull
-    public NpcLevelRegistry getNpcLevelRegistry() {
-        return npcLevelRegistry;
+    public ComponentType<EntityStore, CombatScalingComponent> getCombatScalingComponentType() {
+        return combatScalingComponentType;
     }
 
     /**
@@ -318,10 +326,9 @@ public class ZSquadPlugin extends JavaPlugin {
         }
         this.clickToMoveManager.setRpgService(rpgService);
 
-        // ── Progression System ───────────────────────────────────────
-        this.scalingDataCache = new ScalingDataCache(getDataDirectory());
-        this.npcLevelRegistry = new NpcLevelRegistry();
-        this.leveledNpcSpawner = new LeveledNpcSpawner(scalingDataCache, npcLevelRegistry);
+        // ── Progression System (runtime asset scan — no DB) ──────────
+        this.assetCatalog = new AssetCatalog();
+        // AssetCatalog.initialize() deferred to start() — asset stores load after all plugins setup()
 
         // ── Loot System ──────────────────────────────────────────────
         this.lootTableRegistry = new LootTableRegistry();
@@ -329,7 +336,7 @@ public class ZSquadPlugin extends JavaPlugin {
 
         // ── Merchant System ──────────────────────────────────────────
         this.merchantPriceRegistry = new MerchantPriceRegistry();
-        this.merchantPriceRegistry.initialize(scalingDataCache);
+        // MerchantPriceRegistry.initialize() deferred to start() — depends on AssetCatalog
         this.catalogGenerator = new CatalogGenerator(merchantPriceRegistry);
         this.merchantService = new MerchantService(merchantPriceRegistry, goldService);
 
@@ -337,11 +344,17 @@ public class ZSquadPlugin extends JavaPlugin {
         CurrencyDrop.setComponentType(
                 this.getEntityStoreRegistry().registerComponent(CurrencyDrop.class, () -> CurrencyDrop.INSTANCE));
 
+        // ── CombatScaling ECS Component ─────────────────────────────
+        this.combatScalingComponentType = this.getEntityStoreRegistry().registerComponent(
+                CombatScalingComponent.class, "CombatScalingComponent", CombatScalingComponent.CODEC);
+        this.leveledNpcSpawner = new LeveledNpcSpawner(combatScalingComponentType);
+        this.companionSpawner = new CompanionSpawner(combatScalingComponentType);
+
         // Register ECS systems
         this.getEntityStoreRegistry().registerSystem(new ClickToMoveTickSystem(this.clickToMoveManager));
-        this.getEntityStoreRegistry().registerSystem(new CombatScalingSystem(npcLevelRegistry, scalingDataCache));
+        this.getEntityStoreRegistry().registerSystem(new CombatScalingSystem(combatScalingComponentType));
         this.getEntityStoreRegistry().registerSystem(new ClickToMoveKnockbackSystem(this.clickToMoveManager));
-        this.getEntityStoreRegistry().registerSystem(new NpcLootSystem(lootTableRegistry, npcLevelRegistry, rpgService, progressionService));
+        this.getEntityStoreRegistry().registerSystem(new NpcLootSystem(lootTableRegistry, rpgService, progressionService));
         this.getEntityStoreRegistry().registerSystem(new GoldPickupSystem(goldService));
         this.getEntityStoreRegistry().registerSystem(new RpgDamageScalingSystem(rpgService));
         this.getEntityStoreRegistry().registerSystem(new PlayerDeathPenaltySystem(goldService));
@@ -364,7 +377,7 @@ public class ZSquadPlugin extends JavaPlugin {
         this.getEntityStoreRegistry().registerSystem(new CompanionTrapImmunitySystem(companionComponentType));
 
         this.companionService = new CompanionService(
-                leveledNpcSpawner, progressionService, npcLevelRegistry,
+                companionSpawner, progressionService,
                 companionComponentType, companionRepository);
         this.getEntityStoreRegistry().registerSystem(new CompanionRespawnSystem(companionService));
 
@@ -372,12 +385,12 @@ public class ZSquadPlugin extends JavaPlugin {
         // Deferred to start() — DungeonSettingsConfig asset store not available during setup()
 
         // Command registration
-        this.getCommandRegistry().registerCommand(new com.duntale.zsquad.command.SpawnCommand());
-        this.getCommandRegistry().registerCommand(new com.duntale.zsquad.command.CameraCommand());
-        this.getCommandRegistry().registerCommand(new com.duntale.zsquad.command.WeaponCommand());
-        this.getCommandRegistry().registerCommand(new DSpawnCommand(leveledNpcSpawner, scalingDataCache));
-        this.getCommandRegistry().registerCommand(new DListCommand(scalingDataCache));
-        this.getCommandRegistry().registerCommand(new DGiveCommand(scalingDataCache));
+        this.getCommandRegistry().registerCommand(new SpawnCommand());
+        this.getCommandRegistry().registerCommand(new CameraCommand());
+        this.getCommandRegistry().registerCommand(new WeaponCommand());
+        this.getCommandRegistry().registerCommand(new DSpawnCommand(leveledNpcSpawner, assetCatalog));
+        this.getCommandRegistry().registerCommand(new DListCommand(assetCatalog));
+        this.getCommandRegistry().registerCommand(new DGiveCommand(assetCatalog));
         this.getCommandRegistry().registerCommand(new GenerateCommand());
         this.getCommandRegistry().registerCommand(new GoldCommand(goldService));
         this.getCommandRegistry().registerCommand(new RpgStatCommand(rpgService));
@@ -421,6 +434,10 @@ public class ZSquadPlugin extends JavaPlugin {
 
     @Override
     protected void start() {
+        // Asset stores are fully loaded after all plugins setup() — safe to scan now
+        this.assetCatalog.initialize();
+        this.merchantPriceRegistry.initialize(assetCatalog);
+
         // Initialize dungeon orchestrator here — asset stores are available after all plugins setup()
         this.dungeonOrchestrator = new GenerationOrchestrator(new BlockResolver());
         LOGGER.atInfo().log("ZSquad Plugin Started!");
@@ -447,12 +464,7 @@ public class ZSquadPlugin extends JavaPlugin {
         if (dungeonOrchestrator != null) {
             dungeonOrchestrator.shutdown();
         }
-        if (scalingDataCache != null) {
-            scalingDataCache.shutdown();
-        }
-        if (npcLevelRegistry != null) {
-            npcLevelRegistry.clear();
-        }
+
         if (databaseProvider != null) {
             databaseProvider.close();
         }
@@ -856,10 +868,10 @@ public class ZSquadPlugin extends JavaPlugin {
      */
     private void registerTooltipProvider() {
         try {
-            var api = org.herolias.tooltips.api.DynamicTooltipsApiProvider.get();
+            var api = DynamicTooltipsApiProvider.get();
             if (api != null) {
                 api.registerProvider(
-                        new com.duntale.zsquad.progression.GearScalingTooltipProvider(scalingDataCache));
+                        new GearScalingTooltipProvider(assetCatalog));
                 api.registerProvider(
                         new MerchantTooltipProvider(merchantPriceRegistry));
                 LOGGER.atInfo().log("Registered tooltip providers with DynamicTooltipsLib");

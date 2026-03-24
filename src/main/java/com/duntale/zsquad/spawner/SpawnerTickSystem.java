@@ -2,6 +2,7 @@ package com.duntale.zsquad.spawner;
 
 import com.duntale.dungeongen.config.Vec3i;
 import com.duntale.dungeongen.model.SpawnEntry;
+import com.duntale.zsquad.progression.CombatScaling;
 import com.duntale.zsquad.progression.LeveledNpcSpawner;
 import com.hypixel.hytale.component.ArchetypeChunk;
 import com.hypixel.hytale.component.CommandBuffer;
@@ -224,7 +225,8 @@ public class SpawnerTickSystem extends DelayedEntitySystem<EntityStore> {
                 Store<EntityStore> entityStore = world.getEntityStore().getStore();
                 for (SpawnRequest req : deferredSpawns) {
                     Pair<Ref<EntityStore>, NPCEntity> result = npcSpawner.spawn(
-                            entityStore, req.npcRole(), req.position(), req.level(), req.boss()
+                            entityStore, req.npcRole(), req.position(), req.level(),
+                            req.boss() ? CombatScaling.NpcVariant.BOSS : CombatScaling.NpcVariant.NORMAL
                     );
 
                     if (result != null) {
