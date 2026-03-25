@@ -104,6 +104,8 @@ public class CombatScalingSystem extends DamageEventSystem {
                 // Companion -> Enemy NPC: apply companion's damage mult
                 CombatScalingComponent targetScaling = store.getComponent(targetRef, combatScalingType);
                 if (targetScaling != null && !targetScaling.isCompanion()) {
+                    LOGGER.atFine().log("Applying companion damage multiplier: Base = %.2f, Mult = %.2f => Final = %.2f",
+                            damage.getAmount(), attackerScaling.getDamageMultiplier(), Math.min(damage.getAmount() * attackerScaling.getDamageMultiplier(), 500f));
                     damage.setAmount(Math.min(damage.getAmount() * attackerScaling.getDamageMultiplier(), 500f));
                 }
             } else {
@@ -118,6 +120,9 @@ public class CombatScalingSystem extends DamageEventSystem {
                         amount *= (1f - armorDr);
                     }
                 }
+
+                LOGGER.atFine().log("Applying NPC enemy damage multiplier: Base = %.2f, Mult = %.2f => Final = %.2f",
+                            damage.getAmount(), attackerScaling.getDamageMultiplier(), Math.min(damage.getAmount() * attackerScaling.getDamageMultiplier(), 500f));
                 damage.setAmount(Math.max(amount, 0f));
             }
             return;

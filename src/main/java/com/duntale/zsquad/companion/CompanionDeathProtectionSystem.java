@@ -15,18 +15,24 @@ import com.hypixel.hytale.server.core.modules.entitystats.EntityStatMap;
 import com.hypixel.hytale.server.core.modules.entitystats.EntityStatValue;
 import com.hypixel.hytale.server.core.modules.entitystats.asset.DefaultEntityStatTypes;
 import com.hypixel.hytale.server.core.universe.world.storage.EntityStore;
+import com.hypixel.hytale.server.npc.entities.NPCEntity;
+import com.hypixel.hytale.server.npc.role.Role;
+import com.hypixel.hytale.component.Ref;
 import com.duntale.zsquad.rpg.RpgDamageScalingSystem;
+import com.hypixel.hytale.logger.HytaleLogger;
 
 import javax.annotation.Nonnull;
 import java.util.Set;
 
 /**
  * Prevents companion NPCs from dying by clamping lethal damage to leave 1 HP.
+ * Also grants full damage immunity while the companion is in the Recovery state.
  *
  * <p>Runs after {@link RpgDamageScalingSystem} in the damage pipeline so that all
  * scaling and modifiers are applied before the death protection check.
  */
 public class CompanionDeathProtectionSystem extends DamageEventSystem {
+    private static final HytaleLogger LOGGER = HytaleLogger.forEnclosingClass();
 
     private static final float MIN_COMPANION_HP = 1.0f;
 
@@ -78,6 +84,19 @@ public class CompanionDeathProtectionSystem extends DamageEventSystem {
         CompanionComponent companion = archetypeChunk.getComponent(index, companionComponentType);
         if (companion == null) {
             return;
+        }
+
+        // Cancel ALL damage while the companion is in the Recovery state
+        Ref<EntityStore> ref = archetypeChunk.getReferenceTo(index);
+        NPCEntity npcEntity = store.getComponent(ref, NPCEntity.getComponentType());
+        if (npcEntity != null) {
+            Role role = npcEntity.getRole();
+            String stateName = role.getStateSupport().getStateName();
+            LOGGER.atFine().log("Companion %s is in state '%s'", ref, stateName);
+            if (role != null && stateName.startsWith("Recovery")) {
+                damage.setCancelled(true);
+                return;
+            }
         }
 
         EntityStatMap statMap = archetypeChunk.getComponent(index, EntityStatMap.getComponentType());
