@@ -269,27 +269,29 @@ public class DungeonGeneratePage extends InteractiveCustomUIPage<DungeonGenerate
             playerRef.sendMessage(Message.raw("[DungeonGen] Assembly error: " + result.assemblyError()).color("#FF5555"));
         }
 
-        // Create spawner entities in the ECS (if assembled and spawners exist)
-        if (config.assemble() && !result.spawnerDefinitions().isEmpty()) {
+        // Create ECS entities for spawners and merchants (if assembled)
+        if (config.assemble()) {
             try {
                 Store<EntityStore> store = world.getEntityStore().getStore();
 
-                // Destroy old spawner entities and their alive NPCs before creating new ones
-                SpawnerFactory spawnerFactory = ZSquadPlugin.get().getSpawnerFactory();
-                int removed = spawnerFactory.destroyActive(store);
-                if (removed > 0) {
+                // Spawner entities
+                if (!result.spawnerDefinitions().isEmpty()) {
+                    SpawnerFactory spawnerFactory = ZSquadPlugin.get().getSpawnerFactory();
+                    int removed = spawnerFactory.destroyActive(store);
+                    if (removed > 0) {
+                        playerRef.sendMessage(Message.raw(
+                            "[DungeonGen] Cleaned up " + removed + " old spawner/NPC entities"
+                        ).color("#AAAAAA"));
+                    }
+
+                    spawnerFactory.createSpawners(
+                        store, result.spawnerDefinitions(), config.origin());
                     playerRef.sendMessage(Message.raw(
-                        "[DungeonGen] Cleaned up " + removed + " old spawner/NPC entities"
-                    ).color("#AAAAAA"));
+                        "[DungeonGen] Registered " + result.spawnerDefinitions().size() + " spawner entities"
+                    ).color("#55FFFF"));
                 }
 
-                spawnerFactory.createSpawners(
-                    store, result.spawnerDefinitions(), config.origin());
-                playerRef.sendMessage(Message.raw(
-                    "[DungeonGen] Registered " + result.spawnerDefinitions().size() + " spawner entities"
-                ).color("#55FFFF"));
-
-                // Create merchant NPC entities
+                // Merchant NPC entities
                 if (!result.merchantDefinitions().isEmpty()) {
                     var merchantSpawner = ZSquadPlugin.get().getMerchantNpcSpawner();
                     merchantSpawner.destroyActive(store);
@@ -299,8 +301,8 @@ public class DungeonGeneratePage extends InteractiveCustomUIPage<DungeonGenerate
                     ).color("#55FFFF"));
                 }
             } catch (Exception e) {
-                LOGGER.atSevere().log("[DungeonGen] Failed to create spawner entities: %s", e.getMessage());
-                playerRef.sendMessage(Message.raw("[DungeonGen] Spawner entity creation failed: " + e.getMessage()).color("#FF5555"));
+                LOGGER.atSevere().log("[DungeonGen] Failed to create ECS entities: %s", e.getMessage());
+                playerRef.sendMessage(Message.raw("[DungeonGen] ECS entity creation failed: " + e.getMessage()).color("#FF5555"));
             }
         }
 
