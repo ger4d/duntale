@@ -330,6 +330,22 @@ def cmd_list(args):
         conn.close()
 
 
+def cmd_delete(args):
+    conn = get_connection()
+    try:
+        row = conn.execute("SELECT * FROM tasks WHERE name = ?", (args.name,)).fetchone()
+        if row is None:
+            print(f"Error: task '{args.name}' not found.", file=sys.stderr)
+            sys.exit(1)
+        task = _row_to_dict(row)
+        conn.execute("DELETE FROM implementation_plans WHERE task_id = ?", (task["id"],))
+        conn.execute("DELETE FROM tasks WHERE name = ?", (args.name,))
+        conn.commit()
+        print(f"Deleted task '{args.name}' (id={task['id']}).")
+    finally:
+        conn.close()
+
+
 # ── Argument Parser ───────────────────────────────────────────────────────────
 
 def build_parser():
@@ -374,6 +390,10 @@ def build_parser():
     p_list = sub.add_parser("list", help="List tasks", parents=[rich_parent])
     p_list.add_argument("--state", choices=list(VALID_STATES))
 
+    # delete
+    p_delete = sub.add_parser("delete", help="Delete a task and its plans", parents=[rich_parent])
+    p_delete.add_argument("--name", required=True, help="Task slug to delete")
+
     return parser
 
 
@@ -389,6 +409,7 @@ def main():
         "plan-add": cmd_plan_add,
         "plan-get": cmd_plan_get,
         "list": cmd_list,
+        "delete": cmd_delete,
     }
 
     dispatch[args.command](args)
