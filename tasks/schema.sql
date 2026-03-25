@@ -5,7 +5,7 @@ CREATE TABLE IF NOT EXISTS tasks (
     name            TEXT    NOT NULL UNIQUE,
     description     TEXT    NOT NULL,
     priority        TEXT    NOT NULL DEFAULT 'medium' CHECK (priority IN ('low', 'medium', 'high', 'critical')),
-    state           TEXT    NOT NULL DEFAULT 'created' CHECK (state IN ('created', 'planned', 'in-progress', 'completed')),
+    state           TEXT    NOT NULL DEFAULT 'created' CHECK (state IN ('created', 'planned', 'in-progress', 'testing', 'completed')),
     created_at      TEXT    NOT NULL DEFAULT (datetime('now')),
     updated_at      TEXT    NOT NULL DEFAULT (datetime('now'))
 );

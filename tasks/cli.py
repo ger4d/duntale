@@ -4,7 +4,7 @@ Task management CLI for v3-zsquad development workflow.
 
 Usage:
     python cli.py create   --name <slug> --desc <description> [--priority <low|medium|high|critical>]
-    python cli.py state    --name <slug> --state <created|planned|in-progress|completed>
+    python cli.py state    --name <slug> --state <created|planned|in-progress|testing|completed>
     python cli.py get      --name <slug>
     python cli.py latest   [--state <state>]
     python cli.py plan-add --name <slug> (--text <plan> | --file <path>)
@@ -40,7 +40,7 @@ def _get_console():
 DB_PATH = Path(__file__).parent / "tasks.db"
 SCHEMA_PATH = Path(__file__).parent / "schema.sql"
 
-VALID_STATES = ("created", "planned", "in-progress", "completed")
+VALID_STATES = ("created", "planned", "in-progress", "testing", "completed")
 STATE_ORDER = {s: i for i, s in enumerate(VALID_STATES)}
 
 
@@ -72,6 +72,7 @@ _STATE_STYLE = {
     "created":     "dim white",
     "planned":     "blue",
     "in-progress": "bold yellow",
+    "testing":     "bold magenta",
     "completed":   "bold green",
 }
 
