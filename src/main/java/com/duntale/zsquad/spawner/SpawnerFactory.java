@@ -9,8 +9,8 @@ import com.hypixel.hytale.component.Ref;
 import com.hypixel.hytale.component.RemoveReason;
 import com.hypixel.hytale.component.Store;
 import com.hypixel.hytale.logger.HytaleLogger;
-import com.hypixel.hytale.math.vector.Vector3d;
-import com.hypixel.hytale.math.vector.Vector3f;
+import org.joml.Vector3d;
+import com.hypixel.hytale.math.vector.Rotation3f;
 import com.hypixel.hytale.server.core.modules.entity.component.TransformComponent;
 import com.hypixel.hytale.server.core.universe.world.storage.EntityStore;
 
@@ -77,7 +77,7 @@ public class SpawnerFactory {
             Holder<EntityStore> holder = EntityStore.REGISTRY.newHolder();
             holder.addComponent(SpawnerComponent.getComponentType(), new SpawnerComponent(def));
             holder.addComponent(TransformComponent.getComponentType(),
-                    new TransformComponent(new Vector3d(wx + 0.5, wy, wz + 0.5), new Vector3f()));
+                    new TransformComponent(new Vector3d(wx + 0.5, wy, wz + 0.5), new Rotation3f()));
 
             Ref<EntityStore> ref = store.addEntity(holder, AddReason.SPAWN);
             refs.add(ref);

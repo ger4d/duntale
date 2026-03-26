@@ -4,8 +4,8 @@ import com.hypixel.hytale.component.Ref;
 import com.hypixel.hytale.component.Store;
 import com.hypixel.hytale.math.util.ChunkUtil;
 import com.duntale.zsquad.companion.CompanionComponent;
-import com.hypixel.hytale.math.vector.Vector3d;
-import com.hypixel.hytale.math.vector.Vector3i;
+import org.joml.Vector3d;
+import org.joml.Vector3i;
 import com.hypixel.hytale.protocol.InteractionType;
 import com.hypixel.hytale.server.core.asset.type.blocktype.config.BlockType;
 import com.hypixel.hytale.server.core.entity.Entity;
@@ -79,9 +79,9 @@ final class TargetResolver {
             @Nonnull Ref<EntityStore> playerRef,
             @Nonnull Vector3i targetBlock) {
         Vector3d searchCenter = new Vector3d(
-                targetBlock.getX() + 0.5,
-                targetBlock.getY() + 0.5,
-                targetBlock.getZ() + 0.5);
+                targetBlock.x + 0.5,
+                targetBlock.y + 0.5,
+                targetBlock.z + 0.5);
 
         List<Ref<EntityStore>> nearby = TargetUtil.getAllEntitiesInSphere(
                 searchCenter, WALL_ENTITY_SEARCH_RADIUS, store);

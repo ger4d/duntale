@@ -15,8 +15,8 @@ import com.hypixel.hytale.component.dependency.Order;
 import com.hypixel.hytale.component.dependency.SystemDependency;
 import com.hypixel.hytale.component.query.Query;
 import com.hypixel.hytale.logger.HytaleLogger;
-import com.hypixel.hytale.math.vector.Vector3d;
-import com.hypixel.hytale.math.vector.Vector3f;
+import org.joml.Vector3d;
+import com.hypixel.hytale.math.vector.Rotation3f;
 import com.hypixel.hytale.server.core.asset.type.gameplay.DeathConfig;
 import com.hypixel.hytale.server.core.entity.UUIDComponent;
 import com.hypixel.hytale.server.core.entity.entities.Player;
@@ -175,8 +175,8 @@ public class NpcLootSystem extends DeathSystems.OnDeathSystem {
         HeadRotation headRotation = store.getComponent(ref, HeadRotation.getComponentType());
         assert headRotation != null;
 
-        Vector3d dropPosition = transform.getPosition().clone().add(0.0, 1.0, 0.0);
-        Vector3f rotation = headRotation.getRotation().clone();
+        Vector3d dropPosition = new Vector3d(transform.getPosition()).add(0.0, 1.0, 0.0);
+        Rotation3f rotation = new Rotation3f(headRotation.getRotation());
 
         Holder<EntityStore>[] itemEntities = ItemComponent.generateItemDrops(store, drops, dropPosition, rotation);
 

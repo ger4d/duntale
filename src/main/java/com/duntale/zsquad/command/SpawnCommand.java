@@ -4,7 +4,7 @@ import com.duntale.zsquad.ZSquadPlugin;
 import com.hypixel.hytale.component.Ref;
 import com.hypixel.hytale.component.Store;
 import com.hypixel.hytale.math.vector.Transform;
-import com.hypixel.hytale.math.vector.Vector3d;
+import org.joml.Vector3d;
 import com.hypixel.hytale.server.core.Message;
 import com.hypixel.hytale.server.core.command.system.CommandContext;
 import com.hypixel.hytale.server.core.command.system.arguments.system.RequiredArg;
@@ -78,7 +78,7 @@ public class SpawnCommand extends CommandBase {
             // Distance check
             TransformComponent playerTransform = store.getComponent(ref, TransformComponent.getComponentType());
             if (playerTransform != null) {
-                double dist = playerTransform.getPosition().distanceTo(savedSpawn.getPosition());
+                double dist = playerTransform.getPosition().distance(savedSpawn.getPosition());
                 if (dist > 100) {
                      context.sendMessage(Message.raw("Too far away! Spawn is " + (int)dist + "m away (max 100m)."));
                      return;

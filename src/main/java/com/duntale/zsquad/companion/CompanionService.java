@@ -9,7 +9,7 @@ import com.hypixel.hytale.component.Ref;
 import com.hypixel.hytale.component.RemoveReason;
 import com.hypixel.hytale.component.Store;
 import com.hypixel.hytale.logger.HytaleLogger;
-import com.hypixel.hytale.math.vector.Vector3d;
+import org.joml.Vector3d;
 import com.hypixel.hytale.server.core.modules.entity.component.TransformComponent;
 import com.hypixel.hytale.server.core.modules.entitystats.EntityStatMap;
 import com.hypixel.hytale.server.core.modules.entitystats.asset.EntityStatType;
@@ -139,9 +139,9 @@ public class CompanionService {
         double offsetX = (ThreadLocalRandom.current().nextDouble() - 0.5) * 2.0 * SPAWN_OFFSET_RANGE;
         double offsetZ = (ThreadLocalRandom.current().nextDouble() - 0.5) * 2.0 * SPAWN_OFFSET_RANGE;
         Vector3d spawnPos = new Vector3d(
-                playerPos.getX() + offsetX,
-                playerPos.getY(),
-                playerPos.getZ() + offsetZ
+                playerPos.x + offsetX,
+                playerPos.y,
+                playerPos.z + offsetZ
         );
 
         // Spawn the companion with level scaling

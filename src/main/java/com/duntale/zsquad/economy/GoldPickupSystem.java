@@ -9,7 +9,7 @@ import com.hypixel.hytale.component.Store;
 import com.hypixel.hytale.component.dependency.Dependency;
 import com.hypixel.hytale.component.query.Query;
 import com.hypixel.hytale.logger.HytaleLogger;
-import com.hypixel.hytale.math.vector.Vector3d;
+import org.joml.Vector3d;
 import com.hypixel.hytale.server.core.Message;
 import com.hypixel.hytale.server.core.modules.entity.component.TransformComponent;
 import com.hypixel.hytale.server.core.modules.entity.item.ItemComponent;
@@ -126,12 +126,10 @@ public class GoldPickupSystem extends EntityTickingSystem<EntityStore> {
      */
     @Nullable
     private PlayerRef findNearestPlayer(@Nonnull Vector3d itemPos, @Nonnull Store<EntityStore> store) {
-        List<PlayerRef> players = Universe.get().getPlayers();
-
         PlayerRef closest = null;
         double closestDistSq = PICKUP_RADIUS_SQ;
 
-        for (PlayerRef playerRef : players) {
+        for (PlayerRef playerRef : Universe.get().getPlayers()) {
             Ref<EntityStore> playerEntity = playerRef.getReference();
             if (playerEntity == null || !playerEntity.isValid()) {
                 continue;

@@ -4,8 +4,8 @@ import com.hypixel.hytale.component.Ref;
 import com.hypixel.hytale.component.Store;
 import com.hypixel.hytale.logger.HytaleLogger;
 import com.hypixel.hytale.math.util.ChunkUtil;
-import com.hypixel.hytale.math.vector.Vector3d;
-import com.hypixel.hytale.math.vector.Vector3i;
+import org.joml.Vector3d;
+import org.joml.Vector3i;
 import com.hypixel.hytale.server.core.asset.type.blocktype.config.BlockType;
 import com.hypixel.hytale.server.core.modules.entity.component.TransformComponent;
 import com.hypixel.hytale.server.core.universe.PlayerRef;
@@ -360,7 +360,7 @@ public class BlockOcclusionManager {
             if (!newPositions.contains(pos)) {
                 Integer originalBlockId = originalBlocks.remove(pos);
                 if (originalBlockId != null) {
-                    setBlock(world, pos.getX(), pos.getY(), pos.getZ(), originalBlockId);
+                    setBlock(world, pos.x, pos.y, pos.z, originalBlockId);
                 }
             }
         }
@@ -368,12 +368,12 @@ public class BlockOcclusionManager {
         // Replace wall blocks in the ray paths
         for (Vector3i pos : newPositions) {
             if (!originalBlocks.containsKey(pos)) {
-                int currentBlockId = getBlock(world, pos.getX(), pos.getY(), pos.getZ());
+                int currentBlockId = getBlock(world, pos.x, pos.y, pos.z);
                 if (currentBlockId != AIR_BLOCK_ID
                         && currentBlockId != replaceId
                         && wallIds.contains(currentBlockId)) {
                     originalBlocks.put(pos, currentBlockId);
-                    setBlock(world, pos.getX(), pos.getY(), pos.getZ(), replaceId);
+                    setBlock(world, pos.x, pos.y, pos.z, replaceId);
                 }
             }
         }
@@ -502,7 +502,7 @@ public class BlockOcclusionManager {
 
         for (Map.Entry<Vector3i, Integer> entry : originalBlocks.entrySet()) {
             Vector3i pos = entry.getKey();
-            setBlock(world, pos.getX(), pos.getY(), pos.getZ(), entry.getValue());
+            setBlock(world, pos.x, pos.y, pos.z, entry.getValue());
         }
         originalBlocks.clear();
     }

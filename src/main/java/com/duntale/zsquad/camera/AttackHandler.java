@@ -9,7 +9,7 @@ import com.hypixel.hytale.server.core.entity.InteractionManager;
 import com.hypixel.hytale.server.core.modules.interaction.InteractionModule;
 import com.hypixel.hytale.server.core.modules.interaction.interaction.config.Interaction;
 import com.hypixel.hytale.server.core.modules.interaction.interaction.config.RootInteraction;
-import com.hypixel.hytale.math.vector.Vector3i;
+import org.joml.Vector3i;
 import com.hypixel.hytale.protocol.BlockPosition;
 import com.hypixel.hytale.protocol.InteractionType;
 import com.hypixel.hytale.server.core.universe.world.World;
@@ -164,7 +164,7 @@ final class AttackHandler {
         // The server-forced chain path (queueExecuteChain) does NOT populate these
         // automatically — only the client's syncStart packet handler does.
         BlockPosition rawPos = new BlockPosition(
-                blockPos.getX(), blockPos.getY(), blockPos.getZ());
+                blockPos.x, blockPos.y, blockPos.z);
         World world = store.getExternalData().getWorld();
         Ref<ChunkStore> sectionRef = world.getChunkStore().getChunkSectionReferenceAtBlock(rawPos.x, rawPos.y, rawPos.z);
         BlockSection blockSection = sectionRef != null
@@ -185,7 +185,7 @@ final class AttackHandler {
         im.queueExecuteChain(chain);
 
         LOGGER.atFine().log("[CTM] Triggered Use interaction on block (%d, %d, %d)",
-                blockPos.getX(), blockPos.getY(), blockPos.getZ());
+                blockPos.x, blockPos.y, blockPos.z);
         return true;
     }
 }

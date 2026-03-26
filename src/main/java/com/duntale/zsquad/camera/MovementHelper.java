@@ -2,7 +2,7 @@ package com.duntale.zsquad.camera;
 
 import com.hypixel.hytale.component.Ref;
 import com.hypixel.hytale.component.Store;
-import com.hypixel.hytale.math.vector.Vector3d;
+import org.joml.Vector3d;
 import com.hypixel.hytale.protocol.AnimationSlot;
 import com.hypixel.hytale.protocol.ChangeVelocityType;
 import com.hypixel.hytale.protocol.MovementStates;
@@ -122,7 +122,7 @@ final class MovementHelper {
     @Nonnull
     static String chooseAnimation(@Nonnull TransformComponent transform,
                                   double dx, double dz) {
-        float yaw = transform.getRotation().getYaw();
+        float yaw = transform.getRotation().yaw();
         double forwardX = -Math.sin(yaw);
         double forwardZ = -Math.cos(yaw);
         double dot = forwardX * dx + forwardZ * dz;

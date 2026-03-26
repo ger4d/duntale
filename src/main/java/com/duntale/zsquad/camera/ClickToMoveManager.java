@@ -5,8 +5,8 @@ import com.hypixel.hytale.component.Store;
 import com.hypixel.hytale.event.EventRegistry;
 import com.hypixel.hytale.logger.HytaleLogger;
 import com.hypixel.hytale.math.util.MathUtil;
-import com.hypixel.hytale.math.vector.Vector3d;
-import com.hypixel.hytale.math.vector.Vector3i;
+import org.joml.Vector3d;
+import org.joml.Vector3i;
 import com.hypixel.hytale.protocol.AnimationSlot;
 import com.hypixel.hytale.protocol.CameraNode;
 import com.hypixel.hytale.protocol.MouseButtonState;
@@ -402,8 +402,8 @@ public class ClickToMoveManager {
         // ── Block-interaction range check ────────────────────────────
         Vector3i interactBlock = state.targetInteractBlock;
         if (interactBlock != null) {
-            double bx = interactBlock.getX() + 0.5;
-            double bz = interactBlock.getZ() + 0.5;
+            double bx = interactBlock.x + 0.5;
+            double bz = interactBlock.z + 0.5;
             double bdx = bx - pos.x;
             double bdz = bz - pos.z;
             double blockDistSq = bdx * bdx + bdz * bdz;
@@ -569,7 +569,7 @@ public class ClickToMoveManager {
         // Wall occlusion fallback
         if (targetEntityRef == null && targetBlock != null) {
             TransformComponent tc = store.getComponent(ref, TransformComponent.getComponentType());
-            if (tc != null && targetBlock.getY() > MathUtil.floor(tc.getPosition().y) - 1) {
+            if (tc != null && targetBlock.y > MathUtil.floor(tc.getPosition().y) - 1) {
                 targetEntityRef = TargetResolver.findNearbyEntityFallback(store, ref, targetBlock);
             }
         }
@@ -725,9 +725,9 @@ public class ClickToMoveManager {
 
         if (targetBlock == null) return;
 
-        int tx = targetBlock.getX();
-        int tz = targetBlock.getZ();
-        int ty = targetBlock.getY();
+        int tx = targetBlock.x;
+        int tz = targetBlock.z;
+        int ty = targetBlock.y;
 
         // ── Interactable block check (bench, chest, etc.) ────────────
         if (TargetResolver.isInteractableBlock(store, tx, ty, tz)) {
@@ -756,8 +756,8 @@ public class ClickToMoveManager {
         if (ty > playerFootY) {
             Vector3i resolved = TargetResolver.resolveWallClick(store, ref, tx, tz, playerFootY);
             if (resolved == null) return;
-            tx = resolved.getX();
-            tz = resolved.getZ();
+            tx = resolved.x;
+            tz = resolved.z;
         }
 
         double targetX = tx + 0.5;
