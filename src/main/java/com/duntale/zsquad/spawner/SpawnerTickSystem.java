@@ -2,6 +2,7 @@ package com.duntale.zsquad.spawner;
 
 import com.duntale.dungeongen.config.Vec3i;
 import com.duntale.dungeongen.model.SpawnEntry;
+import com.duntale.dungeongen.model.SpawnerVariant;
 import com.duntale.zsquad.progression.CombatScaling;
 import com.duntale.zsquad.progression.LeveledNpcSpawner;
 import com.hypixel.hytale.component.ArchetypeChunk;
@@ -183,7 +184,7 @@ public class SpawnerTickSystem extends DelayedEntitySystem<EntityStore> {
         // Collect spawn requests synchronously, then batch into a single World.execute().
         // NPCPlugin.spawnEntity() calls store.addEntity() which is illegal during
         // system processing — must defer to outside tick systems.
-        record SpawnRequest(String npcRole, Vector3d position, int level, boolean boss, int spawnerId) {}
+        record SpawnRequest(String npcRole, Vector3d position, int level, CombatScaling.NpcVariant variant, int spawnerId) {}
         List<SpawnRequest> deferredSpawns = new ArrayList<>();
 
         // Level = floorLevel ± levelVariance, clamped to [1, 60]
@@ -214,7 +215,7 @@ public class SpawnerTickSystem extends DelayedEntitySystem<EntityStore> {
 
             deferredSpawns.add(new SpawnRequest(
                     picked.npcRole(), spawnPos, level,
-                    spawner.getDefinition().isBoss(), spawner.getDefinition().id()));
+                    toNpcVariant(spawner.getDefinition().variant()), spawner.getDefinition().id()));
 
             if (spawnBudgetThisTick <= 0) break;
         }
@@ -226,7 +227,7 @@ public class SpawnerTickSystem extends DelayedEntitySystem<EntityStore> {
                 for (SpawnRequest req : deferredSpawns) {
                     Pair<Ref<EntityStore>, NPCEntity> result = npcSpawner.spawn(
                             entityStore, req.npcRole(), req.position(), req.level(),
-                            req.boss() ? CombatScaling.NpcVariant.BOSS : CombatScaling.NpcVariant.NORMAL
+                            req.variant()
                     );
 
                     if (result != null) {
@@ -267,5 +268,20 @@ public class SpawnerTickSystem extends DelayedEntitySystem<EntityStore> {
             if (roll <= cumulative) return entry;
         }
         return pool.getLast(); // fallback
+    }
+
+    /**
+     * Map a dungeon-gen {@link SpawnerVariant} to the runtime {@link CombatScaling.NpcVariant}.
+     *
+     * @param variant the spawner variant from the definition
+     * @return the corresponding NPC variant for combat scaling
+     */
+    @Nonnull
+    private static CombatScaling.NpcVariant toNpcVariant(@Nonnull SpawnerVariant variant) {
+        return switch (variant) {
+            case NORMAL -> CombatScaling.NpcVariant.NORMAL;
+            case ELITE -> CombatScaling.NpcVariant.ELITE;
+            case BOSS -> CombatScaling.NpcVariant.BOSS;
+        };
     }
 }

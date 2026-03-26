@@ -4,6 +4,7 @@ import com.duntale.dungeongen.config.Vec3i;
 import com.duntale.dungeongen.model.SpawnEntry;
 import com.duntale.dungeongen.model.SpawnerDefinition;
 import com.duntale.dungeongen.model.SpawnerType;
+import com.duntale.dungeongen.model.SpawnerVariant;
 import com.duntale.dungeongen.model.TriggerConfig;
 import com.duntale.dungeongen.model.TriggerType;
 import com.hypixel.hytale.codec.Codec;
@@ -13,7 +14,6 @@ import com.hypixel.hytale.codec.schema.config.ObjectSchema;
 import com.hypixel.hytale.codec.schema.config.Schema;
 import com.hypixel.hytale.codec.util.RawJsonReader;
 import org.bson.BsonArray;
-import org.bson.BsonBoolean;
 import org.bson.BsonDocument;
 import org.bson.BsonDouble;
 import org.bson.BsonInt32;
@@ -74,7 +74,7 @@ final class SpawnerDefinitionCodec implements Codec<SpawnerDefinition> {
         doc.put("RoomId", new BsonInt32(def.roomId()));
         doc.put("Type", new BsonString(def.type().name()));
         doc.put("TotalCount", new BsonInt32(def.totalCount()));
-        doc.put("IsBoss", new BsonBoolean(def.isBoss()));
+        doc.put("Variant", new BsonString(def.variant().name()));
         doc.put("FloorLevel", new BsonInt32(def.floorLevel()));
         doc.put("LevelVariance", new BsonInt32(def.levelVariance()));
 
@@ -118,7 +118,7 @@ final class SpawnerDefinitionCodec implements Codec<SpawnerDefinition> {
         int roomId = doc.getInt32("RoomId").getValue();
         SpawnerType type = SpawnerType.valueOf(doc.getString("Type").getValue());
         int totalCount = doc.getInt32("TotalCount").getValue();
-        boolean isBoss = doc.getBoolean("IsBoss").getValue();
+        SpawnerVariant variant = SpawnerVariant.valueOf(doc.getString("Variant").getValue());
         int floorLevel = doc.getInt32("FloorLevel").getValue();
         int levelVariance = doc.getInt32("LevelVariance").getValue();
 
@@ -150,7 +150,7 @@ final class SpawnerDefinitionCodec implements Codec<SpawnerDefinition> {
         }
 
         return new SpawnerDefinition(id, x, y, z, roomId, type, trigger,
-                spawnPool, totalCount, spawnOffsets, isBoss, floorLevel, levelVariance);
+                spawnPool, totalCount, spawnOffsets, variant, floorLevel, levelVariance);
     }
 
     /** Returns a no-op placeholder used when the JSON decode path is hit during registration validation. */
@@ -159,6 +159,6 @@ final class SpawnerDefinitionCodec implements Codec<SpawnerDefinition> {
         return new SpawnerDefinition(0, 0, 0, 0, 0,
                 SpawnerType.FIXED,
                 TriggerConfig.proximity(0),
-                List.of(), 0, List.of(), false, 1, 0);
+                List.of(), 0, List.of(), SpawnerVariant.NORMAL, 1, 0);
     }
 }
