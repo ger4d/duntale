@@ -494,7 +494,7 @@ Edge cases: /dspawn Zombie 1 1 (minimum), /dspawn Dragon_Fire 1 60 (maximum), /d
 1. **UI form** with 10 sections: General, Size, Rooms, Corridors, Features, Navigation, Enemies, Architecture, Theme, Pacing
 2. **Config persistence**: Saves/loads last-used values as JSON (`generate-config.json` in plugin data dir)
 3. **Origin coords persistence**: Loads saved origin on re-open instead of resetting to player position
-4. **Clear before generation**: Runs `/clear` command with calculated bounds + 2.5s delay before assembly starts
+4. **Disposable preview worlds**: Assembled previews create a fresh temporary world instead of clearing and reusing the current one
 5. **Status feedback**: Labels update to show generation progress ("Generating...", "Assembling...", errors)
 
 **Bug fixes applied:**

@@ -9,32 +9,41 @@ import com.duntale.dungeongen.generator.GenerationOrchestrator;
 import com.duntale.dungeongen.generator.GenerationResult;
 import com.duntale.dungeongen.util.JsonParser;
 import com.duntale.zsquad.ZSquadPlugin;
-import com.duntale.zsquad.spawner.SpawnerFactory;
+import com.hypixel.hytale.builtin.instances.InstancesPlugin;
+import com.hypixel.hytale.builtin.instances.config.InstanceWorldConfig;
+import com.hypixel.hytale.builtin.instances.removal.WorldEmptyCondition;
 import com.hypixel.hytale.codec.Codec;
 import com.hypixel.hytale.codec.KeyedCodec;
 import com.hypixel.hytale.codec.builder.BuilderCodec;
 import com.hypixel.hytale.component.Ref;
 import com.hypixel.hytale.component.Store;
 import com.hypixel.hytale.logger.HytaleLogger;
+import com.hypixel.hytale.math.vector.Transform;
 import org.joml.Vector3d;
 import com.hypixel.hytale.protocol.packets.interface_.CustomPageLifetime;
+import com.hypixel.hytale.protocol.packets.interface_.Page;
 import com.hypixel.hytale.protocol.packets.interface_.CustomUIEventBindingType;
 import com.hypixel.hytale.server.core.Message;
-import com.hypixel.hytale.server.core.command.system.CommandManager;
+import com.hypixel.hytale.server.core.entity.entities.Player;
 import com.hypixel.hytale.server.core.entity.entities.player.pages.InteractiveCustomUIPage;
 import com.hypixel.hytale.server.core.modules.entity.component.TransformComponent;
 import com.hypixel.hytale.server.core.ui.builder.EventData;
 import com.hypixel.hytale.server.core.ui.builder.UICommandBuilder;
 import com.hypixel.hytale.server.core.ui.builder.UIEventBuilder;
 import com.hypixel.hytale.server.core.universe.PlayerRef;
+import com.hypixel.hytale.server.core.universe.Universe;
 import com.hypixel.hytale.server.core.universe.world.World;
+import com.hypixel.hytale.server.core.universe.world.WorldConfig;
+import com.hypixel.hytale.server.core.universe.world.spawn.GlobalSpawnProvider;
 import com.hypixel.hytale.server.core.universe.world.storage.EntityStore;
+import com.hypixel.hytale.server.core.universe.world.worldgen.provider.VoidWorldGenProvider;
 
 import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Map;
+import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 
 /**
@@ -43,8 +52,9 @@ import java.util.concurrent.CompletableFuture;
  * <p>Displays a scrollable form with all {@link DungeonConfig} parameters,
  * pre-populated with saved values (or defaults on first use). The player's
  * current position fills the origin fields. Clicking "Generate Dungeon"
- * reads all field values, persists them to disk, and invokes
- * {@link GenerationOrchestrator#generate(DungeonConfig)} directly.</p>
+ * reads all field values, persists them to disk, and either invokes
+ * {@link GenerationOrchestrator#generate(DungeonConfig)} directly for summary-only generation
+ * or creates a fresh disposable preview world before assembling the dungeon there.</p>
  *
  * @since 1.2.0
  */
@@ -52,8 +62,16 @@ public class DungeonGeneratePage extends InteractiveCustomUIPage<DungeonGenerate
 
     private static final HytaleLogger LOGGER = HytaleLogger.forEnclosingClass();
     private static final String CONFIG_FILENAME = "generate-config.json";
+    private static final String PREVIEW_WORLD_PREFIX = "dungeon-preview";
+    private static final String PREVIEW_WORLD_SEPARATOR = "-preview-";
 
     private final World world;
+
+    private record PreparedPreviewWorld(
+            @Nonnull World world,
+            @Nonnull DungeonConfig config,
+            @Nonnull GenerationResult result
+    ) {}
 
     /**
      * Create a new dungeon generation page.
@@ -91,8 +109,8 @@ public class DungeonGeneratePage extends InteractiveCustomUIPage<DungeonGenerate
             cmd.set("#OriginZ.Value", (int) pos.z);
         }
 
-        // World name: use saved value if present, otherwise current world
-        cmd.set("#WorldName.Value", savedStr(saved, "worldName", world.getName()));
+        // Preview world base name: use saved value if present, otherwise a stable preview prefix
+        cmd.set("#WorldName.Value", savedStr(saved, "worldName", PREVIEW_WORLD_PREFIX));
 
         // Defaults from config records
         LayoutConfig ld = LayoutConfig.defaults();
@@ -146,9 +164,6 @@ public class DungeonGeneratePage extends InteractiveCustomUIPage<DungeonGenerate
         if (saved.containsKey("assemble")) {
             cmd.set("#AssembleCheck #CheckBox.Value", JsonParser.toBoolean(saved.get("assemble")));
         }
-        if (saved.containsKey("clear")) {
-            cmd.set("#ClearCheck #CheckBox.Value", JsonParser.toBoolean(saved.get("clear")));
-        }
         if (saved.containsKey("windingCorridors")) {
             cmd.set("#WindingCheck #CheckBox.Value", JsonParser.toBoolean(saved.get("windingCorridors")));
         }
@@ -181,11 +196,13 @@ public class DungeonGeneratePage extends InteractiveCustomUIPage<DungeonGenerate
     public void handleDataEvent(@Nonnull Ref<EntityStore> ref, @Nonnull Store<EntityStore> store,
                                 @Nonnull GenerateEventData data) {
         if (data.generate != null) {
-            handleGenerate(data);
+            handleGenerate(ref, store, data);
         }
     }
 
-    private void handleGenerate(@Nonnull GenerateEventData d) {
+    private void handleGenerate(@Nonnull Ref<EntityStore> ref,
+                                @Nonnull Store<EntityStore> store,
+                                @Nonnull GenerateEventData d) {
         DungeonConfig config;
         try {
             config = buildConfig(d);
@@ -198,65 +215,176 @@ public class DungeonGeneratePage extends InteractiveCustomUIPage<DungeonGenerate
         // Persist the current values for next time
         saveConfig(d);
 
-        // Update status on page
-        UICommandBuilder cmd = new UICommandBuilder();
-        UIEventBuilder events = new UIEventBuilder();
+        if (!config.assemble()) {
+            runSummaryOnlyGeneration(config);
+            return;
+        }
 
-        if (config.clear()) {
-            cmd.set("#StatusGroup.Visible", true);
-            cmd.set("#StatusGroup #StatusLabel.Text", "Clearing area...");
-            cmd.set("#StatusGroup #StatusSpinner.Visible", true);
-            this.sendUpdate(cmd, events, false);
+        if (InstancesPlugin.get() == null) {
+            playerRef.sendMessage(Message.raw("[DungeonGen] InstancesPlugin not available").color("#FF5555"));
+            LOGGER.atSevere().log("[DungeonGen] InstancesPlugin not available for preview world generation");
+            updateStatus("Error - see chat", false);
+            return;
+        }
 
-            // Build clear command: clear x1 y1 z1 x2 y2 z2
-            Vec3i o = config.origin();
-            LayoutConfig lc = config.layout();
-            String clearCmd = String.format("clear %d %d %d %d %d %d",
-                o.x(), o.y(), o.z(),
-                o.x() + lc.width(), o.y() + lc.height(), o.z() + lc.depth());
-            LOGGER.atInfo().log("[DungeonGen] Clearing area: /%s", clearCmd);
-            CommandManager.get().handleCommand(playerRef, clearCmd);
-            playerRef.sendMessage(Message.raw("[DungeonGen] Clearing area, generation will start in 2.5s...").color("#FFD700"));
+        TransformComponent transformComponent = store.getComponent(ref, TransformComponent.getComponentType());
+        if (transformComponent == null) {
+            playerRef.sendMessage(Message.raw("[DungeonGen] Player transform missing").color("#FF5555"));
+            LOGGER.atSevere().log("[DungeonGen] Cannot create preview world: player transform missing");
+            updateStatus("Error - see chat", false);
+            return;
+        }
 
-            // Delay 2.5s then generate (off world thread, re-dispatch results back)
-            CompletableFuture.runAsync(() -> {
-                try { Thread.sleep(2500); } catch (InterruptedException ignored) {}
-            }).thenCompose(v -> {
-                world.execute(() -> updateStatus("Generating..."));
-                return ZSquadPlugin.get().getDungeonOrchestrator().generate(config);
-            }).thenAccept(result -> world.execute(() -> sendResult(result, config)))
-              .exceptionally(e -> {
-                  world.execute(() -> {
-                      String msg = e.getCause() != null ? e.getCause().getMessage() : e.getMessage();
-                      playerRef.sendMessage(Message.raw("[DungeonGen] Generation failed: " + msg).color("#FF5555"));
-                      LOGGER.atSevere().log("[DungeonGen] Generation failed: %s", msg);
-                      updateStatus("Error - see chat", false);
-                  });
-                  return null;
-              });
-        } else {
-            cmd.set("#StatusGroup.Visible", true);
-            cmd.set("#StatusGroup #StatusLabel.Text", "Generating...");
-            cmd.set("#StatusGroup #StatusSpinner.Visible", true);
-            this.sendUpdate(cmd, events, false);
-            playerRef.sendMessage(Message.raw("[DungeonGen] Generating dungeon...").color("#FFD700"));
+        DungeonConfig previewConfig = toPreviewConfig(config);
+        Transform returnTransform = new Transform(transformComponent.getTransform());
 
-            GenerationOrchestrator orchestrator = ZSquadPlugin.get().getDungeonOrchestrator();
-            orchestrator.generate(config).thenAccept(result -> {
-                world.execute(() -> sendResult(result, config));
-            }).exceptionally(e -> {
-                world.execute(() -> {
-                    String msg = e.getCause() != null ? e.getCause().getMessage() : e.getMessage();
-                    playerRef.sendMessage(Message.raw("[DungeonGen] Generation failed: " + msg).color("#FF5555"));
-                    LOGGER.atSevere().log("[DungeonGen] Generation failed: %s", msg);
-                    updateStatus("Error - see chat", false);
-                });
-                return null;
+        updateStatus("Creating preview world...");
+        playerRef.sendMessage(Message.raw(
+                "[DungeonGen] Creating preview world '" + previewConfig.worldName() + "'..."
+        ).color("#FFD700"));
+
+        preparePreviewWorld(previewConfig).thenAccept(prepared ->
+                world.execute(() -> enterPreviewWorld(ref, store, returnTransform, prepared))
+        ).exceptionally(e -> {
+            removePreviewWorldIfLoaded(previewConfig.worldName());
+            world.execute(() -> handlePreviewFailure(previewConfig.worldName(), e));
+            return null;
+        });
+    }
+
+    private void runSummaryOnlyGeneration(@Nonnull DungeonConfig config) {
+        updateStatus("Generating...");
+        playerRef.sendMessage(Message.raw("[DungeonGen] Generating dungeon...").color("#FFD700"));
+
+        GenerationOrchestrator orchestrator = ZSquadPlugin.get().getDungeonOrchestrator();
+        orchestrator.generate(config).thenAccept(result ->
+                world.execute(() -> sendGenerationSummary(result, null))
+        ).exceptionally(e -> {
+            world.execute(() -> {
+                String msg = extractErrorMessage(e);
+                playerRef.sendMessage(Message.raw("[DungeonGen] Generation failed: " + msg).color("#FF5555"));
+                LOGGER.atSevere().log("[DungeonGen] Generation failed: %s", msg);
+                updateStatus("Error - see chat", false);
             });
+            return null;
+        });
+    }
+
+    @Nonnull
+    private CompletableFuture<PreparedPreviewWorld> preparePreviewWorld(@Nonnull DungeonConfig previewConfig) {
+        return createPreviewWorld(previewConfig).thenCompose(previewWorld -> {
+            world.execute(() -> updateStatus("Generating preview..."));
+            return ZSquadPlugin.get().getDungeonOrchestrator().generate(previewConfig)
+                    .thenCompose(result -> finalizePreviewWorld(previewWorld, previewConfig, result));
+        });
+    }
+
+    @Nonnull
+    private CompletableFuture<World> createPreviewWorld(@Nonnull DungeonConfig previewConfig) {
+        Universe universe = Universe.get();
+        Path savePath = universe.validateWorldPath(previewConfig.worldName());
+
+        WorldConfig previewWorldConfig = new WorldConfig();
+        previewWorldConfig.setUuid(UUID.randomUUID());
+        previewWorldConfig.setDisplayName("Dungeon Preview Floor " + previewConfig.floorLevel());
+        previewWorldConfig.setSeed(resolveWorldSeed(previewConfig.seed()));
+        previewWorldConfig.setWorldGenProvider(new VoidWorldGenProvider(null, null));
+        previewWorldConfig.setSpawnProvider(new GlobalSpawnProvider(toPlayerTransform(previewConfig.origin())));
+        previewWorldConfig.setPvpEnabled(true);
+        previewWorldConfig.setFallDamageEnabled(true);
+        previewWorldConfig.setTicking(true);
+        previewWorldConfig.setBlockTicking(false);
+        previewWorldConfig.setSpawningNPC(false);
+        previewWorldConfig.setSavingPlayers(false);
+        previewWorldConfig.setDeleteOnRemove(true);
+        previewWorldConfig.setDeleteOnUniverseStart(true);
+        previewWorldConfig.setGameTimePaused(true);
+        InstanceWorldConfig.ensureAndGet(previewWorldConfig).setRemovalConditions(WorldEmptyCondition.INSTANCE);
+        previewWorldConfig.markChanged();
+
+        return universe.makeWorld(previewConfig.worldName(), savePath, previewWorldConfig);
+    }
+
+    @Nonnull
+    private CompletableFuture<PreparedPreviewWorld> finalizePreviewWorld(
+            @Nonnull World previewWorld,
+            @Nonnull DungeonConfig previewConfig,
+            @Nonnull GenerationResult result
+    ) {
+        CompletableFuture<PreparedPreviewWorld> future = new CompletableFuture<>();
+        previewWorld.execute(() -> {
+            try {
+                if (result.assemblyError() != null) {
+                    throw new IllegalStateException(result.assemblyError());
+                }
+
+                WorldConfig worldConfig = previewWorld.getWorldConfig();
+                worldConfig.setSpawnProvider(new GlobalSpawnProvider(toPlayerTransform(result.entrancePosition())));
+                worldConfig.markChanged();
+
+                createPreviewEntities(previewWorld, previewConfig, result);
+                future.complete(new PreparedPreviewWorld(previewWorld, previewConfig, result));
+            } catch (Exception e) {
+                future.completeExceptionally(e);
+            }
+        });
+        return future;
+    }
+
+    private void createPreviewEntities(@Nonnull World previewWorld,
+                                       @Nonnull DungeonConfig previewConfig,
+                                       @Nonnull GenerationResult result) {
+        Store<EntityStore> previewStore = previewWorld.getEntityStore().getStore();
+        ZSquadPlugin plugin = ZSquadPlugin.get();
+
+        if (!result.spawnerDefinitions().isEmpty()) {
+            plugin.getSpawnerFactory().createSpawners(previewStore, result.spawnerDefinitions(), previewConfig.origin());
+        }
+
+        if (!result.merchantDefinitions().isEmpty()) {
+            plugin.getMerchantNpcSpawner().spawnMerchants(previewStore, result.merchantDefinitions(), previewConfig.origin());
         }
     }
 
-    private void sendResult(@Nonnull GenerationResult result, @Nonnull DungeonConfig config) {
+    private void enterPreviewWorld(@Nonnull Ref<EntityStore> ref,
+                                   @Nonnull Store<EntityStore> store,
+                                   @Nonnull Transform returnTransform,
+                                   @Nonnull PreparedPreviewWorld prepared) {
+        if (!ref.isValid()) {
+            removePreviewWorldIfLoaded(prepared.world().getName());
+            return;
+        }
+
+        sendGenerationSummary(prepared.result(), prepared.world().getName());
+
+        Player playerComponent = store.getComponent(ref, Player.getComponentType());
+        if (playerComponent != null) {
+            playerComponent.getPageManager().setPage(ref, store, Page.None);
+        }
+
+        try {
+            InstancesPlugin.teleportPlayerToInstance(ref, store, prepared.world(), returnTransform);
+            updateStatus("Preview ready - entering " + prepared.world().getName(), false);
+        } catch (Exception e) {
+            removePreviewWorldIfLoaded(prepared.world().getName());
+            String msg = extractErrorMessage(e);
+            LOGGER.atSevere().log("[DungeonGen] Failed to enter preview world %s: %s",
+                    prepared.world().getName(), msg);
+            playerRef.sendMessage(Message.raw("[DungeonGen] Failed to enter preview world: " + msg).color("#FF5555"));
+            updateStatus("Error - see chat", false);
+        }
+    }
+
+    private void handlePreviewFailure(@Nonnull String worldName, @Nonnull Throwable throwable) {
+        String msg = extractErrorMessage(throwable);
+        playerRef.sendMessage(Message.raw(
+                "[DungeonGen] Preview generation failed for '" + worldName + "': " + msg
+        ).color("#FF5555"));
+        LOGGER.atSevere().log("[DungeonGen] Preview generation failed for %s: %s", worldName, msg);
+        updateStatus("Error - see chat", false);
+    }
+
+    private void sendGenerationSummary(@Nonnull GenerationResult result, @Nullable String previewWorldName) {
         String summary = String.format(
             "[DungeonGen] Done! %d rooms, %d corridors, %d blocks, %d spawners, %d merchants - gen %dms, asm %dms",
             result.rooms(), result.corridors(), result.totalBlocks(), result.spawners(),
@@ -269,44 +397,67 @@ public class DungeonGeneratePage extends InteractiveCustomUIPage<DungeonGenerate
             playerRef.sendMessage(Message.raw("[DungeonGen] Assembly error: " + result.assemblyError()).color("#FF5555"));
         }
 
-        // Create ECS entities for spawners and merchants (if assembled)
-        if (config.assemble()) {
-            try {
-                Store<EntityStore> store = world.getEntityStore().getStore();
-
-                // Spawner entities
-                if (!result.spawnerDefinitions().isEmpty()) {
-                    SpawnerFactory spawnerFactory = ZSquadPlugin.get().getSpawnerFactory();
-                    int removed = spawnerFactory.destroyActive(store);
-                    if (removed > 0) {
-                        playerRef.sendMessage(Message.raw(
-                            "[DungeonGen] Cleaned up " + removed + " old spawner/NPC entities"
-                        ).color("#AAAAAA"));
-                    }
-
-                    spawnerFactory.createSpawners(
-                        store, result.spawnerDefinitions(), config.origin());
-                    playerRef.sendMessage(Message.raw(
-                        "[DungeonGen] Registered " + result.spawnerDefinitions().size() + " spawner entities"
-                    ).color("#55FFFF"));
-                }
-
-                // Merchant NPC entities
-                if (!result.merchantDefinitions().isEmpty()) {
-                    var merchantSpawner = ZSquadPlugin.get().getMerchantNpcSpawner();
-                    merchantSpawner.destroyActive(store);
-                    merchantSpawner.spawnMerchants(store, result.merchantDefinitions(), config.origin());
-                    playerRef.sendMessage(Message.raw(
-                        "[DungeonGen] Spawned " + result.merchantDefinitions().size() + " merchant NPCs"
-                    ).color("#55FFFF"));
-                }
-            } catch (Exception e) {
-                LOGGER.atSevere().log("[DungeonGen] Failed to create ECS entities: %s", e.getMessage());
-                playerRef.sendMessage(Message.raw("[DungeonGen] ECS entity creation failed: " + e.getMessage()).color("#FF5555"));
-            }
+        if (previewWorldName != null) {
+            playerRef.sendMessage(Message.raw(
+                    "[DungeonGen] Preview world ready: " + previewWorldName
+            ).color("#55FFFF"));
         }
 
         updateStatus(String.format("Done - %d rooms, %dms", result.rooms(), result.generationTimeMs()), false);
+    }
+
+    @Nonnull
+    private DungeonConfig toPreviewConfig(@Nonnull DungeonConfig config) {
+        String baseWorldName = isBlank(config.worldName()) ? PREVIEW_WORLD_PREFIX : config.worldName().trim();
+        String previewWorldName = baseWorldName + PREVIEW_WORLD_SEPARATOR + UUID.randomUUID().toString().substring(0, 8);
+        return new DungeonConfig(
+                config.seed(),
+                config.preset(),
+                previewWorldName,
+                config.origin(),
+                config.layout(),
+                config.theme(),
+                config.pacing(),
+                true,
+                config.floorLevel()
+        );
+    }
+
+    private void removePreviewWorldIfLoaded(@Nonnull String worldName) {
+        World loadedWorld = Universe.get().getWorld(worldName);
+        if (loadedWorld == null) {
+            return;
+        }
+        try {
+            Universe.get().removeWorld(worldName);
+        } catch (Exception e) {
+            LOGGER.atWarning().log("[DungeonGen] Failed to remove preview world %s: %s", worldName, e.getMessage());
+        }
+    }
+
+    @Nonnull
+    private static Transform toPlayerTransform(@Nonnull Vec3i position) {
+        return new Transform(position.x() + 0.5D, position.y(), position.z() + 0.5D);
+    }
+
+    private static long resolveWorldSeed(@Nullable String seed) {
+        if (isBlank(seed)) {
+            return UUID.randomUUID().getMostSignificantBits() ^ System.nanoTime();
+        }
+        try {
+            return Long.parseLong(seed);
+        } catch (NumberFormatException ignored) {
+            return seed.hashCode();
+        }
+    }
+
+    @Nonnull
+    private static String extractErrorMessage(@Nonnull Throwable throwable) {
+        Throwable current = throwable;
+        while (current.getCause() != null) {
+            current = current.getCause();
+        }
+        return current.getMessage() != null ? current.getMessage() : current.toString();
     }
 
     private void updateStatus(@Nonnull String text) {
@@ -364,7 +515,6 @@ public class DungeonGeneratePage extends InteractiveCustomUIPage<DungeonGenerate
         appendInt(sb, "originZ", d.originZ);
         appendInt(sb, "floorLevel", d.floorLevel);
         appendBool(sb, "assemble", d.assemble);
-        appendBool(sb, "clear", d.clear);
         appendInt(sb, "width", d.width);
         appendInt(sb, "depth", d.depth);
         appendInt(sb, "height", d.height);
@@ -529,10 +679,9 @@ public class DungeonGeneratePage extends InteractiveCustomUIPage<DungeonGenerate
         );
 
         boolean assemble = d.assemble != null ? d.assemble : dd.assemble();
-        boolean clear = d.clear != null ? d.clear : dd.clear();
         int floorLevel = intOrDefault(d.floorLevel, dd.floorLevel());
 
-        return new DungeonConfig(seed, null, worldName, origin, layout, theme, pacing, assemble, clear, floorLevel);
+        return new DungeonConfig(seed, null, worldName, origin, layout, theme, pacing, assemble, floorLevel);
     }
 
     // ============================================
@@ -550,7 +699,6 @@ public class DungeonGeneratePage extends InteractiveCustomUIPage<DungeonGenerate
             .append("@OriginZ", "#OriginZ.Value")
             .append("@FloorLevel", "#FloorLevel.Value")
             .append("@Assemble", "#AssembleCheck #CheckBox.Value")
-            .append("@Clear", "#ClearCheck #CheckBox.Value")
             // Size
             .append("@Width", "#Width.Value")
             .append("@Depth", "#Depth.Value")
@@ -634,7 +782,6 @@ public class DungeonGeneratePage extends InteractiveCustomUIPage<DungeonGenerate
             .addField(new KeyedCodec<>("@OriginZ", Codec.INTEGER), (e, v) -> e.originZ = v, e -> e.originZ)
             .addField(new KeyedCodec<>("@FloorLevel", Codec.INTEGER), (e, v) -> e.floorLevel = v, e -> e.floorLevel)
             .addField(new KeyedCodec<>("@Assemble", Codec.BOOLEAN), (e, v) -> e.assemble = v, e -> e.assemble)
-            .addField(new KeyedCodec<>("@Clear", Codec.BOOLEAN), (e, v) -> e.clear = v, e -> e.clear)
             // Size
             .addField(new KeyedCodec<>("@Width", Codec.INTEGER), (e, v) -> e.width = v, e -> e.width)
             .addField(new KeyedCodec<>("@Depth", Codec.INTEGER), (e, v) -> e.depth = v, e -> e.depth)
@@ -691,7 +838,6 @@ public class DungeonGeneratePage extends InteractiveCustomUIPage<DungeonGenerate
         Integer originX, originY, originZ;
         Integer floorLevel;
         Boolean assemble;
-        Boolean clear;
         // Size
         Integer width, depth, height;
         // Rooms

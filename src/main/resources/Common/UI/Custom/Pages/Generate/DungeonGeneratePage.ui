@@ -53,8 +53,7 @@ $C.@Container {
         Group {
           LayoutMode: Left;
           Anchor: (Height: 34);
-          $C.@CheckBoxWithLabel #AssembleCheck { @Text = "Assemble in World"; @Checked = false; Anchor: (Right: 40); }
-          $C.@CheckBoxWithLabel #ClearCheck { @Text = "Clear Area"; @Checked = false; }
+          $C.@CheckBoxWithLabel #AssembleCheck { @Text = "Assemble in World"; @Checked = false; }
         }
       }
     }
@@ -410,4 +409,3 @@ $C.@Container {
 }
 
 $C.@BackButton {}
-

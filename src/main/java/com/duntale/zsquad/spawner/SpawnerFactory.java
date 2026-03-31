@@ -16,21 +16,19 @@ import com.hypixel.hytale.server.core.universe.world.storage.EntityStore;
 
 import javax.annotation.Nonnull;
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.List;
 
 /**
  * Creates spawner entities in the ECS from a {@link DungeonBlueprint}.
  * Called after world assembly to populate the dungeon with spawner entities.
+ * Callers may keep the returned refs when they need explicit teardown, but normal
+ * dungeon cleanup is world-based.
  *
  * @since 1.1.0
  */
 public class SpawnerFactory {
 
     private static final HytaleLogger LOGGER = HytaleLogger.forEnclosingClass();
-
-    /** Refs to spawner entities from the most recent generation. */
-    private List<Ref<EntityStore>> activeRefs = Collections.emptyList();
 
     /**
      * Create spawner entities for all spawner definitions in the blueprint.
@@ -86,7 +84,6 @@ public class SpawnerFactory {
         LOGGER.atInfo().log("[Spawner] Created %d spawner entities at origin (%d, %d, %d)",
                 refs.size(), worldOrigin.x(), worldOrigin.y(), worldOrigin.z());
 
-        activeRefs = refs;
         return refs;
     }
 
@@ -148,20 +145,6 @@ public class SpawnerFactory {
                     removed, spawnerRefs.size());
         }
 
-        return removed;
-    }
-
-    /**
-     * Destroy all active spawner entities and their alive NPCs from the most recent generation.
-     *
-     * @param store the entity store
-     * @return the total number of entities removed (spawners + NPCs)
-     * @since 1.3.0
-     */
-    public int destroyActive(@Nonnull Store<EntityStore> store) {
-        if (activeRefs.isEmpty()) return 0;
-        int removed = destroyAll(store, activeRefs);
-        activeRefs = Collections.emptyList();
         return removed;
     }
 }

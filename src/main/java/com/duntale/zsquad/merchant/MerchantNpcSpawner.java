@@ -18,6 +18,8 @@ import java.util.List;
  * Creates merchant NPC entities from dungeon blueprint {@link MerchantDefinition}s.
  * Each NPC is placed at the blueprint position offset by the world origin,
  * and receives a {@link MerchantComponent} storing the floor level.
+ * Callers may keep the returned refs when they need explicit teardown, but normal
+ * dungeon cleanup is world-based.
  *
  * @since 1.3.0
  */
@@ -27,8 +29,6 @@ public class MerchantNpcSpawner {
 
     /** NPC role name for dungeon merchants. */
     private static final String MERCHANT_ROLE = "Dungeon_Merchant";
-
-    private List<Ref<EntityStore>> activeRefs = List.of();
 
     /**
      * Spawn merchant NPC entities from the given definitions.
@@ -84,25 +84,29 @@ public class MerchantNpcSpawner {
         }
 
         LOGGER.atInfo().log("[MerchantSpawner] Created %d merchant NPCs", refs.size());
-        activeRefs = refs;
         return refs;
     }
 
     /**
-     * Destroy all active merchant NPC entities.
+     * Destroy merchant NPC entities tracked for a world.
      *
-     * @param store the entity store
-     * @return number of entities destroyed
+     * @param store        the entity store
+     * @param merchantRefs refs to merchant entities to destroy
+     * @return number of merchant entities destroyed
+     * @since 1.6.0
      */
-    public int destroyActive(@Nonnull Store<EntityStore> store) {
+    public int destroyAll(@Nonnull Store<EntityStore> store,
+                          @Nonnull List<Ref<EntityStore>> merchantRefs) {
         int count = 0;
-        for (Ref<EntityStore> ref : activeRefs) {
+        for (Ref<EntityStore> ref : merchantRefs) {
             if (ref.isValid()) {
                 store.removeEntity(ref, RemoveReason.REMOVE);
                 count++;
             }
         }
-        activeRefs = List.of();
+        if (count > 0) {
+            LOGGER.atInfo().log("[MerchantSpawner] Destroyed %d merchant NPCs", count);
+        }
         return count;
     }
 }
