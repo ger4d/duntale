@@ -71,6 +71,15 @@ public class DungeonMembershipRepository {
              ORDER BY player_uuid
             """;
 
+    private static final String HAS_NON_ENDED_INSTANCE_SQL = """
+            SELECT 1
+              FROM dungeon_membership m
+              JOIN dungeon_instances i ON m.instance_id = i.instance_id
+             WHERE m.player_uuid = ?
+               AND i.state != ?
+             LIMIT 1
+            """;
+
     private final DatabaseProvider database;
 
     /**
@@ -193,5 +202,73 @@ public class DungeonMembershipRepository {
             }
             return Set.copyOf(playerIds);
         });
+    }
+
+    /**
+     * Returns whether the given player belongs to any dungeon instance that is not in the
+     * {@link DungeonInstanceState#ENDED} state.
+     *
+     * @param playerId the player UUID
+     * @return {@code true} if the player has a non-ended instance membership
+     * @throws SQLException if the query fails
+     */
+    public boolean hasNonEndedInstance(@Nonnull UUID playerId) throws SQLException {
+        Objects.requireNonNull(playerId, "playerId");
+        return database.read(conn -> hasNonEndedInstanceInTransaction(conn, playerId));
+    }
+
+    /**
+     * Transaction-safe variant of {@link #hasNonEndedInstance(UUID)}.
+     *
+     * <p>Intended for use inside a shared {@code database.transaction()} block alongside
+     * instance creation and membership inserts to enforce the one-active-instance constraint
+     * atomically.
+     *
+     * @param conn     the active JDBC connection from the enclosing transaction
+     * @param playerId the player UUID
+     * @return {@code true} if the player has a non-ended instance membership
+     * @throws SQLException if the query fails
+     */
+    boolean hasNonEndedInstanceInTransaction(@Nonnull Connection conn, @Nonnull UUID playerId)
+            throws SQLException {
+        Objects.requireNonNull(conn, "conn");
+        Objects.requireNonNull(playerId, "playerId");
+        try (PreparedStatement ps = conn.prepareStatement(HAS_NON_ENDED_INSTANCE_SQL)) {
+            ps.setString(1, playerId.toString());
+            ps.setString(2, DungeonInstanceState.ENDED.name());
+            try (ResultSet rs = ps.executeQuery()) {
+                return rs.next();
+            }
+        }
+    }
+
+    /**
+     * Finds all players from the given collection that already belong to a non-{@code ENDED}
+     * dungeon instance.
+     *
+     * <p>Intended for transactional roster validation: the caller wraps this check together
+     * with instance creation and membership inserts in a single {@code database.transaction()}
+     * to guarantee the one-active-instance invariant cannot be bypassed by concurrent starts.
+     *
+     * @param conn      the active JDBC connection from the enclosing transaction
+     * @param playerIds the player UUIDs to check
+     * @return immutable set of player UUIDs that have a non-ended instance (empty if none)
+     * @throws SQLException if any query fails
+     */
+    @Nonnull
+    Set<UUID> findPlayersWithNonEndedInstanceInTransaction(
+            @Nonnull Connection conn,
+            @Nonnull Collection<UUID> playerIds
+    ) throws SQLException {
+        Objects.requireNonNull(conn, "conn");
+        Objects.requireNonNull(playerIds, "playerIds");
+        Set<UUID> blocked = new HashSet<>();
+        for (UUID playerId : playerIds) {
+            Objects.requireNonNull(playerId, "playerIds contains null");
+            if (hasNonEndedInstanceInTransaction(conn, playerId)) {
+                blocked.add(playerId);
+            }
+        }
+        return Set.copyOf(blocked);
     }
 }

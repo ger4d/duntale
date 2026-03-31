@@ -16,6 +16,7 @@ import java.util.Set;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -124,6 +125,86 @@ class DungeonMembershipRepositoryTest {
 
         assertTrue(membershipRepository.findPlayerIdsByInstance("instance-a").isEmpty());
         assertTrue(membershipRepository.findInstanceIdsByPlayer(playerOne).isEmpty());
+    }
+
+    @Test
+    @DisplayName("Should detect non-ended instance membership for a player")
+    void shouldDetectNonEndedInstanceMembershipForPlayer() throws SQLException {
+        UUID player = UUID.randomUUID();
+        membershipRepository.addMembership("instance-a", player);
+
+        assertTrue(membershipRepository.hasNonEndedInstance(player));
+    }
+
+    @Test
+    @DisplayName("Should not detect membership when instance is ended")
+    void shouldNotDetectMembershipWhenInstanceIsEnded() throws SQLException {
+        UUID player = UUID.randomUUID();
+        membershipRepository.addMembership("instance-a", player);
+
+        instanceRepository.endInstance("instance-a");
+
+        assertFalse(membershipRepository.hasNonEndedInstance(player));
+    }
+
+    @Test
+    @DisplayName("Should not detect membership when player has no instance")
+    void shouldNotDetectMembershipWhenPlayerHasNoInstance() throws SQLException {
+        UUID player = UUID.randomUUID();
+
+        assertFalse(membershipRepository.hasNonEndedInstance(player));
+    }
+
+    @Test
+    @DisplayName("Should find blocked players in a roster with mixed active and ended instances")
+    void shouldFindBlockedPlayersInRosterWithMixedInstances() throws SQLException {
+        UUID activePlayer = UUID.randomUUID();
+        UUID endedPlayer = UUID.randomUUID();
+        UUID freePlayer = UUID.randomUUID();
+
+        membershipRepository.addMembership("instance-a", activePlayer);
+        membershipRepository.addMembership("instance-b", endedPlayer);
+        instanceRepository.endInstance("instance-b");
+
+        Set<UUID> blocked = database.read(conn ->
+                membershipRepository.findPlayersWithNonEndedInstanceInTransaction(
+                        conn, List.of(activePlayer, endedPlayer, freePlayer)));
+
+        assertEquals(Set.of(activePlayer), blocked);
+    }
+
+    @Test
+    @DisplayName("Should enforce one-active-instance atomically in a shared transaction")
+    void shouldEnforceOneActiveInstanceAtomicallyInSharedTransaction() throws SQLException {
+        UUID player = UUID.randomUUID();
+        membershipRepository.addMembership("instance-a", player);
+
+        DungeonInstance newInstance = new DungeonInstance(
+                "instance-c",
+                "dungeon-instance-c",
+                1,
+                80.0D,
+                new Vec3i(1, 80, 1),
+                new Vec3i(25, 80, 25),
+                DungeonInstanceState.CREATING,
+                "crypt",
+                null,
+                1_706_000_002_000L
+        );
+
+        assertThrows(IllegalStateException.class, () -> database.transaction(conn -> {
+            Set<UUID> blocked = membershipRepository.findPlayersWithNonEndedInstanceInTransaction(
+                    conn, List.of(player));
+            if (!blocked.isEmpty()) {
+                throw new IllegalStateException(
+                        "Players already in active instance: " + blocked);
+            }
+            instanceRepository.createInTransaction(conn, newInstance);
+            membershipRepository.addMembershipsInTransaction(conn, newInstance.instanceId(), List.of(player));
+            return null;
+        }));
+
+        assertTrue(instanceRepository.findById(newInstance.instanceId()).isEmpty());
     }
 
     @Test
