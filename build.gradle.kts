@@ -28,6 +28,11 @@ dependencies {
 
     compileOnly("org.projectlombok:lombok:1.18.42")
     annotationProcessor("org.projectlombok:lombok:1.18.42")
+
+    testImplementation("org.junit.jupiter:junit-jupiter:5.10.1")
+    testRuntimeOnly("org.junit.platform:junit-platform-launcher")
+    testImplementation("com.hypixel.hytale:Server:2026.03.26-92489d5e7")
+    testImplementation(files("../dungeon-gen/build/libs/dungeon-gen-1.0.0-SNAPSHOT.jar"))
 }
 
 tasks {
@@ -35,6 +40,11 @@ tasks {
         options.encoding = "UTF-8"
         // Java 25 preview features might be needed
         // options.compilerArgs.add("--enable-preview") 
+    }
+
+    test {
+        useJUnitPlatform()
+        jvmArgs("-Djava.util.logging.manager=com.hypixel.hytale.logger.backend.HytaleLogManager")
     }
 
     shadowJar {
