@@ -27,6 +27,7 @@ import com.hypixel.hytale.server.core.Message;
 import com.hypixel.hytale.server.core.entity.entities.Player;
 import com.hypixel.hytale.server.core.entity.entities.player.pages.InteractiveCustomUIPage;
 import com.hypixel.hytale.server.core.modules.entity.component.TransformComponent;
+import com.hypixel.hytale.server.core.modules.entity.teleport.Teleport;
 import com.hypixel.hytale.server.core.ui.builder.EventData;
 import com.hypixel.hytale.server.core.ui.builder.UICommandBuilder;
 import com.hypixel.hytale.server.core.ui.builder.UIEventBuilder;
@@ -220,23 +221,7 @@ public class DungeonGeneratePage extends InteractiveCustomUIPage<DungeonGenerate
             return;
         }
 
-        if (InstancesPlugin.get() == null) {
-            playerRef.sendMessage(Message.raw("[DungeonGen] InstancesPlugin not available").color("#FF5555"));
-            LOGGER.atSevere().log("[DungeonGen] InstancesPlugin not available for preview world generation");
-            updateStatus("Error - see chat", false);
-            return;
-        }
-
-        TransformComponent transformComponent = store.getComponent(ref, TransformComponent.getComponentType());
-        if (transformComponent == null) {
-            playerRef.sendMessage(Message.raw("[DungeonGen] Player transform missing").color("#FF5555"));
-            LOGGER.atSevere().log("[DungeonGen] Cannot create preview world: player transform missing");
-            updateStatus("Error - see chat", false);
-            return;
-        }
-
         DungeonConfig previewConfig = toPreviewConfig(config);
-        Transform returnTransform = new Transform(transformComponent.getTransform());
 
         updateStatus("Creating preview world...");
         playerRef.sendMessage(Message.raw(
@@ -244,7 +229,7 @@ public class DungeonGeneratePage extends InteractiveCustomUIPage<DungeonGenerate
         ).color("#FFD700"));
 
         preparePreviewWorld(previewConfig).thenAccept(prepared ->
-                world.execute(() -> enterPreviewWorld(ref, store, returnTransform, prepared))
+                world.execute(() -> enterPreviewWorld(ref, store, prepared))
         ).exceptionally(e -> {
             removePreviewWorldIfLoaded(previewConfig.worldName());
             world.execute(() -> handlePreviewFailure(previewConfig.worldName(), e));
@@ -297,7 +282,7 @@ public class DungeonGeneratePage extends InteractiveCustomUIPage<DungeonGenerate
         previewWorldConfig.setSpawningNPC(false);
         previewWorldConfig.setSavingPlayers(false);
         previewWorldConfig.setDeleteOnRemove(true);
-        previewWorldConfig.setDeleteOnUniverseStart(true);
+        previewWorldConfig.setDeleteOnUniverseStart(false);
         previewWorldConfig.setGameTimePaused(true);
         InstanceWorldConfig.ensureAndGet(previewWorldConfig).setRemovalConditions(WorldEmptyCondition.INSTANCE);
         previewWorldConfig.markChanged();
@@ -348,7 +333,6 @@ public class DungeonGeneratePage extends InteractiveCustomUIPage<DungeonGenerate
 
     private void enterPreviewWorld(@Nonnull Ref<EntityStore> ref,
                                    @Nonnull Store<EntityStore> store,
-                                   @Nonnull Transform returnTransform,
                                    @Nonnull PreparedPreviewWorld prepared) {
         if (!ref.isValid()) {
             removePreviewWorldIfLoaded(prepared.world().getName());
@@ -363,7 +347,11 @@ public class DungeonGeneratePage extends InteractiveCustomUIPage<DungeonGenerate
         }
 
         try {
-            InstancesPlugin.teleportPlayerToInstance(ref, store, prepared.world(), returnTransform);
+            store.addComponent(
+                    ref,
+                    Teleport.getComponentType(),
+                    Teleport.createForPlayer(prepared.world(), toPlayerTransform(prepared.result().entrancePosition()))
+            );
             updateStatus("Preview ready - entering " + prepared.world().getName(), false);
         } catch (Exception e) {
             removePreviewWorldIfLoaded(prepared.world().getName());
