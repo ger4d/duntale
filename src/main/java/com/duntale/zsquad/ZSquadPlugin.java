@@ -487,6 +487,10 @@ public class ZSquadPlugin extends JavaPlugin {
 
         // Initialize dungeon orchestrator here — asset stores are available after all plugins setup()
         this.dungeonOrchestrator = new GenerationOrchestrator(new BlockResolver());
+
+        // Reload persisted dungeon instances and recover interrupted state
+        this.dungeonInstanceService.loadOnStartup();
+
         LOGGER.atInfo().log("ZSquad Plugin Started!");
     }
 

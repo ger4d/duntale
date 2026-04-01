@@ -128,6 +128,40 @@ class DungeonMembershipRepositoryTest {
     }
 
     @Test
+    @DisplayName("Should find non-ended instance ID by player")
+    void shouldFindNonEndedInstanceIdByPlayer() throws SQLException {
+        UUID player = UUID.randomUUID();
+        membershipRepository.addMembership("instance-a", player);
+
+        Optional<String> result = membershipRepository.findNonEndedInstanceIdByPlayer(player);
+
+        assertTrue(result.isPresent());
+        assertEquals("instance-a", result.get());
+    }
+
+    @Test
+    @DisplayName("Should return empty when player's instance is ended")
+    void shouldReturnEmptyWhenPlayersInstanceIsEnded() throws SQLException {
+        UUID player = UUID.randomUUID();
+        membershipRepository.addMembership("instance-a", player);
+        instanceRepository.endInstance("instance-a");
+
+        Optional<String> result = membershipRepository.findNonEndedInstanceIdByPlayer(player);
+
+        assertTrue(result.isEmpty());
+    }
+
+    @Test
+    @DisplayName("Should return empty when player has no instance")
+    void shouldReturnEmptyWhenPlayerHasNoInstance() throws SQLException {
+        UUID player = UUID.randomUUID();
+
+        Optional<String> result = membershipRepository.findNonEndedInstanceIdByPlayer(player);
+
+        assertTrue(result.isEmpty());
+    }
+
+    @Test
     @DisplayName("Should detect non-ended instance membership for a player")
     void shouldDetectNonEndedInstanceMembershipForPlayer() throws SQLException {
         UUID player = UUID.randomUUID();

@@ -13,6 +13,7 @@ import java.util.Collection;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.logging.Level;
@@ -69,6 +70,15 @@ public class DungeonMembershipRepository {
               FROM dungeon_membership
              WHERE instance_id = ?
              ORDER BY player_uuid
+            """;
+
+    private static final String FIND_NON_ENDED_INSTANCE_ID_BY_PLAYER_SQL = """
+            SELECT m.instance_id
+              FROM dungeon_membership m
+              JOIN dungeon_instances i ON m.instance_id = i.instance_id
+             WHERE m.player_uuid = ?
+               AND i.state != ?
+             LIMIT 1
             """;
 
     private static final String HAS_NON_ENDED_INSTANCE_SQL = """
@@ -201,6 +211,32 @@ public class DungeonMembershipRepository {
                 }
             }
             return Set.copyOf(playerIds);
+        });
+    }
+
+    /**
+     * Returns the instance identifier for the player's non-{@code ENDED} dungeon instance,
+     * if one exists.
+     *
+     * <p>A player may only belong to one non-ended instance at a time (enforced by
+     * {@link DungeonInstanceService}), so at most one result is returned.
+     *
+     * @param playerId the player UUID
+     * @return the non-ended instance identifier, or {@link Optional#empty()} if the player
+     *         has no active instance
+     * @throws SQLException if the query fails
+     */
+    @Nonnull
+    public Optional<String> findNonEndedInstanceIdByPlayer(@Nonnull UUID playerId) throws SQLException {
+        Objects.requireNonNull(playerId, "playerId");
+        return database.read(conn -> {
+            try (PreparedStatement ps = conn.prepareStatement(FIND_NON_ENDED_INSTANCE_ID_BY_PLAYER_SQL)) {
+                ps.setString(1, playerId.toString());
+                ps.setString(2, DungeonInstanceState.ENDED.name());
+                try (ResultSet rs = ps.executeQuery()) {
+                    return rs.next() ? Optional.of(rs.getString("instance_id")) : Optional.empty();
+                }
+            }
         });
     }
 

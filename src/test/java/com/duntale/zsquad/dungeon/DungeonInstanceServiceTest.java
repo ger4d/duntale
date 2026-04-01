@@ -344,6 +344,167 @@ class DungeonInstanceServiceTest {
     }
 
     // ============================================
+    // loadOnStartup
+    // ============================================
+
+    @Nested
+    @DisplayName("loadOnStartup")
+    class LoadOnStartup {
+
+        @Test
+        @DisplayName("Should complete without error when no instances exist")
+        void shouldCompleteWithoutErrorWhenNoInstancesExist() {
+            DungeonInstanceService freshService = new DungeonInstanceService(
+                    database, instanceRepository, membershipRepository);
+            assertDoesNotThrow(freshService::loadOnStartup);
+        }
+
+        @Test
+        @DisplayName("Should preserve active instances on startup")
+        void shouldPreserveActiveInstancesOnStartup() throws SQLException {
+            UUID player = UUID.randomUUID();
+            service.createInstance(
+                    testInstanceWithState("inst-1", "world-1", DungeonInstanceState.ACTIVE),
+                    List.of(player));
+
+            FakeRuntime restartRuntime = new FakeRuntime();
+            DungeonInstanceService freshService = new DungeonInstanceService(
+                    database, instanceRepository, membershipRepository, new PartyService(), restartRuntime);
+            freshService.loadOnStartup();
+
+            DungeonInstance loaded = instanceRepository.findById("inst-1").orElseThrow();
+            assertEquals(DungeonInstanceState.ACTIVE, loaded.state());
+            assertTrue(restartRuntime.cleanedWorlds.isEmpty());
+        }
+
+        @Test
+        @DisplayName("Should end interrupted CREATING instances and clean up their worlds on startup")
+        void shouldEndInterruptedCreatingInstancesAndCleanUpTheirWorldsOnStartup() throws SQLException {
+            UUID player = UUID.randomUUID();
+            service.createInstance(testInstance("inst-1", "world-1"), List.of(player));
+
+            FakeRuntime restartRuntime = new FakeRuntime();
+            DungeonInstanceService freshService = new DungeonInstanceService(
+                    database, instanceRepository, membershipRepository, new PartyService(), restartRuntime);
+            freshService.loadOnStartup();
+
+            DungeonInstance loaded = instanceRepository.findById("inst-1").orElseThrow();
+            assertEquals(DungeonInstanceState.ENDED, loaded.state());
+            assertEquals(List.of("world-1"), restartRuntime.cleanedWorlds);
+        }
+
+        @Test
+        @DisplayName("Should revert interrupted TRANSITIONING instances to ACTIVE on startup")
+        void shouldRevertInterruptedTransitioningInstancesToActiveOnStartup() throws SQLException {
+            UUID player = UUID.randomUUID();
+            service.createInstance(
+                    testInstanceWithState("inst-1", "world-1", DungeonInstanceState.TRANSITIONING),
+                    List.of(player));
+
+            FakeRuntime restartRuntime = new FakeRuntime();
+            DungeonInstanceService freshService = new DungeonInstanceService(
+                    database, instanceRepository, membershipRepository, new PartyService(), restartRuntime);
+            freshService.loadOnStartup();
+
+            DungeonInstance loaded = instanceRepository.findById("inst-1").orElseThrow();
+            assertEquals(DungeonInstanceState.ACTIVE, loaded.state());
+            assertTrue(restartRuntime.cleanedWorlds.isEmpty());
+        }
+
+        @Test
+        @DisplayName("Should handle mixed states on startup and only clean up CREATING worlds")
+        void shouldHandleMixedStatesOnStartupAndOnlyCleanUpCreatingWorlds() throws SQLException {
+            UUID p1 = UUID.randomUUID();
+            UUID p2 = UUID.randomUUID();
+            UUID p3 = UUID.randomUUID();
+
+            service.createInstance(
+                    testInstanceWithState("inst-active", "world-active", DungeonInstanceState.ACTIVE),
+                    List.of(p1));
+            service.createInstance(
+                    testInstance("inst-creating", "world-creating"),
+                    List.of(p2));
+            service.createInstance(
+                    testInstanceWithState("inst-transitioning", "world-transitioning", DungeonInstanceState.TRANSITIONING),
+                    List.of(p3));
+
+            FakeRuntime restartRuntime = new FakeRuntime();
+            DungeonInstanceService freshService = new DungeonInstanceService(
+                    database, instanceRepository, membershipRepository, new PartyService(), restartRuntime);
+            freshService.loadOnStartup();
+
+            assertEquals(DungeonInstanceState.ACTIVE,
+                    instanceRepository.findById("inst-active").orElseThrow().state());
+            assertEquals(DungeonInstanceState.ENDED,
+                    instanceRepository.findById("inst-creating").orElseThrow().state());
+            assertEquals(DungeonInstanceState.ACTIVE,
+                    instanceRepository.findById("inst-transitioning").orElseThrow().state());
+            assertEquals(List.of("world-creating"), restartRuntime.cleanedWorlds);
+        }
+    }
+
+    // ============================================
+    // getActiveInstance + getInstanceByWorld
+    // ============================================
+
+    @Nested
+    @DisplayName("runtime lookups")
+    class RuntimeLookups {
+
+        @Test
+        @DisplayName("Should return active instance for player")
+        void shouldReturnActiveInstanceForPlayer() throws SQLException {
+            UUID player = UUID.randomUUID();
+            DungeonInstance instance = testInstanceWithState("inst-1", "world-1", DungeonInstanceState.ACTIVE);
+            service.createInstance(instance, List.of(player));
+
+            DungeonInstance result = service.getActiveInstance(player);
+
+            assertNotNull(result);
+            assertEquals("inst-1", result.instanceId());
+            assertEquals(DungeonInstanceState.ACTIVE, result.state());
+        }
+
+        @Test
+        @DisplayName("Should return null when player has no instance")
+        void shouldReturnNullWhenPlayerHasNoInstance() throws SQLException {
+            UUID player = UUID.randomUUID();
+
+            assertNull(service.getActiveInstance(player));
+        }
+
+        @Test
+        @DisplayName("Should return null when player's instance is ended")
+        void shouldReturnNullWhenPlayersInstanceIsEnded() throws SQLException {
+            UUID player = UUID.randomUUID();
+            DungeonInstance instance = testInstanceWithState("inst-1", "world-1", DungeonInstanceState.ACTIVE);
+            service.createInstance(instance, List.of(player));
+            instanceRepository.endInstance("inst-1");
+
+            assertNull(service.getActiveInstance(player));
+        }
+
+        @Test
+        @DisplayName("Should return instance by world name")
+        void shouldReturnInstanceByWorldName() throws SQLException {
+            UUID player = UUID.randomUUID();
+            DungeonInstance instance = testInstance("inst-1", "world-1");
+            service.createInstance(instance, List.of(player));
+
+            DungeonInstance result = service.getInstanceByWorld("world-1");
+
+            assertNotNull(result);
+            assertEquals("inst-1", result.instanceId());
+        }
+
+        @Test
+        @DisplayName("Should return null for unknown world name")
+        void shouldReturnNullForUnknownWorldName() throws SQLException {
+            assertNull(service.getInstanceByWorld("nonexistent-world"));
+        }
+    }
+
+    // ============================================
     // Helpers
     // ============================================
 
@@ -511,6 +672,14 @@ class DungeonInstanceServiceTest {
     }
 
     private static DungeonInstance testInstance(String instanceId, String worldName) {
+        return testInstanceWithState(instanceId, worldName, DungeonInstanceState.CREATING);
+    }
+
+    private static DungeonInstance testInstanceWithState(
+            String instanceId,
+            String worldName,
+            DungeonInstanceState state
+    ) {
         return new DungeonInstance(
                 instanceId,
                 worldName,
@@ -518,7 +687,7 @@ class DungeonInstanceServiceTest {
                 64.0D,
                 new Vec3i(0, 64, 0),
                 new Vec3i(30, 64, 30),
-                DungeonInstanceState.CREATING,
+                state,
                 "crypt",
                 null,
                 1_706_000_000_000L

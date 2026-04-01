@@ -100,4 +100,55 @@ class DungeonInstanceRepositoryTest {
         assertTrue(ended.isPresent());
         assertEquals(DungeonInstanceState.ENDED, ended.orElseThrow().state());
     }
+
+    @Test
+    @DisplayName("Should return only non-ended instances from findAllNonEnded")
+    void shouldReturnOnlyNonEndedInstancesFromFindAllNonEnded() throws SQLException {
+        DungeonInstance active = new DungeonInstance(
+                "inst-active",
+                "dungeon-active",
+                1,
+                64.0D,
+                new Vec3i(0, 64, 0),
+                new Vec3i(30, 64, 30),
+                DungeonInstanceState.ACTIVE,
+                "crypt",
+                null,
+                1_706_000_000_000L
+        );
+        DungeonInstance creating = new DungeonInstance(
+                "inst-creating",
+                "dungeon-creating",
+                1,
+                64.0D,
+                new Vec3i(0, 64, 0),
+                new Vec3i(30, 64, 30),
+                DungeonInstanceState.CREATING,
+                "crypt",
+                null,
+                1_706_000_000_100L
+        );
+        DungeonInstance ended = new DungeonInstance(
+                "inst-ended",
+                "dungeon-ended",
+                1,
+                64.0D,
+                new Vec3i(0, 64, 0),
+                new Vec3i(30, 64, 30),
+                DungeonInstanceState.ENDED,
+                "crypt",
+                null,
+                1_706_000_000_200L
+        );
+
+        repository.create(active);
+        repository.create(creating);
+        repository.create(ended);
+
+        List<DungeonInstance> nonEnded = repository.findAllNonEnded();
+
+        assertEquals(2, nonEnded.size());
+        assertEquals("inst-active", nonEnded.get(0).instanceId());
+        assertEquals("inst-creating", nonEnded.get(1).instanceId());
+    }
 }

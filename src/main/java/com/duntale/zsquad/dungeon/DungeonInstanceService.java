@@ -33,6 +33,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
@@ -214,6 +215,138 @@ public class DungeonInstanceService {
                 .thenCompose(world -> runtimeAdapter.generate(config)
                         .thenCompose(result -> activateInstance(world, pendingInstance, roster, origin, result)))
                 .exceptionallyCompose(throwable -> handleCreationFailure(pendingInstance, throwable));
+    }
+
+    /**
+     * Loads non-ended dungeon instances from SQLite on startup and recovers interrupted state.
+     *
+     * <p>Instances left in {@code CREATING} state after a restart represent interrupted creation
+     * flows and are marked {@code ENDED}. Instances in {@code TRANSITIONING} state are reverted
+     * to {@code ACTIVE} since the old floor world is still valid.
+     *
+     * <p>This method does not re-spawn dungeon-owned ECS content. Persisted worlds are the
+     * ground truth — blocks and entities survive in chunk storage. Companions are re-spawned
+     * by the existing {@code PlayerReadyEvent} lifecycle flow.
+     */
+    public void loadOnStartup() {
+        List<DungeonInstance> nonEnded;
+        try {
+            nonEnded = instanceRepository.findAllNonEnded();
+        } catch (SQLException e) {
+            LOGGER.at(Level.SEVERE)
+                    .withCause(e)
+                    .log("Failed to load dungeon instances on startup");
+            return;
+        }
+
+        if (nonEnded.isEmpty()) {
+            LOGGER.at(Level.INFO).log("No active dungeon instances found on startup");
+            return;
+        }
+
+        int activeCount = 0;
+        int endedCount = 0;
+        int revertedCount = 0;
+
+        for (DungeonInstance instance : nonEnded) {
+            if (instance.state() == DungeonInstanceState.CREATING) {
+                try {
+                    runtimeAdapter.cleanupWorld(instance.worldName());
+                } catch (Exception cleanupError) {
+                    LOGGER.at(Level.WARNING)
+                            .withCause(cleanupError)
+                            .log("Failed to clean up world %s for interrupted instance %s",
+                                    instance.worldName(),
+                                    instance.instanceId());
+                }
+                try {
+                    instanceRepository.endInstance(instance.instanceId());
+                    endedCount++;
+                    LOGGER.at(Level.WARNING).log(
+                            "Ended interrupted CREATING instance %s (world=%s)",
+                            instance.instanceId(),
+                            instance.worldName()
+                    );
+                } catch (SQLException e) {
+                    LOGGER.at(Level.SEVERE)
+                            .withCause(e)
+                            .log("Failed to end interrupted instance %s",
+                                    instance.instanceId());
+                }
+            } else if (instance.state() == DungeonInstanceState.TRANSITIONING) {
+                try {
+                    DungeonInstance reverted = new DungeonInstance(
+                            instance.instanceId(),
+                            instance.worldName(),
+                            instance.floorLevel(),
+                            instance.floorY(),
+                            instance.entrancePosition(),
+                            instance.exitPosition(),
+                            DungeonInstanceState.ACTIVE,
+                            instance.theme(),
+                            instance.seed(),
+                            instance.createdAt()
+                    );
+                    instanceRepository.update(reverted);
+                    revertedCount++;
+                    LOGGER.at(Level.WARNING).log(
+                            "Reverted interrupted TRANSITIONING instance %s to ACTIVE (world=%s)",
+                            instance.instanceId(),
+                            instance.worldName()
+                    );
+                } catch (SQLException e) {
+                    LOGGER.at(Level.SEVERE)
+                            .withCause(e)
+                            .log("Failed to revert transitioning instance %s",
+                                    instance.instanceId());
+                }
+            } else {
+                activeCount++;
+            }
+        }
+
+        LOGGER.at(Level.INFO).log(
+                "Startup: %d active instance(s) restored, %d interrupted creation(s) ended, %d interrupted transition(s) reverted",
+                activeCount,
+                endedCount,
+                revertedCount
+        );
+    }
+
+    /**
+     * Returns the active (non-ended) dungeon instance for the given player, if one exists.
+     *
+     * <p>Lookups are DB-first in v1. A hot cache layer should only be added if profiling
+     * demonstrates the need.
+     *
+     * @param playerId the player UUID
+     * @return the player's active instance, or {@code null} if they have none
+     * @throws SQLException if a database access error occurs
+     */
+    @Nullable
+    public DungeonInstance getActiveInstance(@Nonnull UUID playerId) throws SQLException {
+        Objects.requireNonNull(playerId, "playerId");
+        Optional<String> instanceId = membershipRepository.findNonEndedInstanceIdByPlayer(playerId);
+        if (instanceId.isEmpty()) {
+            return null;
+        }
+        return instanceRepository.findById(instanceId.get()).orElse(null);
+    }
+
+    /**
+     * Returns the dungeon instance associated with the given world name, if one exists.
+     *
+     * <p>Lookups are DB-first in v1. A hot cache layer should only be added if profiling
+     * demonstrates the need.
+     *
+     * @param worldName the world name
+     * @return the instance for that world, or {@code null} if no instance uses that world
+     * @throws SQLException if a database access error occurs
+     */
+    @Nullable
+    public DungeonInstance getInstanceByWorld(@Nonnull String worldName) throws SQLException {
+        Objects.requireNonNull(worldName, "worldName");
+        return instanceRepository.findByWorldName(worldName).orElse(null);
     }
 
     /**

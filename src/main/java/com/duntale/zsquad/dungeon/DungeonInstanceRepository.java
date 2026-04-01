@@ -138,6 +138,26 @@ public class DungeonInstanceRepository {
              ORDER BY created_at ASC
             """;
 
+    private static final String SELECT_ALL_NON_ENDED_SQL = """
+            SELECT instance_id,
+                   world_name,
+                   floor_level,
+                   floor_y,
+                   entrance_x,
+                   entrance_y,
+                   entrance_z,
+                   exit_x,
+                   exit_y,
+                   exit_z,
+                   state,
+                   theme,
+                   seed,
+                   created_at
+              FROM dungeon_instances
+             WHERE state != ?
+             ORDER BY created_at ASC
+            """;
+
     private static final String UPDATE_INSTANCE_SQL = """
             UPDATE dungeon_instances
                SET world_name = ?,
@@ -263,6 +283,29 @@ public class DungeonInstanceRepository {
                  ResultSet rs = ps.executeQuery()) {
                 while (rs.next()) {
                     instances.add(mapRow(rs));
+                }
+            }
+            return List.copyOf(instances);
+        });
+    }
+
+    /**
+     * Loads all persisted dungeon instances that are not in the {@link DungeonInstanceState#ENDED} state,
+     * ordered by creation time.
+     *
+     * @return immutable list of non-ended dungeon instances
+     * @throws SQLException if the query fails
+     */
+    @Nonnull
+    public List<DungeonInstance> findAllNonEnded() throws SQLException {
+        return database.read(conn -> {
+            List<DungeonInstance> instances = new ArrayList<>();
+            try (PreparedStatement ps = conn.prepareStatement(SELECT_ALL_NON_ENDED_SQL)) {
+                ps.setString(1, DungeonInstanceState.ENDED.name());
+                try (ResultSet rs = ps.executeQuery()) {
+                    while (rs.next()) {
+                        instances.add(mapRow(rs));
+                    }
                 }
             }
             return List.copyOf(instances);
