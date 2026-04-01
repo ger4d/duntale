@@ -48,6 +48,10 @@ import com.duntale.zsquad.progression.LeveledNpcSpawner;
 import com.duntale.zsquad.progression.ProgressionRepository;
 import com.duntale.zsquad.progression.ProgressionService;
 import com.duntale.zsquad.companion.CompanionSpawner;
+import com.duntale.zsquad.dungeon.DungeonInstanceRepository;
+import com.duntale.zsquad.dungeon.DungeonInstanceService;
+import com.duntale.zsquad.dungeon.DungeonMembershipRepository;
+import com.duntale.zsquad.dungeon.PartyService;
 import com.duntale.zsquad.rpg.RpgDamageScalingSystem;
 import com.duntale.zsquad.rpg.RpgProfile;
 import com.duntale.zsquad.rpg.RpgRepository;
@@ -122,6 +126,10 @@ public class ZSquadPlugin extends JavaPlugin {
     private ComponentType<EntityStore, CompanionComponent> companionComponentType;
     private CompanionRepository companionRepository;
     private CompanionService companionService;
+
+    // Dungeon instance flow
+    private PartyService partyService;
+    private DungeonInstanceService dungeonInstanceService;
 
     // HUD scoreboards per player
     private final Map<UUID, ZSquadScoreboard> scoreboards = new ConcurrentHashMap<>();
@@ -276,6 +284,28 @@ public class ZSquadPlugin extends JavaPlugin {
     }
 
     /**
+     * Returns the transient party service used to assemble pre-run dungeon rosters.
+     *
+     * @return the party service
+     * @since 1.6.0
+     */
+    @Nonnull
+    public PartyService getPartyService() {
+        return partyService;
+    }
+
+    /**
+     * Returns the dungeon instance service used for per-world dungeon runs.
+     *
+     * @return the dungeon instance service
+     * @since 1.6.0
+     */
+    @Nonnull
+    public DungeonInstanceService getDungeonInstanceService() {
+        return dungeonInstanceService;
+    }
+
+    /**
      * Returns the dungeon generation orchestrator.
      *
      * @return the generation orchestrator
@@ -298,6 +328,9 @@ public class ZSquadPlugin extends JavaPlugin {
 
         // ── RPG System ───────────────────────────────────────────────
         this.databaseProvider = new DatabaseProvider();
+        this.partyService = new PartyService();
+        DungeonInstanceRepository dungeonInstanceRepository;
+        DungeonMembershipRepository dungeonMembershipRepository;
         try {
             Path dbPath = getDataDirectory().resolve("zsquad.db");
             databaseProvider.initialize(dbPath);
@@ -317,13 +350,27 @@ public class ZSquadPlugin extends JavaPlugin {
             CompanionRepository companionRepo = new CompanionRepository(databaseProvider);
             companionRepo.initialize();
             this.companionRepository = companionRepo;
+
+            dungeonInstanceRepository = new DungeonInstanceRepository(databaseProvider);
+            dungeonInstanceRepository.initialize();
+
+            dungeonMembershipRepository = new DungeonMembershipRepository(databaseProvider);
+            dungeonMembershipRepository.initialize();
         } catch (SQLException e) {
             LOGGER.atSevere().log("Failed to initialize RPG database: %s", e.getMessage());
             this.rpgService = new RpgService(new RpgRepository(databaseProvider));
             this.goldService = new GoldService(new GoldRepository(databaseProvider));
             this.progressionService = new ProgressionService(new ProgressionRepository(databaseProvider));
             this.companionRepository = new CompanionRepository(databaseProvider);
+            dungeonInstanceRepository = new DungeonInstanceRepository(databaseProvider);
+            dungeonMembershipRepository = new DungeonMembershipRepository(databaseProvider);
         }
+        this.dungeonInstanceService = new DungeonInstanceService(
+                databaseProvider,
+                dungeonInstanceRepository,
+                dungeonMembershipRepository,
+                partyService
+        );
         this.clickToMoveManager.setRpgService(rpgService);
 
         // ── Progression System (runtime asset scan — no DB) ──────────
