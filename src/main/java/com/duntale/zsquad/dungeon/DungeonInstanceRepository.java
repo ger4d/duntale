@@ -175,6 +175,13 @@ public class DungeonInstanceRepository {
              WHERE instance_id = ?
             """;
 
+    private static final String CLAIM_TRANSITION_SQL = """
+            UPDATE dungeon_instances
+               SET state = ?
+             WHERE instance_id = ?
+               AND state = ?
+            """;
+
     private static final String END_INSTANCE_SQL = """
             UPDATE dungeon_instances
                SET state = ?
@@ -327,6 +334,42 @@ public class DungeonInstanceRepository {
                 bindMutableFields(ps, instance);
                 ps.setString(13, instance.instanceId());
                 requireSingleRow(ps.executeUpdate(), "update dungeon instance " + instance.instanceId());
+            }
+        });
+    }
+
+    /**
+     * Atomically claims the transition state for the given instance by updating its state from
+     * {@code ACTIVE} to {@code TRANSITIONING}.
+     *
+     * <p>The conditional update ensures that only one caller can claim the transition. If the
+     * current state is not {@code ACTIVE} (e.g., already {@code TRANSITIONING} from a concurrent
+     * call), no rows are affected and an empty result is returned.
+     *
+     * @param instanceId the instance identifier
+     * @return the instance metadata in {@code TRANSITIONING} state, or empty if the claim failed
+     * @throws SQLException if a database access error occurs
+     */
+    @Nonnull
+    public Optional<DungeonInstance> claimTransitionState(@Nonnull String instanceId) throws SQLException {
+        Objects.requireNonNull(instanceId, "instanceId");
+        return database.transaction(conn -> {
+            try (PreparedStatement ps = conn.prepareStatement(CLAIM_TRANSITION_SQL)) {
+                ps.setString(1, DungeonInstanceState.TRANSITIONING.name());
+                ps.setString(2, instanceId);
+                ps.setString(3, DungeonInstanceState.ACTIVE.name());
+                if (ps.executeUpdate() == 0) {
+                    return Optional.<DungeonInstance>empty();
+                }
+            }
+            try (PreparedStatement ps = conn.prepareStatement(SELECT_BY_ID_SQL)) {
+                ps.setString(1, instanceId);
+                try (ResultSet rs = ps.executeQuery()) {
+                    if (rs.next()) {
+                        return Optional.of(mapRow(rs));
+                    }
+                    return Optional.<DungeonInstance>empty();
+                }
             }
         });
     }

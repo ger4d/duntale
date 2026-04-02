@@ -444,6 +444,298 @@ class DungeonInstanceServiceTest {
     }
 
     // ============================================
+    // transitionFloor
+    // ============================================
+
+    @Nested
+    @DisplayName("transitionFloor")
+    class FloorTransition {
+
+        @Test
+        @DisplayName("Should transition active instance to next floor")
+        void shouldTransitionActiveInstanceToNextFloor() throws SQLException {
+            FakeRuntime runtime = new FakeRuntime();
+            service = new DungeonInstanceService(
+                    database, instanceRepository, membershipRepository, new PartyService(), runtime);
+
+            UUID player = UUID.randomUUID();
+            DungeonInstance active = service.createInstance(List.of(player), 1, "crypt").join();
+            assertEquals(DungeonInstanceState.ACTIVE, active.state());
+            assertEquals(1, active.floorLevel());
+
+            DungeonInstance transitioned = service.transitionFloor(active.instanceId()).join();
+
+            assertEquals(active.instanceId(), transitioned.instanceId());
+            assertEquals(DungeonInstanceState.ACTIVE, transitioned.state());
+            assertEquals(2, transitioned.floorLevel());
+            assertEquals(new Vec3i(5, 1, 7), transitioned.entrancePosition());
+            assertEquals(new Vec3i(30, 1, 31), transitioned.exitPosition());
+            assertTrue(transitioned.worldName().contains("-f2"));
+
+            DungeonInstance persisted = instanceRepository.findById(active.instanceId()).orElseThrow();
+            assertEquals(transitioned, persisted);
+            assertEquals(Set.of(player), membershipRepository.findPlayerIdsByInstance(active.instanceId()));
+        }
+
+        @Test
+        @DisplayName("Should arm old world for removal after transition")
+        void shouldArmOldWorldForRemovalAfterTransition() throws SQLException {
+            FakeRuntime runtime = new FakeRuntime();
+            service = new DungeonInstanceService(
+                    database, instanceRepository, membershipRepository, new PartyService(), runtime);
+
+            UUID player = UUID.randomUUID();
+            DungeonInstance active = service.createInstance(List.of(player), 1, "crypt").join();
+            String oldWorldName = active.worldName();
+
+            service.transitionFloor(active.instanceId()).join();
+
+            assertEquals(List.of(oldWorldName), runtime.armedWorlds);
+            assertTrue(runtime.cleanedWorlds.isEmpty());
+        }
+
+        @Test
+        @DisplayName("Should teleport roster to new world entrance")
+        void shouldTeleportRosterToNewWorldEntrance() throws SQLException {
+            FakeRuntime runtime = new FakeRuntime();
+            service = new DungeonInstanceService(
+                    database, instanceRepository, membershipRepository, new PartyService(), runtime);
+
+            UUID playerA = UUID.randomUUID();
+            UUID playerB = UUID.randomUUID();
+            PartyService partyService = new PartyService();
+            service = new DungeonInstanceService(
+                    database, instanceRepository, membershipRepository, partyService, runtime);
+            assertTrue(partyService.createParty(playerA));
+            assertEquals(PartyService.InviteResult.SUCCESS, partyService.invitePlayer(playerA, playerB));
+
+            DungeonInstance active = service.createInstanceForPlayer(playerA, 1, "crypt").join();
+            runtime.teleportedPlayers.clear();
+
+            service.transitionFloor(active.instanceId()).join();
+
+            assertEquals(Set.of(playerA, playerB), Set.copyOf(runtime.teleportedPlayers));
+        }
+
+        @Test
+        @DisplayName("Should reject transition when instance is not active")
+        void shouldRejectTransitionWhenInstanceIsNotActive() throws SQLException {
+            UUID player = UUID.randomUUID();
+            DungeonInstance creating = testInstance("inst-1", "world-1");
+            service.createInstance(creating, List.of(player));
+
+            assertThrows(IllegalStateException.class,
+                    () -> service.transitionFloor("inst-1"));
+        }
+
+        @Test
+        @DisplayName("Should reject transition when instance is already transitioning")
+        void shouldRejectTransitionWhenInstanceIsAlreadyTransitioning() throws SQLException {
+            UUID player = UUID.randomUUID();
+            DungeonInstance transitioning = testInstanceWithState(
+                    "inst-1", "world-1", DungeonInstanceState.TRANSITIONING);
+            service.createInstance(transitioning, List.of(player));
+
+            assertThrows(IllegalStateException.class,
+                    () -> service.transitionFloor("inst-1"));
+        }
+
+        @Test
+        @DisplayName("Should reject transition for nonexistent instance")
+        void shouldRejectTransitionForNonexistentInstance() {
+            assertThrows(IllegalStateException.class,
+                    () -> service.transitionFloor("nonexistent"));
+        }
+
+        @Test
+        @DisplayName("Should clean up new world and revert to active on generation failure")
+        void shouldCleanUpNewWorldAndRevertToActiveOnGenerationFailure() throws SQLException {
+            FakeRuntime runtime = new FakeRuntime();
+            service = new DungeonInstanceService(
+                    database, instanceRepository, membershipRepository, new PartyService(), runtime);
+
+            UUID player = UUID.randomUUID();
+            DungeonInstance active = service.createInstance(List.of(player), 1, "crypt").join();
+            String oldWorldName = active.worldName();
+
+            runtime.nextGenerationResult = generationResult(
+                    new Vec3i(5, 1, 7),
+                    new Vec3i(30, 1, 31),
+                    "assembly failed"
+            );
+
+            CompletableFuture<DungeonInstance> future = service.transitionFloor(active.instanceId());
+            CompletionException ex = assertThrows(CompletionException.class, future::join);
+            assertEquals("assembly failed", ex.getCause().getMessage());
+
+            DungeonInstance reverted = instanceRepository.findById(active.instanceId()).orElseThrow();
+            assertEquals(DungeonInstanceState.ACTIVE, reverted.state());
+            assertEquals(1, reverted.floorLevel());
+            assertEquals(oldWorldName, reverted.worldName());
+            assertTrue(runtime.armedWorlds.isEmpty());
+            assertEquals(1, runtime.cleanedWorlds.size());
+            assertTrue(runtime.cleanedWorlds.get(0).contains("-f2"));
+        }
+
+        @Test
+        @DisplayName("Should keep instance transitioning until teleport completes")
+        void shouldKeepInstanceTransitioningUntilTeleportCompletes() throws SQLException {
+            FakeRuntime runtime = new FakeRuntime();
+            service = new DungeonInstanceService(
+                    database, instanceRepository, membershipRepository, new PartyService(), runtime);
+
+            UUID player = UUID.randomUUID();
+            DungeonInstance active = service.createInstance(List.of(player), 1, "crypt").join();
+
+            runtime.deferTeleport();
+            CompletableFuture<DungeonInstance> future = service.transitionFloor(active.instanceId());
+
+            DungeonInstance midTransition = instanceRepository.findById(active.instanceId()).orElseThrow();
+            assertEquals(DungeonInstanceState.TRANSITIONING, midTransition.state());
+            assertEquals(2, midTransition.floorLevel());
+            assertFalse(future.isDone());
+
+            runtime.completeTeleport();
+
+            DungeonInstance transitioned = future.join();
+            assertEquals(DungeonInstanceState.ACTIVE, transitioned.state());
+            assertEquals(2, transitioned.floorLevel());
+        }
+
+        @Test
+        @DisplayName("Should allow consecutive floor transitions")
+        void shouldAllowConsecutiveFloorTransitions() throws SQLException {
+            FakeRuntime runtime = new FakeRuntime();
+            service = new DungeonInstanceService(
+                    database, instanceRepository, membershipRepository, new PartyService(), runtime);
+
+            UUID player = UUID.randomUUID();
+            DungeonInstance floor1 = service.createInstance(List.of(player), 1, "crypt").join();
+
+            DungeonInstance floor2 = service.transitionFloor(floor1.instanceId()).join();
+            assertEquals(2, floor2.floorLevel());
+
+            DungeonInstance floor3 = service.transitionFloor(floor1.instanceId()).join();
+            assertEquals(3, floor3.floorLevel());
+            assertTrue(floor3.worldName().contains("-f3"));
+
+            assertEquals(2, runtime.armedWorlds.size());
+        }
+
+        @Test
+        @DisplayName("Should reject concurrent transition attempts via atomic state claim")
+        void shouldRejectConcurrentTransitionAttemptsViaAtomicStateClaim() throws Exception {
+            FakeRuntime runtime = new FakeRuntime();
+            service = new DungeonInstanceService(
+                    database, instanceRepository, membershipRepository, new PartyService(), runtime);
+
+            UUID player = UUID.randomUUID();
+            DungeonInstance active = service.createInstance(List.of(player), 1, "crypt").join();
+
+            // Defer teleport only after the initial createInstance(...) join above.
+            // Doing this earlier also stalls floor-1 activation and makes the test hang.
+            runtime.deferTeleport();
+            CompletableFuture<DungeonInstance> first = service.transitionFloor(active.instanceId());
+            assertFalse(first.isDone());
+
+            assertThrows(IllegalStateException.class,
+                    () -> service.transitionFloor(active.instanceId()));
+
+            runtime.completeTeleport();
+            DungeonInstance transitioned = first.join();
+            assertEquals(DungeonInstanceState.ACTIVE, transitioned.state());
+            assertEquals(2, transitioned.floorLevel());
+        }
+
+        @Test
+        @DisplayName("Should not revert metadata when arm world removal fails after transfer")
+        void shouldNotRevertMetadataWhenArmWorldRemovalFailsAfterTransfer() throws SQLException {
+            FakeRuntime runtime = new FakeRuntime();
+            service = new DungeonInstanceService(
+                    database, instanceRepository, membershipRepository, new PartyService(), runtime);
+
+            UUID player = UUID.randomUUID();
+            DungeonInstance active = service.createInstance(List.of(player), 1, "crypt").join();
+            String oldWorldName = active.worldName();
+
+            runtime.armWorldRemovalFailure = new IllegalStateException("World not found");
+
+            CompletableFuture<DungeonInstance> future = service.transitionFloor(active.instanceId());
+            CompletionException ex = assertThrows(CompletionException.class, future::join);
+            assertEquals("World not found", ex.getCause().getMessage());
+
+            DungeonInstance persisted = instanceRepository.findById(active.instanceId()).orElseThrow();
+            assertEquals(DungeonInstanceState.ACTIVE, persisted.state());
+            assertEquals(2, persisted.floorLevel());
+            assertTrue(persisted.worldName().contains("-f2"));
+            assertFalse(persisted.worldName().equals(oldWorldName));
+            assertTrue(runtime.cleanedWorlds.isEmpty());
+            assertTrue(runtime.armedWorlds.isEmpty());
+
+            DungeonInstanceService.ContinueRoute route = service.resolveContinueRoute(player);
+            assertTrue(route.routesToInstance());
+            assertFalse(route.isPending());
+        }
+
+        @Test
+        @DisplayName("Should retry final activation persistence and keep active metadata")
+        void shouldKeepNewWorldMetadataWhenFinalActivationPersistenceFails() throws SQLException {
+            FakeRuntime runtime = new FakeRuntime();
+            instanceRepository = new FailingActiveStateRepository(database, 1);
+            service = new DungeonInstanceService(
+                    database, instanceRepository, membershipRepository, new PartyService(), runtime);
+
+            UUID player = UUID.randomUUID();
+            DungeonInstance active = service.createInstance(List.of(player), 1, "crypt").join();
+
+            DungeonInstance transitioned = service.transitionFloor(active.instanceId()).join();
+
+            assertEquals(DungeonInstanceState.ACTIVE, transitioned.state());
+            assertEquals(2, transitioned.floorLevel());
+            DungeonInstance persisted = instanceRepository.findById(active.instanceId()).orElseThrow();
+            assertEquals(DungeonInstanceState.ACTIVE, persisted.state());
+            assertEquals(transitioned.worldName(), persisted.worldName());
+            assertEquals(2, persisted.floorLevel());
+
+            DungeonInstanceService.ContinueRoute route = service.resolveContinueRoute(player);
+            assertTrue(route.routesToInstance());
+            assertFalse(route.isPending());
+        }
+
+        @Test
+        @DisplayName("Should keep Continue routing available when final activation persistence stays down")
+        void shouldKeepContinueRoutingAvailableWhenFinalActivationPersistenceStaysDown() throws SQLException {
+            FakeRuntime runtime = new FakeRuntime();
+            instanceRepository = new FailingActiveStateRepository(database, 2);
+            service = new DungeonInstanceService(
+                    database, instanceRepository, membershipRepository, new PartyService(), runtime);
+
+            UUID player = UUID.randomUUID();
+            DungeonInstance floor1 = service.createInstance(List.of(player), 1, "crypt").join();
+
+            CompletionException ex = assertThrows(CompletionException.class,
+                    () -> service.transitionFloor(floor1.instanceId()).join());
+            assertEquals("forced ACTIVE update failure", ex.getCause().getMessage());
+            assertEquals(List.of(floor1.worldName()), runtime.armedWorlds);
+
+            DungeonInstance persisted = instanceRepository.findById(floor1.instanceId()).orElseThrow();
+            assertEquals(DungeonInstanceState.TRANSITIONING, persisted.state());
+            assertEquals(2, persisted.floorLevel());
+
+            DungeonInstanceService.ContinueRoute route = service.resolveContinueRoute(player);
+            assertTrue(route.routesToInstance());
+            assertFalse(route.isPending());
+            assertNotNull(route.instance());
+            assertEquals(DungeonInstanceState.ACTIVE, route.instance().state());
+            assertEquals(2, route.instance().floorLevel());
+
+            DungeonInstance floor3 = service.transitionFloor(floor1.instanceId()).join();
+            assertEquals(DungeonInstanceState.ACTIVE, floor3.state());
+            assertEquals(3, floor3.floorLevel());
+        }
+    }
+
+    // ============================================
     // getActiveInstance + getInstanceByWorld
     // ============================================
 
@@ -618,9 +910,11 @@ class DungeonInstanceServiceTest {
 
         private final List<String> createdWorldNames = new ArrayList<>();
         private final List<String> cleanedWorlds = new ArrayList<>();
+        private final List<String> armedWorlds = new ArrayList<>();
         private final List<UUID> teleportedPlayers = new ArrayList<>();
 
         private DungeonConfig generatedConfig;
+        private RuntimeException armWorldRemovalFailure;
         private CompletableFuture<DungeonInstanceService.InstanceWorld> deferredWorldCreation;
         private CompletableFuture<GenerationResult> deferredGeneration;
         private CompletableFuture<Void> deferredTeleport;
@@ -686,6 +980,15 @@ class DungeonInstanceServiceTest {
             cleanedWorlds.add(worldName);
         }
 
+        @Override
+        public CompletableFuture<Void> armWorldRemoval(String worldName) {
+            if (armWorldRemovalFailure != null) {
+                return CompletableFuture.failedFuture(armWorldRemovalFailure);
+            }
+            armedWorlds.add(worldName);
+            return CompletableFuture.completedFuture(null);
+        }
+
         private FakeRuntime requireLoadedWorldsForCleanup() {
             cleanupRequiresLoadedWorlds = true;
             worldsLoadedForCleanup = false;
@@ -723,6 +1026,27 @@ class DungeonInstanceServiceTest {
     }
 
     private record FakeWorld(String worldName) implements DungeonInstanceService.InstanceWorld {
+    }
+
+    private static final class FailingActiveStateRepository extends DungeonInstanceRepository {
+
+        private int remainingActiveFailures;
+
+        private FailingActiveStateRepository(DatabaseProvider database, int remainingActiveFailures) {
+            super(database);
+            this.remainingActiveFailures = remainingActiveFailures;
+        }
+
+        @Override
+        public void update(DungeonInstance instance) throws SQLException {
+            if (instance.state() == DungeonInstanceState.ACTIVE
+                    && instance.floorLevel() > 1
+                    && remainingActiveFailures > 0) {
+                remainingActiveFailures--;
+                throw new SQLException("forced ACTIVE update failure");
+            }
+            super.update(instance);
+        }
     }
 
     private static GenerationResult successGenerationResult() {
