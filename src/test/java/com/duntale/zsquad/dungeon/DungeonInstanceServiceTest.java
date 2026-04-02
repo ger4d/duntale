@@ -367,7 +367,7 @@ class DungeonInstanceServiceTest {
                     testInstanceWithState("inst-1", "world-1", DungeonInstanceState.ACTIVE),
                     List.of(player));
 
-            FakeRuntime restartRuntime = new FakeRuntime();
+            FakeRuntime restartRuntime = restartRuntimeAfterWorldsLoaded();
             DungeonInstanceService freshService = new DungeonInstanceService(
                     database, instanceRepository, membershipRepository, new PartyService(), restartRuntime);
             freshService.loadOnStartup();
@@ -383,7 +383,7 @@ class DungeonInstanceServiceTest {
             UUID player = UUID.randomUUID();
             service.createInstance(testInstance("inst-1", "world-1"), List.of(player));
 
-            FakeRuntime restartRuntime = new FakeRuntime();
+            FakeRuntime restartRuntime = restartRuntimeAfterWorldsLoaded();
             DungeonInstanceService freshService = new DungeonInstanceService(
                     database, instanceRepository, membershipRepository, new PartyService(), restartRuntime);
             freshService.loadOnStartup();
@@ -401,7 +401,7 @@ class DungeonInstanceServiceTest {
                     testInstanceWithState("inst-1", "world-1", DungeonInstanceState.TRANSITIONING),
                     List.of(player));
 
-            FakeRuntime restartRuntime = new FakeRuntime();
+            FakeRuntime restartRuntime = restartRuntimeAfterWorldsLoaded();
             DungeonInstanceService freshService = new DungeonInstanceService(
                     database, instanceRepository, membershipRepository, new PartyService(), restartRuntime);
             freshService.loadOnStartup();
@@ -428,7 +428,7 @@ class DungeonInstanceServiceTest {
                     testInstanceWithState("inst-transitioning", "world-transitioning", DungeonInstanceState.TRANSITIONING),
                     List.of(p3));
 
-            FakeRuntime restartRuntime = new FakeRuntime();
+            FakeRuntime restartRuntime = restartRuntimeAfterWorldsLoaded();
             DungeonInstanceService freshService = new DungeonInstanceService(
                     database, instanceRepository, membershipRepository, new PartyService(), restartRuntime);
             freshService.loadOnStartup();
@@ -466,11 +466,65 @@ class DungeonInstanceServiceTest {
         }
 
         @Test
+        @DisplayName("Should resolve Continue route to the player's active instance")
+        void shouldResolveContinueRouteToActiveInstance() throws SQLException {
+            UUID player = UUID.randomUUID();
+            DungeonInstance instance = testInstanceWithState("inst-1", "world-1", DungeonInstanceState.ACTIVE);
+            service.createInstance(instance, List.of(player));
+
+            DungeonInstanceService.ContinueRoute route = service.resolveContinueRoute(player);
+
+            assertTrue(route.routesToInstance());
+            assertFalse(route.isPending());
+            assertEquals(instance, route.instance());
+        }
+
+        @Test
         @DisplayName("Should return null when player has no instance")
         void shouldReturnNullWhenPlayerHasNoInstance() throws SQLException {
             UUID player = UUID.randomUUID();
 
             assertNull(service.getActiveInstance(player));
+        }
+
+        @Test
+        @DisplayName("Should resolve Continue route to shared world when player has no instance")
+        void shouldResolveContinueRouteToSharedWorldWhenPlayerHasNoInstance() throws SQLException {
+            UUID player = UUID.randomUUID();
+
+            DungeonInstanceService.ContinueRoute route = service.resolveContinueRoute(player);
+
+            assertFalse(route.routesToInstance());
+            assertFalse(route.isPending());
+            assertNull(route.instance());
+        }
+
+        @Test
+        @DisplayName("Should keep Continue pending while instance is creating")
+        void shouldKeepContinuePendingWhileInstanceIsCreating() throws SQLException {
+            UUID player = UUID.randomUUID();
+            DungeonInstance instance = testInstanceWithState("inst-1", "world-1", DungeonInstanceState.CREATING);
+            service.createInstance(instance, List.of(player));
+
+            DungeonInstanceService.ContinueRoute route = service.resolveContinueRoute(player);
+
+            assertFalse(route.routesToInstance());
+            assertTrue(route.isPending());
+            assertEquals(DungeonInstanceState.CREATING, route.instance().state());
+        }
+
+        @Test
+        @DisplayName("Should keep Continue pending while instance is transitioning")
+        void shouldKeepContinuePendingWhileInstanceIsTransitioning() throws SQLException {
+            UUID player = UUID.randomUUID();
+            DungeonInstance instance = testInstanceWithState("inst-1", "world-1", DungeonInstanceState.TRANSITIONING);
+            service.createInstance(instance, List.of(player));
+
+            DungeonInstanceService.ContinueRoute route = service.resolveContinueRoute(player);
+
+            assertFalse(route.routesToInstance());
+            assertTrue(route.isPending());
+            assertEquals(DungeonInstanceState.TRANSITIONING, route.instance().state());
         }
 
         @Test
@@ -507,6 +561,12 @@ class DungeonInstanceServiceTest {
     // ============================================
     // Helpers
     // ============================================
+
+    private static FakeRuntime restartRuntimeAfterWorldsLoaded() {
+        return new FakeRuntime()
+                .requireLoadedWorldsForCleanup()
+                .markWorldsLoaded();
+    }
 
     private CreateAttemptResult attemptCreateInstance(
             DungeonInstance instance,
@@ -567,6 +627,8 @@ class DungeonInstanceServiceTest {
         private GenerationResult nextGenerationResult = successGenerationResult();
         private String deferredWorldName;
         private final java.util.Map<String, Vec3i> finalizedEntrances = new java.util.HashMap<>();
+        private boolean cleanupRequiresLoadedWorlds;
+        private boolean worldsLoadedForCleanup = true;
 
         @Override
         public CompletableFuture<DungeonInstanceService.InstanceWorld> createWorld(
@@ -618,7 +680,21 @@ class DungeonInstanceServiceTest {
 
         @Override
         public void cleanupWorld(String worldName) {
+            if (cleanupRequiresLoadedWorlds && !worldsLoadedForCleanup) {
+                throw new IllegalStateException("cleanupWorld called before restart worlds were loaded");
+            }
             cleanedWorlds.add(worldName);
+        }
+
+        private FakeRuntime requireLoadedWorldsForCleanup() {
+            cleanupRequiresLoadedWorlds = true;
+            worldsLoadedForCleanup = false;
+            return this;
+        }
+
+        private FakeRuntime markWorldsLoaded() {
+            worldsLoadedForCleanup = true;
+            return this;
         }
 
         private void deferWorldCreation() {

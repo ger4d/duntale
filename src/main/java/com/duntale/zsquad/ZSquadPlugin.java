@@ -1,5 +1,6 @@
 package com.duntale.zsquad;
 
+import com.duntale.dungeongen.config.Vec3i;
 import com.duntale.zsquad.camera.BlockOcclusionManager;
 import com.duntale.zsquad.camera.ClickToMoveKnockbackSystem;
 import com.duntale.zsquad.camera.ClickToMoveManager;
@@ -65,28 +66,38 @@ import com.duntale.zsquad.ui.ZSquadScoreboard;
 import com.duntale.zsquad.ui.ZSquadScoreboardData;
 import com.hypixel.hytale.component.ComponentType;
 import com.hypixel.hytale.component.Ref;
+import com.hypixel.hytale.component.Store;
 import com.hypixel.hytale.logger.HytaleLogger;
+import com.hypixel.hytale.math.vector.Transform;
+import com.hypixel.hytale.protocol.packets.interface_.Page;
+import com.hypixel.hytale.server.core.Message;
 import com.hypixel.hytale.server.core.entity.entities.Player;
 import com.hypixel.hytale.server.core.event.events.player.PlayerConnectEvent;
 import com.hypixel.hytale.server.core.event.events.player.PlayerDisconnectEvent;
 import com.hypixel.hytale.server.core.event.events.player.PlayerReadyEvent;
 import com.hypixel.hytale.server.core.event.events.player.RemovedPlayerFromWorldEvent;
+import com.hypixel.hytale.server.core.modules.entity.teleport.Teleport;
 import com.hypixel.hytale.server.core.plugin.JavaPlugin;
 import com.hypixel.hytale.server.core.plugin.JavaPluginInit;
 import com.hypixel.hytale.server.core.universe.PlayerRef;
 import com.hypixel.hytale.server.core.universe.Universe;
 import com.hypixel.hytale.server.core.universe.world.World;
+import com.hypixel.hytale.server.core.universe.world.events.AllWorldsLoadedEvent;
 import com.hypixel.hytale.server.core.universe.world.storage.EntityStore;
 import com.hypixel.hytale.server.npc.NPCPlugin;
 import org.herolias.tooltips.api.DynamicTooltipsApiProvider;
 
 import javax.annotation.Nonnull;
+import javax.annotation.Nullable;
 import java.nio.file.Path;
 import java.sql.SQLException;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 public class ZSquadPlugin extends JavaPlugin {
 
@@ -130,9 +141,11 @@ public class ZSquadPlugin extends JavaPlugin {
     // Dungeon instance flow
     private PartyService partyService;
     private DungeonInstanceService dungeonInstanceService;
+    private final AtomicBoolean dungeonStartupRecoveryLoaded = new AtomicBoolean();
 
     // HUD scoreboards per player
     private final Map<UUID, ZSquadScoreboard> scoreboards = new ConcurrentHashMap<>();
+    private final Set<UUID> entryMenuPending = ConcurrentHashMap.newKeySet();
 
     // Dungeon generation
     private GenerationOrchestrator dungeonOrchestrator;
@@ -446,6 +459,7 @@ public class ZSquadPlugin extends JavaPlugin {
         this.getCommandRegistry().registerCommand(new CompanionCommand(companionService));
 
         // ── Player join/leave events ─────────────────────────────────
+        this.getEventRegistry().registerGlobal(AllWorldsLoadedEvent.class, this::onAllWorldsLoaded);
         this.getEventRegistry().register(PlayerConnectEvent.class, this::onPlayerConnect);
         this.getEventRegistry().registerGlobal(PlayerReadyEvent.class, this::onPlayerReady);
         this.getEventRegistry().register(PlayerDisconnectEvent.class, this::onPlayerDisconnect);
@@ -488,8 +502,15 @@ public class ZSquadPlugin extends JavaPlugin {
         // Initialize dungeon orchestrator here — asset stores are available after all plugins setup()
         this.dungeonOrchestrator = new GenerationOrchestrator(new BlockResolver());
 
-        // Reload persisted dungeon instances and recover interrupted state
-        this.dungeonInstanceService.loadOnStartup();
+        // Normal startup recovery waits for AllWorldsLoadedEvent so interrupted worlds can be removed.
+        // If the universe is already ready (for example during a late plugin start), recover immediately.
+        Universe universe = Universe.get();
+        if (universe != null) {
+            CompletableFuture<Void> universeReady = universe.getUniverseReady();
+            if (universeReady != null && universeReady.isDone()) {
+                loadDungeonInstancesAfterWorldsLoaded();
+            }
+        }
 
         LOGGER.atInfo().log("ZSquad Plugin Started!");
     }
@@ -523,10 +544,37 @@ public class ZSquadPlugin extends JavaPlugin {
 
     // ── Player lifecycle events ──────────────────────────────────────
 
+    private void onAllWorldsLoaded(@Nonnull AllWorldsLoadedEvent ignored) {
+        loadDungeonInstancesAfterWorldsLoaded();
+    }
+
+    private void loadDungeonInstancesAfterWorldsLoaded() {
+        if (!dungeonStartupRecoveryLoaded.compareAndSet(false, true)) {
+            return;
+        }
+        dungeonInstanceService.loadOnStartup();
+    }
+
     private void onPlayerConnect(@Nonnull PlayerConnectEvent event) {
         UUID uuid = event.getPlayerRef().getUuid();
         rpgService.onPlayerJoin(uuid);
         progressionService.onPlayerJoin(uuid);
+
+        World sharedWorld = resolveSharedWorld();
+        String currentWorldName = event.getWorld() != null ? event.getWorld().getName() : null;
+        String sharedWorldName = sharedWorld != null ? sharedWorld.getName() : null;
+        DungeonJoinRouting.JoinRoutingDecision joinRouting =
+                DungeonJoinRouting.resolve(currentWorldName, sharedWorldName);
+
+        if (sharedWorld != null
+                && joinRouting.targetWorldName() != null
+                && joinRouting.targetWorldName().equalsIgnoreCase(sharedWorld.getName())) {
+            event.setWorld(sharedWorld);
+        }
+        if (joinRouting.openEntryMenu()) {
+            entryMenuPending.add(uuid);
+        }
+
         LOGGER.atFine().log("Pre-loaded RPG profile + ensured progression for %s", uuid);
     }
 
@@ -535,6 +583,8 @@ public class ZSquadPlugin extends JavaPlugin {
         Ref<EntityStore> ref = event.getPlayerRef();
         PlayerRef playerRef = (PlayerRef) ref.getStore().getComponent(ref, PlayerRef.getComponentType());
         if (playerRef == null) return;
+        World world = player.getWorld();
+        if (world == null) return;
 
         UUID uuid = playerRef.getUuid();
         ZSquadScoreboard scoreboard = new ZSquadScoreboard(playerRef);
@@ -544,6 +594,14 @@ public class ZSquadPlugin extends JavaPlugin {
 
         // Auto-spawn companion using stored preference
         companionService.spawn(ref.getStore(), ref, uuid);
+
+        if (shouldAutoEnableClickToMove(world) && !clickToMoveManager.isEnabled(uuid)) {
+            clickToMoveManager.enable(uuid, ref.getStore(), ref);
+        }
+
+        if (entryMenuPending.remove(uuid) && isSharedWorld(world) && player.getPageManager().getCustomPage() == null) {
+            player.getPageManager().openCustomPage(ref, ref.getStore(), new DungeonEntryPage(playerRef));
+        }
     }
 
     private void onPlayerRemovedFromWorld(@Nonnull RemovedPlayerFromWorldEvent event) {
@@ -558,9 +616,153 @@ public class ZSquadPlugin extends JavaPlugin {
         UUID uuid = event.getPlayerRef().getUuid();
         rpgService.onPlayerLeave(uuid);
         progressionService.onPlayerLeave(uuid);
+        clickToMoveManager.disable(uuid);
         merchantService.closeMerchant(uuid);
         scoreboards.remove(uuid);
+        entryMenuPending.remove(uuid);
         LOGGER.atFine().log("Evicted RPG + progression data for %s", uuid);
+    }
+
+    void handleEntryContinue(
+            @Nonnull Ref<EntityStore> ref,
+            @Nonnull Store<EntityStore> store,
+            @Nonnull PlayerRef playerRef
+    ) {
+        UUID playerId = playerRef.getUuid();
+        DungeonInstanceService.ContinueRoute continueRoute;
+        try {
+            continueRoute = dungeonInstanceService.resolveContinueRoute(playerId);
+        } catch (SQLException e) {
+            LOGGER.atWarning()
+                    .withCause(e)
+                    .log("Failed to resolve Continue route for player %s", playerId);
+            playerRef.sendMessage(Message.raw("Unable to resolve your dungeon route right now.").color("#FF5555"));
+            return;
+        }
+
+        if (!continueRoute.routesToInstance()) {
+            if (continueRoute.isPending()) {
+                playerRef.sendMessage(switch (continueRoute.instance().state()) {
+                    case CREATING ->
+                            Message.raw("Your dungeon is still being prepared. Try Continue again shortly.")
+                                    .color("#FFEE55");
+                    case TRANSITIONING ->
+                            Message.raw("Your dungeon is moving to the next floor. Try Continue again shortly.")
+                                    .color("#FFEE55");
+                    case ACTIVE, ENDED ->
+                            Message.raw("Your dungeon is not ready to join right now.")
+                                    .color("#FFEE55");
+                });
+                return;
+            }
+            routeToSharedWorld(ref, store, playerRef, Message.raw("Entering village.").color("#55FF55"));
+            return;
+        }
+
+        World targetWorld = Universe.get().getWorld(continueRoute.instance().worldName());
+        if (targetWorld == null) {
+            LOGGER.atWarning().log(
+                    "Continue route for player %s failed because world %s is not loaded",
+                    playerId,
+                    continueRoute.instance().worldName()
+            );
+            playerRef.sendMessage(Message.raw("Your dungeon world is not available right now.").color("#FF5555"));
+            return;
+        }
+
+        closeCustomPage(ref, store);
+        store.addComponent(
+                ref,
+                Teleport.getComponentType(),
+                Teleport.createForPlayer(targetWorld, toPlayerTransform(continueRoute.instance().entrancePosition()))
+        );
+        playerRef.sendMessage(Message.raw("Continuing your dungeon run...").color("#FFD700"));
+    }
+
+    void handleEntryVillage(
+            @Nonnull Ref<EntityStore> ref,
+            @Nonnull Store<EntityStore> store,
+            @Nonnull PlayerRef playerRef
+    ) {
+        routeToSharedWorld(ref, store, playerRef, Message.raw("Entering village.").color("#55FF55"));
+    }
+
+    private void routeToSharedWorld(
+            @Nonnull Ref<EntityStore> ref,
+            @Nonnull Store<EntityStore> store,
+            @Nonnull PlayerRef playerRef,
+            @Nonnull Message statusMessage
+    ) {
+        World sharedWorld = resolveSharedWorld();
+        if (sharedWorld == null) {
+            LOGGER.atWarning().log("Unable to route player %s to village because no shared world is configured",
+                    playerRef.getUuid());
+            playerRef.sendMessage(Message.raw("No shared world is currently available.").color("#FF5555"));
+            return;
+        }
+
+        closeCustomPage(ref, store);
+
+        World currentWorld = store.getExternalData().getWorld();
+        if (isSameWorld(currentWorld, sharedWorld)) {
+            playerRef.sendMessage(statusMessage);
+            return;
+        }
+
+        store.addComponent(
+                ref,
+                Teleport.getComponentType(),
+                Teleport.createForPlayer(sharedWorld, resolveSpawnTransform(sharedWorld, playerRef))
+        );
+        playerRef.sendMessage(statusMessage);
+    }
+
+    private boolean shouldAutoEnableClickToMove(@Nonnull World world) {
+        if (isSharedWorld(world)) {
+            return true;
+        }
+        try {
+            return dungeonInstanceService.getInstanceByWorld(world.getName()) != null;
+        } catch (SQLException e) {
+            LOGGER.atWarning()
+                    .withCause(e)
+                    .log("Failed to resolve dungeon world context for %s", world.getName());
+            return false;
+        }
+    }
+
+    private boolean isSharedWorld(@Nonnull World world) {
+        return isSameWorld(world, resolveSharedWorld());
+    }
+
+    @Nullable
+    private World resolveSharedWorld() {
+        Universe universe = Universe.get();
+        return universe != null ? universe.getDefaultWorld() : null;
+    }
+
+    private void closeCustomPage(@Nonnull Ref<EntityStore> ref, @Nonnull Store<EntityStore> store) {
+        Player player = store.getComponent(ref, Player.getComponentType());
+        if (player == null) {
+            return;
+        }
+        player.getPageManager().setPage(ref, store, Page.None);
+    }
+
+    @Nonnull
+    private static Transform resolveSpawnTransform(@Nonnull World world, @Nonnull PlayerRef playerRef) {
+        return world.getWorldConfig().getSpawnProvider().getSpawnPoint(world, playerRef.getUuid());
+    }
+
+    @Nonnull
+    private static Transform toPlayerTransform(@Nonnull Vec3i position) {
+        return new Transform(position.x() + 0.5D, position.y(), position.z() + 0.5D);
+    }
+
+    private static boolean isSameWorld(@Nullable World first, @Nullable World second) {
+        return first != null
+                && second != null
+                && first.getName().equalsIgnoreCase(second.getName());
     }
 
     /**

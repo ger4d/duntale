@@ -334,6 +334,24 @@ public class DungeonInstanceService {
     }
 
     /**
+     * Resolves the player's Continue destination from persisted instance membership.
+     *
+     * <p>Only {@link DungeonInstanceState#ACTIVE} instances are joinable through Continue.
+     * Transitional states such as {@code CREATING} and {@code TRANSITIONING} remain visible to the
+     * caller so entry UX can keep the player in the shared/menu flow while the instance is not yet
+     * ready.
+     *
+     * @param playerId the player UUID
+     * @return the resolved Continue route
+     * @throws SQLException if a database access error occurs
+     */
+    @Nonnull
+    public ContinueRoute resolveContinueRoute(@Nonnull UUID playerId) throws SQLException {
+        Objects.requireNonNull(playerId, "playerId");
+        return new ContinueRoute(getActiveInstance(playerId));
+    }
+
+    /**
      * Returns the dungeon instance associated with the given world name, if one exists.
      *
      * <p>Lookups are DB-first in v1. A hot cache layer should only be added if profiling
@@ -623,6 +641,36 @@ public class DungeonInstanceService {
         );
 
         void cleanupWorld(@Nonnull String worldName);
+    }
+
+    /**
+     * Result of resolving a player's Continue action.
+     *
+     * @param instance the persisted dungeon instance membership, or {@code null} when the player
+     *                 has no non-ended dungeon run
+     */
+    public record ContinueRoute(@Nullable DungeonInstance instance) {
+
+        /**
+         * Returns whether Continue should resume a dungeon instance immediately.
+         *
+         * @return {@code true} when the player belongs to an {@code ACTIVE} instance
+         */
+        public boolean routesToInstance() {
+            return instance != null && instance.state() == DungeonInstanceState.ACTIVE;
+        }
+
+        /**
+         * Returns whether the player has a dungeon run that exists but is not yet joinable.
+         *
+         * @return {@code true} when the instance is still creating or transitioning
+         */
+        public boolean isPending() {
+            return instance != null && switch (instance.state()) {
+                case CREATING, TRANSITIONING -> true;
+                case ACTIVE, ENDED -> false;
+            };
+        }
     }
 
     interface InstanceWorld {
