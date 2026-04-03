@@ -1068,6 +1068,227 @@ class DungeonInstanceServiceTest {
         }
     }
 
+    // ============================================
+    // forceEndInstance
+    // ============================================
+
+    @Nested
+    @DisplayName("forceEndInstance")
+    class ForceEndInstanceFlow {
+
+        @Test
+        @DisplayName("Should force-end an ACTIVE instance")
+        void shouldForceEndActiveInstance() throws SQLException {
+            FakeRuntime runtime = new FakeRuntime();
+            service = new DungeonInstanceService(
+                    database, instanceRepository, membershipRepository, new PartyService(), runtime);
+
+            UUID player = UUID.randomUUID();
+            DungeonInstance instance = service.createInstance(List.of(player), 1, "crypt").join();
+
+            service.forceEndInstance(instance.instanceId()).join();
+
+            DungeonInstance ended = instanceRepository.findById(instance.instanceId()).orElseThrow();
+            assertEquals(DungeonInstanceState.ENDED, ended.state());
+            assertEquals(List.of(instance.worldName()), runtime.armedWorlds);
+        }
+
+        @Test
+        @DisplayName("Should force-end a CREATING instance")
+        void shouldForceEndCreatingInstance() throws SQLException {
+            FakeRuntime runtime = new FakeRuntime();
+            service = new DungeonInstanceService(
+                    database, instanceRepository, membershipRepository, new PartyService(), runtime);
+
+            UUID player = UUID.randomUUID();
+            DungeonInstance creating = testInstance("inst-1", "world-1");
+            service.createInstance(creating, List.of(player));
+
+            service.forceEndInstance("inst-1").join();
+
+            DungeonInstance ended = instanceRepository.findById("inst-1").orElseThrow();
+            assertEquals(DungeonInstanceState.ENDED, ended.state());
+            assertEquals(List.of("world-1"), runtime.armedWorlds);
+        }
+
+        @Test
+        @DisplayName("Should force-end a live TRANSITIONING instance across both transition worlds")
+        void shouldForceEndLiveTransitioningInstanceAcrossBothWorlds() throws SQLException {
+            FakeRuntime runtime = new FakeRuntime();
+            service = new DungeonInstanceService(
+                    database, instanceRepository, membershipRepository, new PartyService(), runtime);
+
+            UUID player = UUID.randomUUID();
+            DungeonInstance floor1 = service.createInstance(List.of(player), 1, "crypt").join();
+            String oldWorldName = floor1.worldName();
+
+            runtime.deferTeleport();
+            CompletableFuture<DungeonInstance> transition = service.transitionFloor(floor1.instanceId());
+
+            DungeonInstance transitioning = instanceRepository.findById(floor1.instanceId()).orElseThrow();
+            assertEquals(DungeonInstanceState.TRANSITIONING, transitioning.state());
+            String newWorldName = transitioning.worldName();
+
+            service.forceEndInstance(floor1.instanceId()).join();
+            runtime.completeTeleport();
+
+            CompletionException transitionFailure = assertThrows(CompletionException.class, transition::join);
+            assertTrue(transitionFailure.getCause().getMessage().contains("force-ended"));
+
+            DungeonInstance ended = instanceRepository.findById(floor1.instanceId()).orElseThrow();
+            assertEquals(DungeonInstanceState.ENDED, ended.state());
+            assertEquals(List.of(oldWorldName, newWorldName), runtime.evacuationSourceWorlds);
+            assertEquals(List.of(oldWorldName, newWorldName), runtime.armedWorlds);
+        }
+
+        @Test
+        @DisplayName("Should reject force-end of a TRANSITIONING instance without live transition context")
+        void shouldRejectForceEndTransitioningInstanceWithoutLiveContext() throws SQLException {
+            UUID player = UUID.randomUUID();
+            DungeonInstance transitioning = testInstanceWithState(
+                    "inst-1", "world-1", DungeonInstanceState.TRANSITIONING);
+            service.createInstance(transitioning, List.of(player));
+
+            IllegalStateException ex = assertThrows(IllegalStateException.class,
+                    () -> service.forceEndInstance("inst-1"));
+            assertTrue(ex.getMessage().contains("live transition context"));
+        }
+
+        @Test
+        @DisplayName("Should reject force-end when instance is already ENDED")
+        void shouldRejectForceEndWhenAlreadyEnded() throws SQLException {
+            UUID player = UUID.randomUUID();
+            DungeonInstance instance = testInstanceWithState(
+                    "inst-1", "world-1", DungeonInstanceState.ACTIVE);
+            service.createInstance(instance, List.of(player));
+            instanceRepository.endInstance("inst-1");
+
+            assertThrows(IllegalStateException.class,
+                    () -> service.forceEndInstance("inst-1"));
+        }
+
+        @Test
+        @DisplayName("Should reject force-end for nonexistent instance")
+        void shouldRejectForceEndForNonexistentInstance() {
+            assertThrows(IllegalArgumentException.class,
+                    () -> service.forceEndInstance("no-such-instance"));
+        }
+
+        @Test
+        @DisplayName("Should retry cleanup after a force-end failure on a TRANSITIONING instance")
+        void shouldRetryCleanupAfterForceEndFailureOnTransitioningInstance() throws SQLException {
+            FakeRuntime runtime = new FakeRuntime();
+            service = new DungeonInstanceService(
+                    database, instanceRepository, membershipRepository, new PartyService(), runtime);
+
+            UUID player = UUID.randomUUID();
+            DungeonInstance floor1 = service.createInstance(List.of(player), 1, "crypt").join();
+            String oldWorldName = floor1.worldName();
+
+            runtime.deferTeleport();
+            CompletableFuture<DungeonInstance> transition = service.transitionFloor(floor1.instanceId());
+            String newWorldName = instanceRepository.findById(floor1.instanceId()).orElseThrow().worldName();
+
+            runtime.armWorldRemovalFailure = new RuntimeException("arm failed");
+            CompletionException ex = assertThrows(CompletionException.class,
+                    () -> service.forceEndInstance(floor1.instanceId()).join());
+            assertTrue(ex.getCause().getMessage().contains("removal arming failed"));
+
+            runtime.completeTeleport();
+            assertThrows(CompletionException.class, transition::join);
+
+            runtime.armWorldRemovalFailure = null;
+            runtime.evacuationSourceWorlds.clear();
+            runtime.armedWorlds.clear();
+
+            service.endInstance(floor1.instanceId()).join();
+
+            assertEquals(List.of(oldWorldName, newWorldName), runtime.evacuationSourceWorlds);
+            assertEquals(List.of(oldWorldName, newWorldName), runtime.armedWorlds);
+        }
+
+        @Test
+        @DisplayName("Should allow creating new instance after force-ending a live TRANSITIONING one")
+        void shouldAllowNewInstanceAfterForceEndingTransitioning() throws SQLException {
+            FakeRuntime runtime = new FakeRuntime();
+            service = new DungeonInstanceService(
+                    database, instanceRepository, membershipRepository, new PartyService(), runtime);
+
+            UUID player = UUID.randomUUID();
+            DungeonInstance floor1 = service.createInstance(List.of(player), 1, "crypt").join();
+
+            runtime.deferTeleport();
+            CompletableFuture<DungeonInstance> transition = service.transitionFloor(floor1.instanceId());
+
+            service.forceEndInstance(floor1.instanceId()).join();
+            runtime.completeTeleport();
+            assertThrows(CompletionException.class, transition::join);
+
+            DungeonInstance second = service.createInstance(List.of(player), 1, "crypt").join();
+            assertEquals(DungeonInstanceState.ACTIVE, second.state());
+        }
+    }
+
+    // ============================================
+    // query helpers
+    // ============================================
+
+    @Nested
+    @DisplayName("query helpers")
+    class QueryHelpers {
+
+        @Test
+        @DisplayName("Should return instance by ID")
+        void shouldReturnInstanceById() throws SQLException {
+            UUID player = UUID.randomUUID();
+            DungeonInstance instance = testInstanceWithState("inst-1", "world-1", DungeonInstanceState.ACTIVE);
+            service.createInstance(instance, List.of(player));
+
+            DungeonInstance result = service.getInstanceById("inst-1");
+
+            assertNotNull(result);
+            assertEquals("inst-1", result.instanceId());
+        }
+
+        @Test
+        @DisplayName("Should return null for unknown ID")
+        void shouldReturnNullForUnknownId() throws SQLException {
+            assertNull(service.getInstanceById("nonexistent"));
+        }
+
+        @Test
+        @DisplayName("Should list non-ended instances")
+        void shouldListNonEndedInstances() throws SQLException {
+            UUID p1 = UUID.randomUUID();
+            UUID p2 = UUID.randomUUID();
+
+            service.createInstance(
+                    testInstanceWithState("inst-active", "world-active", DungeonInstanceState.ACTIVE),
+                    List.of(p1));
+            service.createInstance(
+                    testInstanceWithState("inst-ended", "world-ended", DungeonInstanceState.ACTIVE),
+                    List.of(p2));
+            instanceRepository.endInstance("inst-ended");
+
+            List<DungeonInstance> result = service.listNonEndedInstances();
+
+            assertEquals(1, result.size());
+            assertEquals("inst-active", result.get(0).instanceId());
+        }
+
+        @Test
+        @DisplayName("Should return roster for instance")
+        void shouldReturnRosterForInstance() throws SQLException {
+            UUID playerA = UUID.randomUUID();
+            UUID playerB = UUID.randomUUID();
+            service.createInstance(testInstance("inst-1", "world-1"), List.of(playerA, playerB));
+
+            Set<UUID> roster = service.getRoster("inst-1");
+
+            assertEquals(Set.of(playerA, playerB), roster);
+        }
+    }
+
     @Nested
     @DisplayName("spawn resolution")
     class SpawnResolution {
@@ -1325,13 +1546,23 @@ class DungeonInstanceServiceTest {
 
         @Override
         public void update(DungeonInstance instance) throws SQLException {
+            maybeFailActiveStateUpdate(instance);
+            super.update(instance);
+        }
+
+        @Override
+        boolean updateIfState(DungeonInstance instance, DungeonInstanceState expectedState) throws SQLException {
+            maybeFailActiveStateUpdate(instance);
+            return super.updateIfState(instance, expectedState);
+        }
+
+        private void maybeFailActiveStateUpdate(DungeonInstance instance) throws SQLException {
             if (instance.state() == DungeonInstanceState.ACTIVE
                     && instance.floorLevel() > 1
                     && remainingActiveFailures > 0) {
                 remainingActiveFailures--;
                 throw new SQLException("forced ACTIVE update failure");
             }
-            super.update(instance);
         }
     }
 

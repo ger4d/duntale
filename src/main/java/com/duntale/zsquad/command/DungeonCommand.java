@@ -1,0 +1,409 @@
+package com.duntale.zsquad.command;
+
+import com.duntale.dungeongen.config.Vec3i;
+import com.duntale.zsquad.dungeon.DungeonInstance;
+import com.duntale.zsquad.dungeon.DungeonInstanceService;
+import com.duntale.zsquad.dungeon.DungeonInstanceState;
+import com.hypixel.hytale.server.core.Message;
+import com.hypixel.hytale.server.core.command.system.CommandContext;
+import com.hypixel.hytale.server.core.command.system.arguments.system.RequiredArg;
+import com.hypixel.hytale.server.core.command.system.arguments.types.ArgTypes;
+import com.hypixel.hytale.server.core.command.system.basecommands.CommandBase;
+
+import javax.annotation.Nonnull;
+import javax.annotation.Nullable;
+import java.sql.SQLException;
+import java.time.Instant;
+import java.time.ZoneId;
+import java.time.format.DateTimeFormatter;
+import java.util.List;
+import java.util.Set;
+import java.util.UUID;
+import java.util.concurrent.CompletionException;
+
+/**
+ * Admin command for inspecting and managing dungeon instances.
+ *
+ * <h2>Usage:</h2>
+ * <pre>{@code
+ * /dungeon list
+ * /dungeon info <instanceId>
+ * /dungeon end <instanceId>
+ * /dungeon player <uuid>
+ * }</pre>
+ *
+ * @since 1.6.0
+ */
+public class DungeonCommand extends CommandBase {
+
+    private static final String GOLD = "#FFD700";
+    private static final String WHITE = "#FFFFFF";
+    private static final String GRAY = "#AAAAAA";
+    private static final String YELLOW = "#FFEE55";
+    private static final String GREEN = "#55FF55";
+    private static final String RED = "#FF5555";
+    private static final String AQUA = "#55FFFF";
+
+    private static final DateTimeFormatter TIMESTAMP_FORMAT =
+            DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss").withZone(ZoneId.systemDefault());
+
+    private final DungeonInstanceService dungeonInstanceService;
+
+    /**
+     * Creates the /dungeon admin command.
+     *
+     * @param dungeonInstanceService the dungeon instance service
+     */
+    public DungeonCommand(@Nonnull DungeonInstanceService dungeonInstanceService) {
+        super("dungeon", "Manage dungeon instances");
+        this.dungeonInstanceService = dungeonInstanceService;
+
+        this.addSubCommand(new ListSubCommand());
+        this.addSubCommand(new InfoSubCommand());
+        this.addSubCommand(new EndSubCommand());
+        this.addSubCommand(new PlayerSubCommand());
+    }
+
+    @Override
+    protected void executeSync(@Nonnull CommandContext context) {
+        context.sendMessage(
+                Message.raw("Usage: /dungeon list|info|end|player").color(YELLOW)
+        );
+        context.sendMessage(
+                Message.raw("  list").color(GOLD)
+                        .insert(Message.raw(" — list all active dungeon instances").color(GRAY))
+        );
+        context.sendMessage(
+                Message.raw("  info <instanceId>").color(GOLD)
+                        .insert(Message.raw(" — show instance details").color(GRAY))
+        );
+        context.sendMessage(
+                Message.raw("  end <instanceId>").color(GOLD)
+                        .insert(Message.raw(" — force-end an instance or retry ENDED cleanup").color(GRAY))
+        );
+        context.sendMessage(
+                Message.raw("  player <uuid>").color(GOLD)
+                        .insert(Message.raw(" — look up a player's active instance").color(GRAY))
+        );
+    }
+
+    // ============================================
+    // list
+    // ============================================
+
+    private class ListSubCommand extends CommandBase {
+
+        ListSubCommand() {
+            super("list", "List all active dungeon instances");
+        }
+
+        @Override
+        protected void executeSync(@Nonnull CommandContext context) {
+            List<DungeonInstance> instances;
+            try {
+                instances = dungeonInstanceService.listNonEndedInstances();
+            } catch (SQLException e) {
+                context.sendMessage(Message.raw("Failed to query instances: " + e.getMessage()).color(RED));
+                return;
+            }
+
+            if (instances.isEmpty()) {
+                context.sendMessage(Message.raw("No active dungeon instances.").color(GRAY));
+                return;
+            }
+
+            context.sendMessage(
+                    Message.raw("Active Dungeon Instances (" + instances.size() + "):").color(GOLD).bold(true)
+            );
+
+            for (DungeonInstance instance : instances) {
+                context.sendMessage(
+                        Message.raw("  " + truncateId(instance.instanceId())).color(AQUA).monospace(true)
+                                .insert(Message.raw(" [" + instance.state() + "]").color(stateColor(instance.state())))
+                                .insert(Message.raw(" floor=" + instance.floorLevel()
+                                        + " theme=" + instance.theme()
+                                        + " world=" + instance.worldName()).color(GRAY))
+                );
+            }
+        }
+    }
+
+    // ============================================
+    // info
+    // ============================================
+
+    private class InfoSubCommand extends CommandBase {
+
+        private final RequiredArg<String> instanceIdArg =
+                this.withRequiredArg("instanceId", "Instance ID (full or prefix)", ArgTypes.STRING);
+
+        InfoSubCommand() {
+            super("info", "Show dungeon instance details");
+        }
+
+        @Override
+        protected void executeSync(@Nonnull CommandContext context) {
+            String query = instanceIdArg.get(context);
+
+            DungeonInstance instance;
+            try {
+                instance = resolveInstance(query);
+            } catch (SQLException e) {
+                context.sendMessage(Message.raw("Failed to query instance: " + e.getMessage()).color(RED));
+                return;
+            }
+
+            if (instance == null) {
+                context.sendMessage(Message.raw("Instance not found: " + query).color(RED));
+                return;
+            }
+
+            Set<UUID> roster = Set.of();
+            String rosterLookupError = null;
+            try {
+                roster = dungeonInstanceService.getRoster(instance.instanceId());
+            } catch (SQLException e) {
+                rosterLookupError = e.getMessage();
+            }
+
+            context.sendMessage(Message.raw("Dungeon Instance Details").color(GOLD).bold(true));
+            sendField(context, "ID", instance.instanceId());
+            sendField(context, "State", instance.state().name(), stateColor(instance.state()));
+            sendField(context, "World", instance.worldName());
+            sendField(context, "Floor", String.valueOf(instance.floorLevel()));
+            sendField(context, "Floor Y", String.valueOf(instance.floorY()));
+            sendField(context, "Theme", instance.theme());
+            sendField(context, "Seed", instance.seed() != null ? instance.seed() : "(random)");
+            sendField(context, "Entrance", formatPosition(instance.entrancePosition()));
+            sendField(context, "Exit", formatPosition(instance.exitPosition()));
+            sendField(context, "Created", TIMESTAMP_FORMAT.format(Instant.ofEpochMilli(instance.createdAt())));
+            if (rosterLookupError != null) {
+                sendField(context, "Roster", "(lookup failed)", YELLOW);
+                sendField(context, "Roster Error", rosterLookupError, YELLOW);
+                return;
+            }
+            sendField(context, "Roster", roster.isEmpty() ? "(none)" : roster.size() + " player(s)");
+            for (UUID playerId : roster) {
+                context.sendMessage(
+                        Message.raw("    " + playerId).color(GRAY).monospace(true)
+                );
+            }
+        }
+    }
+
+    // ============================================
+    // end
+    // ============================================
+
+    private class EndSubCommand extends CommandBase {
+
+        private final RequiredArg<String> instanceIdArg =
+                this.withRequiredArg("instanceId", "Instance ID (full or prefix)", ArgTypes.STRING);
+
+        EndSubCommand() {
+            super("end", "Force-end a dungeon instance");
+        }
+
+        @Override
+        protected void executeSync(@Nonnull CommandContext context) {
+            String query = instanceIdArg.get(context);
+
+            DungeonInstance instance;
+            try {
+                instance = resolveInstance(query);
+            } catch (SQLException e) {
+                context.sendMessage(Message.raw("Failed to query instance: " + e.getMessage()).color(RED));
+                return;
+            }
+
+            if (instance == null) {
+                context.sendMessage(Message.raw("Instance not found: " + query).color(RED));
+                return;
+            }
+
+            if (instance.state() == DungeonInstanceState.ENDED) {
+                retryEndedCleanup(context, instance.instanceId());
+                return;
+            }
+
+            String instanceId = instance.instanceId();
+            DungeonInstanceState previousState = instance.state();
+
+            try {
+                dungeonInstanceService.forceEndInstance(instanceId).join();
+            } catch (CompletionException e) {
+                context.sendMessage(
+                        Message.raw("Force-end claimed the instance but cleanup had errors: "
+                                + describeFailure(e)).color(YELLOW)
+                );
+                return;
+            } catch (SQLException | IllegalArgumentException | IllegalStateException e) {
+                context.sendMessage(
+                        Message.raw("Force-end failed: " + describeFailure(e)).color(RED)
+                );
+                return;
+            }
+
+            context.sendMessage(
+                    Message.raw("Instance ").color(GREEN)
+                            .insert(Message.raw(truncateId(instanceId)).color(AQUA).monospace(true))
+                            .insert(Message.raw(" force-ended (was " + previousState + ").").color(GREEN))
+            );
+        }
+    }
+
+    // ============================================
+    // player
+    // ============================================
+
+    private class PlayerSubCommand extends CommandBase {
+
+        private final RequiredArg<String> uuidArg =
+                this.withRequiredArg("uuid", "Player UUID", ArgTypes.STRING);
+
+        PlayerSubCommand() {
+            super("player", "Look up a player's active dungeon instance");
+        }
+
+        @Override
+        protected void executeSync(@Nonnull CommandContext context) {
+            String uuidString = uuidArg.get(context);
+
+            UUID playerId;
+            try {
+                playerId = UUID.fromString(uuidString);
+            } catch (IllegalArgumentException e) {
+                context.sendMessage(Message.raw("Invalid UUID: " + uuidString).color(RED));
+                return;
+            }
+
+            DungeonInstance instance;
+            try {
+                instance = dungeonInstanceService.getActiveInstance(playerId);
+            } catch (SQLException e) {
+                context.sendMessage(Message.raw("Failed to query: " + e.getMessage()).color(RED));
+                return;
+            }
+
+            if (instance == null) {
+                context.sendMessage(
+                        Message.raw("Player ").color(GRAY)
+                                .insert(Message.raw(uuidString).color(WHITE).monospace(true))
+                                .insert(Message.raw(" has no active dungeon instance.").color(GRAY))
+                );
+                return;
+            }
+
+            context.sendMessage(
+                    Message.raw("Player ").color(GRAY)
+                            .insert(Message.raw(uuidString).color(WHITE).monospace(true))
+                            .insert(Message.raw(" is in instance:").color(GRAY))
+            );
+            context.sendMessage(
+                    Message.raw("  " + truncateId(instance.instanceId())).color(AQUA).monospace(true)
+                            .insert(Message.raw(" [" + instance.state() + "]").color(stateColor(instance.state())))
+                            .insert(Message.raw(" floor=" + instance.floorLevel()
+                                    + " world=" + instance.worldName()).color(GRAY))
+            );
+        }
+    }
+
+    // ============================================
+    // Helpers
+    // ============================================
+
+    @Nonnull
+    private static String stateColor(@Nonnull DungeonInstanceState state) {
+        return switch (state) {
+            case CREATING -> YELLOW;
+            case ACTIVE -> GREEN;
+            case TRANSITIONING -> AQUA;
+            case ENDED -> GRAY;
+        };
+    }
+
+    @Nonnull
+    private static String truncateId(@Nonnull String id) {
+        return id.length() > 8 ? id.substring(0, 8) : id;
+    }
+
+    @Nonnull
+    private static String formatPosition(@Nonnull Vec3i pos) {
+        return pos.x() + ", " + pos.y() + ", " + pos.z();
+    }
+
+    private static void sendField(
+            @Nonnull CommandContext context,
+            @Nonnull String label,
+            @Nonnull String value
+    ) {
+        sendField(context, label, value, WHITE);
+    }
+
+    private static void sendField(
+            @Nonnull CommandContext context,
+            @Nonnull String label,
+            @Nonnull String value,
+            @Nonnull String valueColor
+    ) {
+        context.sendMessage(
+                Message.raw("  " + label + ": ").color(GRAY)
+                        .insert(Message.raw(value).color(valueColor))
+        );
+    }
+
+    private void retryEndedCleanup(@Nonnull CommandContext context, @Nonnull String instanceId) {
+        try {
+            dungeonInstanceService.endInstance(instanceId).join();
+        } catch (CompletionException e) {
+            context.sendMessage(
+                    Message.raw("Cleanup retry for ENDED instance had errors: " + describeFailure(e)).color(YELLOW)
+            );
+            return;
+        } catch (SQLException | IllegalArgumentException | IllegalStateException e) {
+            context.sendMessage(
+                    Message.raw("Cleanup retry failed: " + describeFailure(e)).color(RED)
+            );
+            return;
+        }
+
+        context.sendMessage(
+                Message.raw("Cleanup retried for ENDED instance ").color(GREEN)
+                        .insert(Message.raw(truncateId(instanceId)).color(AQUA).monospace(true))
+                        .insert(Message.raw(".").color(GREEN))
+        );
+    }
+
+    @Nonnull
+    private static String describeFailure(@Nonnull Throwable throwable) {
+        Throwable current = throwable;
+        while (current instanceof CompletionException && current.getCause() != null) {
+            current = current.getCause();
+        }
+        return current.getMessage() != null ? current.getMessage() : current.toString();
+    }
+
+    /**
+     * Resolves an instance by full ID or prefix match against non-ended instances.
+     */
+    @Nullable
+    private DungeonInstance resolveInstance(@Nonnull String query) throws SQLException {
+        DungeonInstance exact = dungeonInstanceService.getInstanceById(query);
+        if (exact != null) {
+            return exact;
+        }
+
+        String lowerQuery = query.toLowerCase();
+        List<DungeonInstance> nonEnded = dungeonInstanceService.listNonEndedInstances();
+        DungeonInstance match = null;
+        for (DungeonInstance candidate : nonEnded) {
+            if (candidate.instanceId().toLowerCase().startsWith(lowerQuery)) {
+                if (match != null) {
+                    return null;
+                }
+                match = candidate;
+            }
+        }
+        return match;
+    }
+}

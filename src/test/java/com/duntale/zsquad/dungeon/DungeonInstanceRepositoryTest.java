@@ -14,6 +14,7 @@ import java.util.List;
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 @DisplayName("DungeonInstanceRepository")
@@ -150,5 +151,165 @@ class DungeonInstanceRepositoryTest {
         assertEquals(2, nonEnded.size());
         assertEquals("inst-active", nonEnded.get(0).instanceId());
         assertEquals("inst-creating", nonEnded.get(1).instanceId());
+    }
+
+    @Test
+    @DisplayName("Should claim transition state from ACTIVE and return the instance")
+    void shouldClaimTransitionStateFromActive() throws SQLException {
+        DungeonInstance instance = new DungeonInstance(
+                "inst-claim-t",
+                "dungeon-claim-t",
+                1,
+                64.0D,
+                new Vec3i(0, 64, 0),
+                new Vec3i(30, 64, 30),
+                DungeonInstanceState.ACTIVE,
+                "crypt",
+                null,
+                1_706_000_000_000L
+        );
+        repository.create(instance);
+
+        Optional<DungeonInstance> claimed = repository.claimTransitionState("inst-claim-t");
+
+        assertTrue(claimed.isPresent());
+        assertEquals(DungeonInstanceState.TRANSITIONING,
+                repository.findById("inst-claim-t").orElseThrow().state());
+    }
+
+    @Test
+    @DisplayName("Should reject transition claim when instance is not ACTIVE")
+    void shouldRejectTransitionClaimWhenNotActive() throws SQLException {
+        DungeonInstance instance = new DungeonInstance(
+                "inst-claim-t2",
+                "dungeon-claim-t2",
+                1,
+                64.0D,
+                new Vec3i(0, 64, 0),
+                new Vec3i(30, 64, 30),
+                DungeonInstanceState.CREATING,
+                "crypt",
+                null,
+                1_706_000_000_000L
+        );
+        repository.create(instance);
+
+        Optional<DungeonInstance> claimed = repository.claimTransitionState("inst-claim-t2");
+
+        assertTrue(claimed.isEmpty());
+        assertEquals(DungeonInstanceState.CREATING,
+                repository.findById("inst-claim-t2").orElseThrow().state());
+    }
+
+    @Test
+    @DisplayName("Should claim end state from ACTIVE")
+    void shouldClaimEndStateFromActive() throws SQLException {
+        DungeonInstance instance = new DungeonInstance(
+                "inst-claim-e",
+                "dungeon-claim-e",
+                1,
+                64.0D,
+                new Vec3i(0, 64, 0),
+                new Vec3i(30, 64, 30),
+                DungeonInstanceState.ACTIVE,
+                "crypt",
+                null,
+                1_706_000_000_000L
+        );
+        repository.create(instance);
+
+        assertTrue(repository.claimEndState("inst-claim-e"));
+        assertEquals(DungeonInstanceState.ENDED,
+                repository.findById("inst-claim-e").orElseThrow().state());
+    }
+
+    @Test
+    @DisplayName("Should reject end state claim when instance is not ACTIVE")
+    void shouldRejectEndStateClaimWhenNotActive() throws SQLException {
+        DungeonInstance instance = new DungeonInstance(
+                "inst-claim-e2",
+                "dungeon-claim-e2",
+                1,
+                64.0D,
+                new Vec3i(0, 64, 0),
+                new Vec3i(30, 64, 30),
+                DungeonInstanceState.TRANSITIONING,
+                "crypt",
+                null,
+                1_706_000_000_000L
+        );
+        repository.create(instance);
+
+        assertFalse(repository.claimEndState("inst-claim-e2"));
+        assertEquals(DungeonInstanceState.TRANSITIONING,
+                repository.findById("inst-claim-e2").orElseThrow().state());
+    }
+
+    @Test
+    @DisplayName("Should update instance only when the current state matches")
+    void shouldUpdateInstanceOnlyWhenCurrentStateMatches() throws SQLException {
+        DungeonInstance transitioning = new DungeonInstance(
+                "inst-update-guard",
+                "dungeon-update-guard",
+                1,
+                64.0D,
+                new Vec3i(0, 64, 0),
+                new Vec3i(30, 64, 30),
+                DungeonInstanceState.TRANSITIONING,
+                "crypt",
+                null,
+                1_706_000_000_000L
+        );
+        repository.create(transitioning);
+
+        DungeonInstance updated = new DungeonInstance(
+                "inst-update-guard",
+                "dungeon-update-guard-f2",
+                2,
+                72.0D,
+                new Vec3i(5, 72, 5),
+                new Vec3i(40, 72, 40),
+                DungeonInstanceState.ACTIVE,
+                "catacombs",
+                "seed-2",
+                transitioning.createdAt()
+        );
+
+        assertTrue(repository.updateIfState(updated, DungeonInstanceState.TRANSITIONING));
+        assertEquals(Optional.of(updated), repository.findById(updated.instanceId()));
+    }
+
+    @Test
+    @DisplayName("Should reject guarded update when the current state differs")
+    void shouldRejectGuardedUpdateWhenCurrentStateDiffers() throws SQLException {
+        DungeonInstance ended = new DungeonInstance(
+                "inst-update-guard-2",
+                "dungeon-update-guard-2",
+                1,
+                64.0D,
+                new Vec3i(0, 64, 0),
+                new Vec3i(30, 64, 30),
+                DungeonInstanceState.ENDED,
+                "crypt",
+                null,
+                1_706_000_000_000L
+        );
+        repository.create(ended);
+
+        DungeonInstance updated = new DungeonInstance(
+                "inst-update-guard-2",
+                "dungeon-update-guard-2-f2",
+                2,
+                72.0D,
+                new Vec3i(5, 72, 5),
+                new Vec3i(40, 72, 40),
+                DungeonInstanceState.ACTIVE,
+                "catacombs",
+                "seed-2",
+                ended.createdAt()
+        );
+
+        assertFalse(repository.updateIfState(updated, DungeonInstanceState.TRANSITIONING));
+        assertEquals(Optional.of(ended), repository.findById(ended.instanceId()));
     }
 }

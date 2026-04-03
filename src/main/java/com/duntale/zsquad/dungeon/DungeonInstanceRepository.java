@@ -172,7 +172,25 @@ public class DungeonInstanceRepository {
                    state = ?,
                    theme = ?,
                    seed = ?
+              WHERE instance_id = ?
+            """;
+
+    private static final String UPDATE_INSTANCE_IF_STATE_SQL = """
+            UPDATE dungeon_instances
+               SET world_name = ?,
+                   floor_level = ?,
+                   floor_y = ?,
+                   entrance_x = ?,
+                   entrance_y = ?,
+                   entrance_z = ?,
+                   exit_x = ?,
+                   exit_y = ?,
+                   exit_z = ?,
+                   state = ?,
+                   theme = ?,
+                   seed = ?
              WHERE instance_id = ?
+               AND state = ?
             """;
 
     private static final String CLAIM_TRANSITION_SQL = """
@@ -180,6 +198,13 @@ public class DungeonInstanceRepository {
                SET state = ?
              WHERE instance_id = ?
                AND state = ?
+            """;
+
+    private static final String FORCE_CLAIM_END_SQL = """
+            UPDATE dungeon_instances
+               SET state = ?
+             WHERE instance_id = ?
+               AND state != ?
             """;
 
     private static final String END_INSTANCE_SQL = """
@@ -344,6 +369,29 @@ public class DungeonInstanceRepository {
         });
     }
 
+    boolean updateIfState(@Nonnull DungeonInstance instance, @Nonnull DungeonInstanceState expectedState)
+            throws SQLException {
+        Objects.requireNonNull(instance, "instance");
+        Objects.requireNonNull(expectedState, "expectedState");
+        return database.writeReturning(conn -> updateIfStateInTransaction(conn, instance, expectedState));
+    }
+
+    boolean updateIfStateInTransaction(
+            @Nonnull Connection conn,
+            @Nonnull DungeonInstance instance,
+            @Nonnull DungeonInstanceState expectedState
+    ) throws SQLException {
+        Objects.requireNonNull(conn, "conn");
+        Objects.requireNonNull(instance, "instance");
+        Objects.requireNonNull(expectedState, "expectedState");
+        try (PreparedStatement ps = conn.prepareStatement(UPDATE_INSTANCE_IF_STATE_SQL)) {
+            bindMutableFields(ps, instance);
+            ps.setString(13, instance.instanceId());
+            ps.setString(14, expectedState.name());
+            return ps.executeUpdate() > 0;
+        }
+    }
+
     /**
      * Atomically claims the transition state for the given instance by updating its state from
      * {@code ACTIVE} to {@code TRANSITIONING}.
@@ -415,6 +463,30 @@ public class DungeonInstanceRepository {
             ps.setString(1, DungeonInstanceState.ENDED.name());
             ps.setString(2, instanceId);
             ps.setString(3, DungeonInstanceState.ACTIVE.name());
+            return ps.executeUpdate() > 0;
+        }
+    }
+
+    /**
+     * Atomically sets an instance to {@code ENDED} regardless of its current non-ended state.
+     *
+     * <p>Unlike {@link #claimEndStateInTransaction}, this method accepts any state except
+     * {@code ENDED}, making it suitable for admin force-end operations on instances in
+     * {@code CREATING} or {@code TRANSITIONING} states.
+     *
+     * @param conn       the active JDBC connection from the enclosing transaction
+     * @param instanceId the instance identifier
+     * @return {@code true} if the instance was marked ended, {@code false} if it was already
+     *         {@code ENDED} or does not exist
+     * @throws SQLException if a database access error occurs
+     */
+    boolean forceClaimEndStateInTransaction(@Nonnull Connection conn, @Nonnull String instanceId) throws SQLException {
+        Objects.requireNonNull(conn, "conn");
+        Objects.requireNonNull(instanceId, "instanceId");
+        try (PreparedStatement ps = conn.prepareStatement(FORCE_CLAIM_END_SQL)) {
+            ps.setString(1, DungeonInstanceState.ENDED.name());
+            ps.setString(2, instanceId);
+            ps.setString(3, DungeonInstanceState.ENDED.name());
             return ps.executeUpdate() > 0;
         }
     }

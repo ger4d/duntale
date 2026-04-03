@@ -54,6 +54,12 @@ import java.util.logging.Level;
  * non-{@code ENDED} instance at a time. Roster validation is performed transactionally
  * to prevent concurrent start attempts from bypassing the rule.
  *
+ * <h2>Usage:</h2>
+ * <pre>{@code
+ * DungeonInstanceService service = new DungeonInstanceService(database, instanceRepository, membershipRepository);
+ * CompletableFuture<DungeonInstance> active = service.createInstance(List.of(playerId), 1, "crypt");
+ * }</pre>
+ *
  * @since 1.6.0
  */
 public class DungeonInstanceService {
@@ -73,6 +79,8 @@ public class DungeonInstanceService {
     private final RuntimeAdapter runtimeAdapter;
     // Keeps Continue routing on the new floor if post-transfer ACTIVE persistence is temporarily unavailable.
     private final ConcurrentHashMap<String, DungeonInstance> runtimeActiveInstanceOverrides = new ConcurrentHashMap<>();
+    // Tracks both worlds for live floor transitions so admin force-end can clean them up safely.
+    private final ConcurrentHashMap<String, TransitionRuntimeState> runtimeTransitionStates = new ConcurrentHashMap<>();
 
     // ============================================
     // Constructor
@@ -378,6 +386,46 @@ public class DungeonInstanceService {
     }
 
     /**
+     * Returns the dungeon instance with the given ID, or {@code null} if it does not exist.
+     *
+     * @param instanceId the instance identifier
+     * @return the instance, or {@code null} if not found
+     * @throws SQLException if a database access error occurs
+     * @since 1.6.0
+     */
+    @Nullable
+    public DungeonInstance getInstanceById(@Nonnull String instanceId) throws SQLException {
+        Objects.requireNonNull(instanceId, "instanceId");
+        return instanceRepository.findById(instanceId).orElse(null);
+    }
+
+    /**
+     * Returns all non-ended dungeon instances, ordered by creation time.
+     *
+     * @return list of non-ended instances
+     * @throws SQLException if a database access error occurs
+     * @since 1.6.0
+     */
+    @Nonnull
+    public List<DungeonInstance> listNonEndedInstances() throws SQLException {
+        return instanceRepository.findAllNonEnded();
+    }
+
+    /**
+     * Returns the set of player UUIDs belonging to the given instance.
+     *
+     * @param instanceId the instance identifier
+     * @return set of player UUIDs in the instance roster
+     * @throws SQLException if a database access error occurs
+     * @since 1.6.0
+     */
+    @Nonnull
+    public Set<UUID> getRoster(@Nonnull String instanceId) throws SQLException {
+        Objects.requireNonNull(instanceId, "instanceId");
+        return membershipRepository.findPlayerIdsByInstance(instanceId);
+    }
+
+    /**
      * Starts a new single-floor dungeon instance for the given player, using their current party
      * roster when present and a solo roster otherwise.
      *
@@ -430,6 +478,8 @@ public class DungeonInstanceService {
 
         int nextFloor = claimed.floorLevel() + 1;
         String nextWorldName = INSTANCE_WORLD_PREFIX + claimed.instanceId() + "-f" + nextFloor;
+        TransitionRuntimeState transitionState = new TransitionRuntimeState(claimed.worldName(), nextWorldName);
+        runtimeTransitionStates.put(instanceId, transitionState);
         Vec3i origin = new Vec3i(0, DEFAULT_INSTANCE_ORIGIN_Y, 0);
         String oldWorldName = claimed.worldName();
         Set<UUID> roster = membershipRepository.findPlayerIdsByInstance(instanceId);
@@ -446,9 +496,9 @@ public class DungeonInstanceService {
         return runtimeAdapter.createWorld(nextWorldName, nextFloor, claimed.seed(), origin)
                 .thenCompose(newWorld -> runtimeAdapter.generate(config)
                         .thenCompose(result -> activateTransitionedFloor(
-                                newWorld, claimed, roster, nextFloor, origin, result, oldWorldName)))
+                                newWorld, claimed, roster, nextFloor, origin, result, oldWorldName, transitionState)))
                 .exceptionallyCompose(throwable -> handleTransitionFailure(
-                        claimed, nextWorldName, throwable));
+                        claimed, nextWorldName, transitionState, throwable));
     }
 
     /**
@@ -476,42 +526,88 @@ public class DungeonInstanceService {
         EndPreparation preparation = prepareEndInstance(instanceId);
         runtimeActiveInstanceOverrides.remove(instanceId);
         String worldName = preparation.instance().worldName();
+        List<String> cleanupWorldNames = resolveCleanupWorldNames(instanceId, worldName);
 
         if (preparation.retryingCleanup()) {
             LOGGER.at(Level.INFO).log(
-                    "Retrying cleanup for ended instance %s in world %s",
+                    "Retrying cleanup for ended instance %s across %s",
                     instanceId,
-                    worldName
+                    describeCleanupTargets(cleanupWorldNames)
             );
         } else {
             LOGGER.at(Level.INFO).log(
-                    "Instance %s ended (was %s), evacuating roster from world %s",
+                    "Instance %s ended (was %s), evacuating roster across %s",
                     instanceId,
                     preparation.instance().state(),
-                    worldName
+                    describeCleanupTargets(cleanupWorldNames)
             );
         }
 
-        return runtimeAdapter.evacuateToSharedWorld(preparation.roster(), worldName)
-                .handle((unused, evacuationError) -> unwrapFailureOrNull(evacuationError))
-                .thenCompose(evacuationFailure -> runtimeAdapter.armWorldRemoval(worldName)
-                        .handle((ignored, armError) -> {
-                            Throwable armFailure = unwrapFailureOrNull(armError);
-                            if (evacuationFailure == null && armFailure == null) {
-                                return null;
-                            }
+        return performEndCleanup(instanceId, preparation.roster(), cleanupWorldNames, "End");
+    }
 
-                            IllegalStateException failure = buildEndFailure(
-                                    instanceId,
-                                    worldName,
-                                    evacuationFailure,
-                                    armFailure
-                            );
-                            LOGGER.at(Level.WARNING)
-                                    .withCause(failure)
-                                    .log("End flow for instance %s did not complete cleanly", instanceId);
-                            throw new CompletionException(failure);
-                        }));
+    /**
+     * Force-ends a dungeon instance from any non-{@code ENDED} state, including
+     * {@code CREATING} and {@code TRANSITIONING}.
+     *
+     * <p>This is the admin variant of {@link #endInstance}. It bypasses the
+     * {@code ACTIVE}-only restriction so operators can recover stuck instances.
+     *
+     * @param instanceId the instance identifier
+     * @return a future that completes when evacuation and world cleanup arming finish
+     * @throws SQLException             if a database access error occurs
+     * @throws IllegalArgumentException if the instance does not exist
+     * @throws IllegalStateException    if the instance is already {@code ENDED}
+     * @since 1.6.0
+     */
+    @Nonnull
+    public CompletableFuture<Void> forceEndInstance(@Nonnull String instanceId) throws SQLException {
+        Objects.requireNonNull(instanceId, "instanceId");
+        DungeonInstance runtimeOverride = runtimeActiveInstanceOverrides.get(instanceId);
+        TransitionRuntimeState transitionState = runtimeTransitionStates.get(instanceId);
+
+        EndPreparation preparation = database.transaction(conn -> {
+            DungeonInstance instance = instanceRepository.findByIdInTransaction(conn, instanceId)
+                    .orElseThrow(() -> new IllegalArgumentException(
+                            "Cannot force-end instance " + instanceId + ": not found"));
+
+            if (instance.state() == DungeonInstanceState.ENDED) {
+                throw new IllegalStateException(
+                        "Cannot force-end instance " + instanceId + ": already ENDED");
+            }
+            if (instance.state() == DungeonInstanceState.TRANSITIONING
+                    && transitionState == null
+                    && runtimeOverride == null) {
+                throw new IllegalStateException(
+                        "Cannot force-end instance " + instanceId
+                                + ": the live transition context is unavailable");
+            }
+
+            if (!instanceRepository.forceClaimEndStateInTransaction(conn, instanceId)) {
+                throw new IllegalStateException(
+                        "Cannot force-end instance " + instanceId + ": claim failed unexpectedly");
+            }
+            if (instance.state() == DungeonInstanceState.TRANSITIONING && transitionState != null) {
+                transitionState.markForceEnded();
+            }
+
+            return EndPreparation.claimed(
+                    instance,
+                    membershipRepository.findPlayerIdsByInstanceInTransaction(conn, instanceId)
+            );
+        });
+
+        runtimeActiveInstanceOverrides.remove(instanceId);
+        String worldName = preparation.instance().worldName();
+        List<String> cleanupWorldNames = resolveCleanupWorldNames(instanceId, worldName);
+        LOGGER.at(Level.WARNING).log(
+                "Admin force-ended instance %s (was %s), evacuating roster across %s",
+                instanceId,
+                preparation.instance().state(),
+                describeCleanupTargets(cleanupWorldNames)
+        );
+
+        return performEndCleanup(instanceId, preparation.roster(), cleanupWorldNames, "Force-end");
     }
 
     // ============================================
@@ -647,7 +743,8 @@ public class DungeonInstanceService {
             int nextFloor,
             @Nonnull Vec3i origin,
             @Nonnull GenerationResult result,
-            @Nonnull String oldWorldName
+            @Nonnull String oldWorldName,
+            @Nonnull TransitionRuntimeState transitionState
     ) {
         if (result.assemblyError() != null) {
             return CompletableFuture.failedFuture(new IllegalStateException(result.assemblyError()));
@@ -688,23 +785,32 @@ public class DungeonInstanceService {
                 previousFloor.createdAt()
         );
 
-        return runtimeAdapter.finalizeWorld(newWorld, origin, entrancePosition, result)
-                .thenCompose(unused -> updatePersistedInstance(updatedInstance))
+        return ensureTransitionNotForceEnded(previousFloor.instanceId(), transitionState)
+                .thenCompose(unused -> runtimeAdapter.finalizeWorld(newWorld, origin, entrancePosition, result))
+                .thenCompose(unused -> updatePersistedInstanceWhileTransitioning(
+                        updatedInstance,
+                        transitionState,
+                        "persist transition metadata"
+                ))
+                .thenCompose(unused -> ensureTransitionNotForceEnded(previousFloor.instanceId(), transitionState))
                 .thenCompose(unused -> runtimeAdapter.teleportRoster(roster, newWorld, entrancePosition))
+                .thenCompose(unused -> ensureTransitionNotForceEnded(previousFloor.instanceId(), transitionState))
                 // === Transfer boundary: past this point, new world metadata is authoritative ===
                 .thenCompose(unused -> completePostTransferTransition(
-                        activeInstance, oldWorldName, nextFloor, newWorld.worldName()));
+                        activeInstance, oldWorldName, nextFloor, newWorld.worldName(), transitionState));
     }
 
     @Nonnull
     private <T> CompletableFuture<T> handleTransitionFailure(
             @Nonnull DungeonInstance previousFloor,
             @Nonnull String newWorldName,
+            @Nonnull TransitionRuntimeState transitionState,
             @Nonnull Throwable throwable
     ) {
         Throwable failure = unwrapFailure(throwable);
 
         if (failure instanceof TransferCompletedException transferCompleted) {
+            runtimeTransitionStates.remove(previousFloor.instanceId(), transitionState);
             runtimeActiveInstanceOverrides.putIfAbsent(
                     transferCompleted.getActiveInstance().instanceId(),
                     transferCompleted.getActiveInstance()
@@ -716,6 +822,13 @@ public class DungeonInstanceService {
                             previousFloor.instanceId(),
                             describeFailure(failure.getCause()));
             return CompletableFuture.failedFuture(failure.getCause());
+        }
+        if (failure instanceof TransitionCancelledException) {
+            LOGGER.at(Level.WARNING).log(
+                    "Floor transition for instance %s was cancelled because the instance was force-ended",
+                    previousFloor.instanceId()
+            );
+            return CompletableFuture.failedFuture(failure);
         }
 
         LOGGER.at(Level.WARNING)
@@ -748,13 +861,22 @@ public class DungeonInstanceService {
         );
 
         try {
-            instanceRepository.update(reverted);
+            if (!instanceRepository.updateIfState(reverted, DungeonInstanceState.TRANSITIONING)
+                    && !transitionState.isForceEnded()) {
+                LOGGER.at(Level.WARNING).log(
+                        "Skipped reverting instance %s to ACTIVE because its state changed unexpectedly",
+                        previousFloor.instanceId()
+                );
+            }
         } catch (SQLException revertError) {
             failure.addSuppressed(revertError);
             LOGGER.at(Level.SEVERE)
                     .withCause(revertError)
                     .log("Failed to revert instance %s to ACTIVE after transition failure",
                             previousFloor.instanceId());
+        }
+        if (!transitionState.isForceEnded()) {
+            runtimeTransitionStates.remove(previousFloor.instanceId(), transitionState);
         }
 
         return CompletableFuture.failedFuture(failure);
@@ -776,13 +898,15 @@ public class DungeonInstanceService {
             @Nonnull DungeonInstance activeInstance,
             @Nonnull String oldWorldName,
             int nextFloor,
-            @Nonnull String newWorldName
+            @Nonnull String newWorldName,
+            @Nonnull TransitionRuntimeState transitionState
     ) {
         Objects.requireNonNull(activeInstance, "activeInstance");
         Objects.requireNonNull(oldWorldName, "oldWorldName");
         Objects.requireNonNull(newWorldName, "newWorldName");
+        Objects.requireNonNull(transitionState, "transitionState");
 
-        return persistPostTransferActiveState(activeInstance)
+        return persistPostTransferActiveState(activeInstance, transitionState)
                 .thenCompose(completion -> runtimeAdapter.armWorldRemoval(oldWorldName)
                         .handle((unused, throwable) -> completion.withCleanupFailure(
                                 throwable == null ? null : unwrapFailure(throwable))))
@@ -792,6 +916,7 @@ public class DungeonInstanceService {
                         return CompletableFuture.failedFuture(
                                 new TransferCompletedException(activeInstance, combinedFailure));
                     }
+                    runtimeTransitionStates.remove(activeInstance.instanceId(), transitionState);
                     LOGGER.at(Level.INFO).log(
                             "Floor transition complete for instance %s: now on floor %d in world %s",
                             activeInstance.instanceId(),
@@ -804,18 +929,25 @@ public class DungeonInstanceService {
 
     @Nonnull
     private CompletableFuture<PostTransferCompletion> persistPostTransferActiveState(
-            @Nonnull DungeonInstance activeInstance
+            @Nonnull DungeonInstance activeInstance,
+            @Nonnull TransitionRuntimeState transitionState
     ) {
         Objects.requireNonNull(activeInstance, "activeInstance");
+        Objects.requireNonNull(transitionState, "transitionState");
         runtimeActiveInstanceOverrides.put(activeInstance.instanceId(), activeInstance);
 
-        return updatePersistedInstance(activeInstance)
+        return updatePersistedInstanceWhileTransitioning(
+                activeInstance,
+                transitionState,
+                "persist ACTIVE state"
+        )
                 .thenApply(unused -> {
                     runtimeActiveInstanceOverrides.remove(activeInstance.instanceId(), activeInstance);
                     return PostTransferCompletion.success(activeInstance);
                 })
                 .exceptionallyCompose(throwable -> retryPersistPostTransferActiveState(
                         activeInstance,
+                        transitionState,
                         unwrapFailure(throwable)
                 ));
     }
@@ -823,14 +955,23 @@ public class DungeonInstanceService {
     @Nonnull
     private CompletableFuture<PostTransferCompletion> retryPersistPostTransferActiveState(
             @Nonnull DungeonInstance activeInstance,
+            @Nonnull TransitionRuntimeState transitionState,
             @Nonnull Throwable firstFailure
     ) {
+        if (firstFailure instanceof TransitionCancelledException) {
+            runtimeActiveInstanceOverrides.remove(activeInstance.instanceId(), activeInstance);
+            return CompletableFuture.failedFuture(firstFailure);
+        }
         LOGGER.at(Level.WARNING)
                 .withCause(firstFailure)
                 .log("Failed to persist ACTIVE state for instance %s after transfer; retrying once",
                         activeInstance.instanceId());
 
-        return updatePersistedInstance(activeInstance)
+        return updatePersistedInstanceWhileTransitioning(
+                activeInstance,
+                transitionState,
+                "persist ACTIVE state"
+        )
                 .thenApply(unused -> {
                     runtimeActiveInstanceOverrides.remove(activeInstance.instanceId(), activeInstance);
                     LOGGER.at(Level.WARNING).log(
@@ -1019,38 +1160,127 @@ public class DungeonInstanceService {
     }
 
     @Nonnull
-    private static IllegalStateException buildEndFailure(
+    private static CompletableFuture<Void> ensureTransitionNotForceEnded(
             @Nonnull String instanceId,
-            @Nonnull String worldName,
-            @Nullable Throwable evacuationFailure,
-            @Nullable Throwable armFailure
+            @Nonnull TransitionRuntimeState transitionState
     ) {
         Objects.requireNonNull(instanceId, "instanceId");
-        Objects.requireNonNull(worldName, "worldName");
+        Objects.requireNonNull(transitionState, "transitionState");
+        if (!transitionState.isForceEnded()) {
+            return CompletableFuture.completedFuture(null);
+        }
+        return CompletableFuture.failedFuture(new TransitionCancelledException(instanceId));
+    }
 
-        if (evacuationFailure != null && armFailure != null) {
-            IllegalStateException failure = new IllegalStateException(
-                    "Failed to end instance " + instanceId
-                            + " cleanly: evacuation to the shared world and removal arming for "
-                            + worldName + " both failed",
-                    evacuationFailure
-            );
-            if (armFailure != evacuationFailure) {
-                failure.addSuppressed(armFailure);
+    @Nonnull
+    private CompletableFuture<Void> updatePersistedInstanceWhileTransitioning(
+            @Nonnull DungeonInstance instance,
+            @Nonnull TransitionRuntimeState transitionState,
+            @Nonnull String actionDescription
+    ) {
+        Objects.requireNonNull(instance, "instance");
+        Objects.requireNonNull(transitionState, "transitionState");
+        Objects.requireNonNull(actionDescription, "actionDescription");
+        try {
+            if (instanceRepository.updateIfState(instance, DungeonInstanceState.TRANSITIONING)) {
+                return CompletableFuture.completedFuture(null);
             }
-            return failure;
+            if (transitionState.isForceEnded()) {
+                return CompletableFuture.failedFuture(new TransitionCancelledException(instance.instanceId()));
+            }
+            return CompletableFuture.failedFuture(new IllegalStateException(
+                    "Cannot " + actionDescription + " for instance " + instance.instanceId()
+                            + ": lifecycle state changed unexpectedly"
+            ));
+        } catch (SQLException e) {
+            return CompletableFuture.failedFuture(e);
         }
-        if (evacuationFailure != null) {
-            return new IllegalStateException(
-                    "Failed to end instance " + instanceId + " cleanly: evacuation to the shared world failed",
-                    evacuationFailure
-            );
+    }
+
+    @Nonnull
+    private List<String> resolveCleanupWorldNames(@Nonnull String instanceId, @Nonnull String persistedWorldName) {
+        Objects.requireNonNull(instanceId, "instanceId");
+        Objects.requireNonNull(persistedWorldName, "persistedWorldName");
+        TransitionRuntimeState transitionState = runtimeTransitionStates.get(instanceId);
+        if (transitionState == null) {
+            return List.of(persistedWorldName);
         }
-        return new IllegalStateException(
-                "Failed to end instance " + instanceId + " cleanly: arming world "
-                        + worldName + " for removal failed",
-                armFailure
-        );
+        return transitionState.cleanupWorldNames(persistedWorldName);
+    }
+
+    @Nonnull
+    private CompletableFuture<Void> performEndCleanup(
+            @Nonnull String instanceId,
+            @Nonnull Set<UUID> roster,
+            @Nonnull List<String> cleanupWorldNames,
+            @Nonnull String flowName
+    ) {
+        Objects.requireNonNull(instanceId, "instanceId");
+        Objects.requireNonNull(roster, "roster");
+        Objects.requireNonNull(cleanupWorldNames, "cleanupWorldNames");
+        Objects.requireNonNull(flowName, "flowName");
+        CleanupFailureTracker failures = new CleanupFailureTracker();
+
+        return runEvacuationPass(roster, cleanupWorldNames, failures)
+                .thenCompose(unused -> runRemovalArmingPass(cleanupWorldNames, failures))
+                .thenCompose(unused -> {
+                    IllegalStateException failure = failures.toException(instanceId);
+                    if (failure == null) {
+                        runtimeTransitionStates.remove(instanceId);
+                        return CompletableFuture.completedFuture(null);
+                    }
+                    LOGGER.at(Level.WARNING)
+                            .withCause(failure)
+                            .log("%s flow for instance %s did not complete cleanly", flowName, instanceId);
+                    return CompletableFuture.failedFuture(failure);
+                });
+    }
+
+    @Nonnull
+    private CompletableFuture<Void> runEvacuationPass(
+            @Nonnull Set<UUID> roster,
+            @Nonnull List<String> cleanupWorldNames,
+            @Nonnull CleanupFailureTracker failures
+    ) {
+        CompletableFuture<Void> future = CompletableFuture.completedFuture(null);
+        for (String worldName : cleanupWorldNames) {
+            future = future.thenCompose(unused -> runtimeAdapter.evacuateToSharedWorld(roster, worldName)
+                    .handle((ignored, throwable) -> {
+                        Throwable failure = unwrapFailureOrNull(throwable);
+                        if (failure != null) {
+                            failures.recordEvacuationFailure(worldName, failure);
+                        }
+                        return null;
+                    }));
+        }
+        return future;
+    }
+
+    @Nonnull
+    private CompletableFuture<Void> runRemovalArmingPass(
+            @Nonnull List<String> cleanupWorldNames,
+            @Nonnull CleanupFailureTracker failures
+    ) {
+        CompletableFuture<Void> future = CompletableFuture.completedFuture(null);
+        for (String worldName : cleanupWorldNames) {
+            future = future.thenCompose(unused -> runtimeAdapter.armWorldRemoval(worldName)
+                    .handle((ignored, throwable) -> {
+                        Throwable failure = unwrapFailureOrNull(throwable);
+                        if (failure != null) {
+                            failures.recordArmFailure(worldName, failure);
+                        }
+                        return null;
+                    }));
+        }
+        return future;
+    }
+
+    @Nonnull
+    private static String describeCleanupTargets(@Nonnull List<String> cleanupWorldNames) {
+        Objects.requireNonNull(cleanupWorldNames, "cleanupWorldNames");
+        return cleanupWorldNames.size() == 1
+                ? "world " + cleanupWorldNames.get(0)
+                : "worlds " + cleanupWorldNames;
     }
 
     @Nonnull
@@ -1678,12 +1908,6 @@ public class DungeonInstanceService {
     // ============================================
 
     /**
-     * Thrown when roster validation fails because one or more players already belong
-     * to a non-ended dungeon instance.
-     *
-     * @since 1.6.0
-     */
-    /**
      * Marker exception indicating a floor transition failure that occurred after the roster
      * transfer completed. The new world metadata is authoritative and must not be reverted.
      */
@@ -1699,6 +1923,42 @@ public class DungeonInstanceService {
         @Nonnull
         DungeonInstance getActiveInstance() {
             return activeInstance;
+        }
+    }
+
+    private static final class TransitionCancelledException extends RuntimeException {
+
+        private TransitionCancelledException(@Nonnull String instanceId) {
+            super("Transition for instance " + instanceId + " was cancelled because it was force-ended");
+        }
+    }
+
+    private static final class TransitionRuntimeState {
+
+        private final String oldWorldName;
+        private final String newWorldName;
+        private volatile boolean forceEnded;
+
+        private TransitionRuntimeState(@Nonnull String oldWorldName, @Nonnull String newWorldName) {
+            this.oldWorldName = Objects.requireNonNull(oldWorldName, "oldWorldName");
+            this.newWorldName = Objects.requireNonNull(newWorldName, "newWorldName");
+        }
+
+        private void markForceEnded() {
+            this.forceEnded = true;
+        }
+
+        private boolean isForceEnded() {
+            return forceEnded;
+        }
+
+        @Nonnull
+        private List<String> cleanupWorldNames(@Nonnull String persistedWorldName) {
+            LinkedHashSet<String> worlds = new LinkedHashSet<>();
+            worlds.add(oldWorldName);
+            worlds.add(newWorldName);
+            worlds.add(Objects.requireNonNull(persistedWorldName, "persistedWorldName"));
+            return List.copyOf(worlds);
         }
     }
 
@@ -1735,6 +1995,53 @@ public class DungeonInstanceService {
                 return activationFailure;
             }
             return cleanupFailure;
+        }
+    }
+
+    private static final class CleanupFailureTracker {
+
+        private final List<String> evacuationWorlds = new ArrayList<>();
+        private final List<String> armWorlds = new ArrayList<>();
+        private final List<Throwable> causes = new ArrayList<>();
+
+        private void recordEvacuationFailure(@Nonnull String worldName, @Nonnull Throwable failure) {
+            evacuationWorlds.add(Objects.requireNonNull(worldName, "worldName"));
+            causes.add(Objects.requireNonNull(failure, "failure"));
+        }
+
+        private void recordArmFailure(@Nonnull String worldName, @Nonnull Throwable failure) {
+            armWorlds.add(Objects.requireNonNull(worldName, "worldName"));
+            causes.add(Objects.requireNonNull(failure, "failure"));
+        }
+
+        @Nullable
+        private IllegalStateException toException(@Nonnull String instanceId) {
+            Objects.requireNonNull(instanceId, "instanceId");
+            if (causes.isEmpty()) {
+                return null;
+            }
+
+            StringBuilder message = new StringBuilder("Failed to end instance ")
+                    .append(instanceId)
+                    .append(" cleanly:");
+            if (!evacuationWorlds.isEmpty()) {
+                message.append(" evacuation failed for ").append(evacuationWorlds);
+            }
+            if (!armWorlds.isEmpty()) {
+                if (!evacuationWorlds.isEmpty()) {
+                    message.append(';');
+                }
+                message.append(" removal arming failed for ").append(armWorlds);
+            }
+
+            IllegalStateException failure = new IllegalStateException(message.toString(), causes.get(0));
+            for (int i = 1; i < causes.size(); i++) {
+                Throwable suppressed = causes.get(i);
+                if (suppressed != causes.get(0)) {
+                    failure.addSuppressed(suppressed);
+                }
+            }
+            return failure;
         }
     }
 
