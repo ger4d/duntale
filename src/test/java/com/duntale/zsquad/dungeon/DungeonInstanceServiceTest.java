@@ -5,6 +5,7 @@ import com.duntale.dungeongen.config.Vec3i;
 import com.duntale.dungeongen.generator.GenerationResult;
 import com.duntale.zsquad.db.DatabaseProvider;
 import com.duntale.zsquad.dungeon.DungeonInstanceService.RosterValidationException;
+import com.hypixel.hytale.math.vector.Transform;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -13,6 +14,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 import java.nio.file.Path;
+import java.sql.Connection;
 import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.Collection;
@@ -27,12 +29,14 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -851,6 +855,272 @@ class DungeonInstanceServiceTest {
     }
 
     // ============================================
+    // endInstance
+    // ============================================
+
+    @Nested
+    @DisplayName("endInstance")
+    class EndInstanceFlow {
+
+        @Test
+        @DisplayName("Should end active instance, evacuate roster, and arm world for removal")
+        void shouldEndActiveInstanceEvacuateAndArm() throws SQLException {
+            FakeRuntime runtime = new FakeRuntime();
+            service = new DungeonInstanceService(
+                    database, instanceRepository, membershipRepository, new PartyService(), runtime);
+
+            UUID playerA = UUID.randomUUID();
+            UUID playerB = UUID.randomUUID();
+            DungeonInstance instance = service.createInstance(List.of(playerA, playerB), 1, "crypt").join();
+
+            service.endInstance(instance.instanceId()).join();
+
+            DungeonInstance ended = instanceRepository.findById(instance.instanceId()).orElseThrow();
+            assertEquals(DungeonInstanceState.ENDED, ended.state());
+            assertTrue(runtime.evacuatedPlayers.containsAll(List.of(playerA, playerB)));
+            assertEquals(List.of(instance.worldName()), runtime.evacuationSourceWorlds);
+            assertEquals(List.of(instance.worldName()), runtime.armedWorlds);
+        }
+
+        @Test
+        @DisplayName("Should retry cleanup when instance is already ended")
+        void shouldRetryCleanupWhenAlreadyEnded() throws SQLException {
+            FakeRuntime runtime = new FakeRuntime();
+            service = new DungeonInstanceService(
+                    database, instanceRepository, membershipRepository, new PartyService(), runtime);
+
+            UUID player = UUID.randomUUID();
+            DungeonInstance instance = testInstanceWithState("inst-1", "world-1", DungeonInstanceState.ACTIVE);
+            service.createInstance(instance, List.of(player));
+            instanceRepository.endInstance("inst-1");
+
+            service.endInstance("inst-1").join();
+
+            DungeonInstance ended = instanceRepository.findById("inst-1").orElseThrow();
+            assertEquals(DungeonInstanceState.ENDED, ended.state());
+            assertEquals(List.of("world-1"), runtime.evacuationSourceWorlds);
+            assertEquals(List.of("world-1"), runtime.armedWorlds);
+        }
+
+        @Test
+        @DisplayName("Should reject ending non-existent instance")
+        void shouldRejectEndingNonExistentInstance() {
+            assertThrows(IllegalArgumentException.class,
+                    () -> service.endInstance("no-such-instance"));
+        }
+
+        @Test
+        @DisplayName("Should reject ending instance in CREATING state")
+        void shouldRejectEndingCreatingInstance() throws SQLException {
+            UUID player = UUID.randomUUID();
+            DungeonInstance instance = testInstanceWithState("inst-1", "world-1", DungeonInstanceState.CREATING);
+            service.createInstance(instance, List.of(player));
+
+            assertThrows(IllegalStateException.class,
+                    () -> service.endInstance("inst-1"));
+        }
+
+        @Test
+        @DisplayName("Should reject ending instance in TRANSITIONING state")
+        void shouldRejectEndingTransitioningInstance() throws SQLException {
+            UUID player = UUID.randomUUID();
+            DungeonInstance instance = testInstanceWithState("inst-1", "world-1", DungeonInstanceState.TRANSITIONING);
+            service.createInstance(instance, List.of(player));
+
+            assertThrows(IllegalStateException.class,
+                    () -> service.endInstance("inst-1"));
+        }
+
+        @Test
+        @DisplayName("Should make ended instance unreachable via Continue")
+        void shouldMakeEndedInstanceUnreachableViaContinue() throws SQLException {
+            FakeRuntime runtime = new FakeRuntime();
+            service = new DungeonInstanceService(
+                    database, instanceRepository, membershipRepository, new PartyService(), runtime);
+
+            UUID player = UUID.randomUUID();
+            DungeonInstance instance = service.createInstance(List.of(player), 1, "crypt").join();
+
+            DungeonInstanceService.ContinueRoute routeBefore = service.resolveContinueRoute(player);
+            assertTrue(routeBefore.routesToInstance());
+
+            service.endInstance(instance.instanceId()).join();
+
+            DungeonInstanceService.ContinueRoute routeAfter = service.resolveContinueRoute(player);
+            assertFalse(routeAfter.routesToInstance());
+            assertNull(routeAfter.instance());
+        }
+
+        @Test
+        @DisplayName("Should clear runtime override when ending instance")
+        void shouldClearRuntimeOverrideWhenEnding() throws SQLException {
+            FakeRuntime runtime = new FakeRuntime();
+            instanceRepository = new FailingActiveStateRepository(database, 2);
+            service = new DungeonInstanceService(
+                    database, instanceRepository, membershipRepository, new PartyService(), runtime);
+
+            UUID player = UUID.randomUUID();
+            DungeonInstance floor1 = service.createInstance(List.of(player), 1, "crypt").join();
+
+            // Force a post-transfer persistence failure to create a runtime override
+            assertThrows(CompletionException.class,
+                    () -> service.transitionFloor(floor1.instanceId()).join());
+
+            // Continue should still work via runtime override
+            DungeonInstanceService.ContinueRoute overrideRoute = service.resolveContinueRoute(player);
+            assertTrue(overrideRoute.routesToInstance());
+
+            // Now repair the override (so claimEndState can work on ACTIVE)
+            service.endInstance(floor1.instanceId()).join();
+
+            // After end, Continue should not route
+            DungeonInstanceService.ContinueRoute routeAfterEnd = service.resolveContinueRoute(player);
+            assertFalse(routeAfterEnd.routesToInstance());
+            assertNull(routeAfterEnd.instance());
+        }
+
+        @Test
+        @DisplayName("Should surface evacuation failure while keeping end state claimed")
+        void shouldSurfaceEvacuationFailureWhileKeepingEndStateClaimed() throws SQLException {
+            FakeRuntime runtime = new FakeRuntime();
+            runtime.evacuationFailure = new RuntimeException("evacuation failed");
+            service = new DungeonInstanceService(
+                    database, instanceRepository, membershipRepository, new PartyService(), runtime);
+
+            UUID player = UUID.randomUUID();
+            DungeonInstance instance = service.createInstance(List.of(player), 1, "crypt").join();
+
+            CompletionException ex = assertThrows(
+                    CompletionException.class,
+                    () -> service.endInstance(instance.instanceId()).join());
+
+            DungeonInstance ended = instanceRepository.findById(instance.instanceId()).orElseThrow();
+            assertEquals(DungeonInstanceState.ENDED, ended.state());
+            assertTrue(ex.getCause() instanceof IllegalStateException);
+            assertTrue(ex.getCause().getMessage().contains("evacuation"));
+            assertEquals(List.of(instance.worldName()), runtime.armedWorlds);
+        }
+
+        @Test
+        @DisplayName("Should surface world removal arming failure")
+        void shouldSurfaceWorldRemovalArmingFailure() throws SQLException {
+            FakeRuntime runtime = new FakeRuntime();
+            runtime.armWorldRemovalFailure = new RuntimeException("arm failed");
+            service = new DungeonInstanceService(
+                    database, instanceRepository, membershipRepository, new PartyService(), runtime);
+
+            UUID player = UUID.randomUUID();
+            DungeonInstance instance = service.createInstance(List.of(player), 1, "crypt").join();
+
+            CompletionException ex = assertThrows(
+                    CompletionException.class,
+                    () -> service.endInstance(instance.instanceId()).join());
+
+            DungeonInstance ended = instanceRepository.findById(instance.instanceId()).orElseThrow();
+            assertEquals(DungeonInstanceState.ENDED, ended.state());
+            assertTrue(ex.getCause() instanceof IllegalStateException);
+            assertTrue(ex.getCause().getMessage().contains("arming"));
+            assertTrue(runtime.evacuatedPlayers.contains(player));
+        }
+
+        @Test
+        @DisplayName("Should keep instance retryable when roster lookup fails during end preparation")
+        void shouldKeepInstanceRetryableWhenRosterLookupFailsDuringEndPreparation() throws SQLException {
+            FakeRuntime runtime = new FakeRuntime();
+            membershipRepository = new FailingRosterLookupMembershipRepository(database, 1);
+            membershipRepository.initialize();
+            service = new DungeonInstanceService(
+                    database, instanceRepository, membershipRepository, new PartyService(), runtime);
+
+            UUID player = UUID.randomUUID();
+            DungeonInstance instance = service.createInstance(List.of(player), 1, "crypt").join();
+
+            assertThrows(SQLException.class, () -> service.endInstance(instance.instanceId()));
+
+            DungeonInstance stillActive = instanceRepository.findById(instance.instanceId()).orElseThrow();
+            assertEquals(DungeonInstanceState.ACTIVE, stillActive.state());
+            assertTrue(runtime.evacuatedPlayers.isEmpty());
+            assertTrue(runtime.armedWorlds.isEmpty());
+
+            service.endInstance(instance.instanceId()).join();
+
+            DungeonInstance ended = instanceRepository.findById(instance.instanceId()).orElseThrow();
+            assertEquals(DungeonInstanceState.ENDED, ended.state());
+            assertEquals(List.of(instance.worldName()), runtime.evacuationSourceWorlds);
+            assertEquals(List.of(instance.worldName()), runtime.armedWorlds);
+        }
+
+        @Test
+        @DisplayName("Should allow creating a new instance after ending the previous one")
+        void shouldAllowCreatingNewInstanceAfterEnding() throws SQLException {
+            FakeRuntime runtime = new FakeRuntime();
+            service = new DungeonInstanceService(
+                    database, instanceRepository, membershipRepository, new PartyService(), runtime);
+
+            UUID player = UUID.randomUUID();
+            DungeonInstance first = service.createInstance(List.of(player), 1, "crypt").join();
+
+            service.endInstance(first.instanceId()).join();
+
+            // Player should now be free to start a new instance
+            DungeonInstance second = service.createInstance(List.of(player), 1, "crypt").join();
+            assertEquals(DungeonInstanceState.ACTIVE, second.state());
+        }
+    }
+
+    @Nested
+    @DisplayName("spawn resolution")
+    class SpawnResolution {
+
+        @Test
+        @DisplayName("Should resolve shared-world spawn through the provided dispatcher")
+        void shouldResolveSharedWorldSpawnThroughProvidedDispatcher() {
+            AtomicBoolean dispatcherActive = new AtomicBoolean(false);
+            AtomicBoolean dispatcherCalled = new AtomicBoolean(false);
+            AtomicBoolean lookupCalled = new AtomicBoolean(false);
+            Transform expected = new Transform(1.5D, 70.0D, 2.5D);
+
+            Transform resolved = DungeonInstanceService.resolveSpawnOnWorldThread(
+                    lookup -> {
+                        dispatcherCalled.set(true);
+                        dispatcherActive.set(true);
+                        try {
+                            return CompletableFuture.completedFuture(lookup.get());
+                        } finally {
+                            dispatcherActive.set(false);
+                        }
+                    },
+                    () -> {
+                        lookupCalled.set(true);
+                        assertTrue(dispatcherActive.get());
+                        return expected;
+                    },
+                    "missing spawn"
+            ).join();
+
+            assertTrue(dispatcherCalled.get());
+            assertTrue(lookupCalled.get());
+            assertSame(expected, resolved);
+        }
+
+        @Test
+        @DisplayName("Should fail when shared-world spawn lookup returns null")
+        void shouldFailWhenSharedWorldSpawnLookupReturnsNull() {
+            CompletionException ex = assertThrows(
+                    CompletionException.class,
+                    () -> DungeonInstanceService.resolveSpawnOnWorldThread(
+                            lookup -> CompletableFuture.completedFuture(lookup.get()),
+                            () -> null,
+                            "missing spawn"
+                    ).join()
+            );
+
+            assertTrue(ex.getCause() instanceof IllegalStateException);
+            assertEquals("missing spawn", ex.getCause().getMessage());
+        }
+    }
+
+    // ============================================
     // Helpers
     // ============================================
 
@@ -911,10 +1181,13 @@ class DungeonInstanceServiceTest {
         private final List<String> createdWorldNames = new ArrayList<>();
         private final List<String> cleanedWorlds = new ArrayList<>();
         private final List<String> armedWorlds = new ArrayList<>();
+        private final List<String> evacuationSourceWorlds = new ArrayList<>();
         private final List<UUID> teleportedPlayers = new ArrayList<>();
+        private final List<UUID> evacuatedPlayers = new ArrayList<>();
 
         private DungeonConfig generatedConfig;
         private RuntimeException armWorldRemovalFailure;
+        private RuntimeException evacuationFailure;
         private CompletableFuture<DungeonInstanceService.InstanceWorld> deferredWorldCreation;
         private CompletableFuture<GenerationResult> deferredGeneration;
         private CompletableFuture<Void> deferredTeleport;
@@ -989,6 +1262,19 @@ class DungeonInstanceServiceTest {
             return CompletableFuture.completedFuture(null);
         }
 
+        @Override
+        public CompletableFuture<Void> evacuateToSharedWorld(
+                Collection<UUID> playerIds,
+                String sourceWorldName
+        ) {
+            if (evacuationFailure != null) {
+                return CompletableFuture.failedFuture(evacuationFailure);
+            }
+            evacuationSourceWorlds.add(sourceWorldName);
+            evacuatedPlayers.addAll(playerIds);
+            return CompletableFuture.completedFuture(null);
+        }
+
         private FakeRuntime requireLoadedWorldsForCleanup() {
             cleanupRequiresLoadedWorlds = true;
             worldsLoadedForCleanup = false;
@@ -1046,6 +1332,25 @@ class DungeonInstanceServiceTest {
                 throw new SQLException("forced ACTIVE update failure");
             }
             super.update(instance);
+        }
+    }
+
+    private static final class FailingRosterLookupMembershipRepository extends DungeonMembershipRepository {
+
+        private int remainingFailures;
+
+        private FailingRosterLookupMembershipRepository(DatabaseProvider database, int remainingFailures) {
+            super(database);
+            this.remainingFailures = remainingFailures;
+        }
+
+        @Override
+        Set<UUID> findPlayerIdsByInstanceInTransaction(Connection conn, String instanceId) throws SQLException {
+            if (remainingFailures > 0) {
+                remainingFailures--;
+                throw new SQLException("forced roster lookup failure");
+            }
+            return super.findPlayerIdsByInstanceInTransaction(conn, instanceId);
         }
     }
 

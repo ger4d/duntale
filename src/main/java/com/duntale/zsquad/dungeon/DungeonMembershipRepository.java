@@ -200,18 +200,25 @@ public class DungeonMembershipRepository {
     @Nonnull
     public Set<UUID> findPlayerIdsByInstance(@Nonnull String instanceId) throws SQLException {
         Objects.requireNonNull(instanceId, "instanceId");
-        return database.read(conn -> {
-            Set<UUID> playerIds = new HashSet<>();
-            try (PreparedStatement ps = conn.prepareStatement(SELECT_PLAYER_UUIDS_BY_INSTANCE_SQL)) {
-                ps.setString(1, instanceId);
-                try (ResultSet rs = ps.executeQuery()) {
-                    while (rs.next()) {
-                        playerIds.add(UUID.fromString(rs.getString("player_uuid")));
-                    }
+        return database.read(conn -> findPlayerIdsByInstanceInTransaction(conn, instanceId));
+    }
+
+    @Nonnull
+    Set<UUID> findPlayerIdsByInstanceInTransaction(@Nonnull Connection conn, @Nonnull String instanceId)
+            throws SQLException {
+        Objects.requireNonNull(conn, "conn");
+        Objects.requireNonNull(instanceId, "instanceId");
+
+        Set<UUID> playerIds = new HashSet<>();
+        try (PreparedStatement ps = conn.prepareStatement(SELECT_PLAYER_UUIDS_BY_INSTANCE_SQL)) {
+            ps.setString(1, instanceId);
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) {
+                    playerIds.add(UUID.fromString(rs.getString("player_uuid")));
                 }
             }
-            return Set.copyOf(playerIds);
-        });
+        }
+        return Set.copyOf(playerIds);
     }
 
     /**

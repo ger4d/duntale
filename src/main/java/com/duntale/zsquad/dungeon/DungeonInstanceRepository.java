@@ -246,14 +246,20 @@ public class DungeonInstanceRepository {
     @Nonnull
     public Optional<DungeonInstance> findById(@Nonnull String instanceId) throws SQLException {
         Objects.requireNonNull(instanceId, "instanceId");
-        return database.read(conn -> {
-            try (PreparedStatement ps = conn.prepareStatement(SELECT_BY_ID_SQL)) {
-                ps.setString(1, instanceId);
-                try (ResultSet rs = ps.executeQuery()) {
-                    return rs.next() ? Optional.of(mapRow(rs)) : Optional.empty();
-                }
+        return database.read(conn -> findByIdInTransaction(conn, instanceId));
+    }
+
+    @Nonnull
+    Optional<DungeonInstance> findByIdInTransaction(@Nonnull Connection conn, @Nonnull String instanceId)
+            throws SQLException {
+        Objects.requireNonNull(conn, "conn");
+        Objects.requireNonNull(instanceId, "instanceId");
+        try (PreparedStatement ps = conn.prepareStatement(SELECT_BY_ID_SQL)) {
+            ps.setString(1, instanceId);
+            try (ResultSet rs = ps.executeQuery()) {
+                return rs.next() ? Optional.of(mapRow(rs)) : Optional.empty();
             }
-        });
+        }
     }
 
     /**
@@ -362,15 +368,7 @@ public class DungeonInstanceRepository {
                     return Optional.<DungeonInstance>empty();
                 }
             }
-            try (PreparedStatement ps = conn.prepareStatement(SELECT_BY_ID_SQL)) {
-                ps.setString(1, instanceId);
-                try (ResultSet rs = ps.executeQuery()) {
-                    if (rs.next()) {
-                        return Optional.of(mapRow(rs));
-                    }
-                    return Optional.<DungeonInstance>empty();
-                }
-            }
+            return findByIdInTransaction(conn, instanceId);
         });
     }
 
@@ -389,6 +387,36 @@ public class DungeonInstanceRepository {
                 requireSingleRow(ps.executeUpdate(), "end dungeon instance " + instanceId);
             }
         });
+    }
+
+    /**
+     * Atomically marks the given instance as ended if it is currently in {@code ACTIVE} state.
+     *
+     * <p>The conditional update prevents concurrent transition starts and concurrent end
+     * requests from conflicting. If the current state is not {@code ACTIVE}, no rows are
+     * affected and {@code false} is returned.
+     *
+     * @param instanceId the instance identifier
+     * @return {@code true} if the instance was marked ended, {@code false} if it was not in
+     *         {@code ACTIVE} state
+     * @throws SQLException if a database access error occurs
+     */
+    public boolean claimEndState(@Nonnull String instanceId) throws SQLException {
+        Objects.requireNonNull(instanceId, "instanceId");
+        return database.transaction(conn -> {
+            return claimEndStateInTransaction(conn, instanceId);
+        });
+    }
+
+    boolean claimEndStateInTransaction(@Nonnull Connection conn, @Nonnull String instanceId) throws SQLException {
+        Objects.requireNonNull(conn, "conn");
+        Objects.requireNonNull(instanceId, "instanceId");
+        try (PreparedStatement ps = conn.prepareStatement(CLAIM_TRANSITION_SQL)) {
+            ps.setString(1, DungeonInstanceState.ENDED.name());
+            ps.setString(2, instanceId);
+            ps.setString(3, DungeonInstanceState.ACTIVE.name());
+            return ps.executeUpdate() > 0;
+        }
     }
 
     private static void bindCreate(@Nonnull PreparedStatement ps, @Nonnull DungeonInstance instance)

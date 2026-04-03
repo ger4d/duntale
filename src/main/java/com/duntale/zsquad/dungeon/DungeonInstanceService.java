@@ -43,6 +43,8 @@ import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.function.Function;
+import java.util.function.Supplier;
 import java.util.logging.Level;
 
 /**
@@ -449,6 +451,69 @@ public class DungeonInstanceService {
                         claimed, nextWorldName, throwable));
     }
 
+    /**
+     * Ends a dungeon instance, evacuates online roster members to the shared village hub,
+     * and arms the instance world for engine-managed removal when it becomes empty.
+     *
+     * <p>The instance is marked {@code ENDED} synchronously before any async work begins
+     * so that {@link #resolveContinueRoute} immediately stops routing players back into
+     * the instance.
+     *
+     * <p>Only {@link DungeonInstanceState#ACTIVE ACTIVE} instances may be ended through this
+     * method. If the instance is already {@code ENDED}, the service retries any pending
+     * evacuation / cleanup work instead of returning early.
+     *
+     * @param instanceId the instance identifier
+     * @return a future that completes when evacuation and world cleanup arming finish
+     * @throws SQLException             if a database access error occurs
+     * @throws IllegalArgumentException if the instance does not exist
+     * @throws IllegalStateException    if the instance is not in {@code ACTIVE} or {@code ENDED} state
+     */
+    @Nonnull
+    public CompletableFuture<Void> endInstance(@Nonnull String instanceId) throws SQLException {
+        Objects.requireNonNull(instanceId, "instanceId");
+        repairRuntimeActiveOverride(instanceId);
+        EndPreparation preparation = prepareEndInstance(instanceId);
+        runtimeActiveInstanceOverrides.remove(instanceId);
+        String worldName = preparation.instance().worldName();
+
+        if (preparation.retryingCleanup()) {
+            LOGGER.at(Level.INFO).log(
+                    "Retrying cleanup for ended instance %s in world %s",
+                    instanceId,
+                    worldName
+            );
+        } else {
+            LOGGER.at(Level.INFO).log(
+                    "Instance %s ended (was %s), evacuating roster from world %s",
+                    instanceId,
+                    preparation.instance().state(),
+                    worldName
+            );
+        }
+
+        return runtimeAdapter.evacuateToSharedWorld(preparation.roster(), worldName)
+                .handle((unused, evacuationError) -> unwrapFailureOrNull(evacuationError))
+                .thenCompose(evacuationFailure -> runtimeAdapter.armWorldRemoval(worldName)
+                        .handle((ignored, armError) -> {
+                            Throwable armFailure = unwrapFailureOrNull(armError);
+                            if (evacuationFailure == null && armFailure == null) {
+                                return null;
+                            }
+
+                            IllegalStateException failure = buildEndFailure(
+                                    instanceId,
+                                    worldName,
+                                    evacuationFailure,
+                                    armFailure
+                            );
+                            LOGGER.at(Level.WARNING)
+                                    .withCause(failure)
+                                    .log("End flow for instance %s did not complete cleanly", instanceId);
+                            throw new CompletionException(failure);
+                        }));
+    }
+
     // ============================================
     // Internal
     // ============================================
@@ -474,6 +539,37 @@ public class DungeonInstanceService {
                     "Roster validation failed — players already in active instance: %s", blocked);
             throw new RosterValidationException(blocked);
         }
+    }
+
+    @Nonnull
+    private EndPreparation prepareEndInstance(@Nonnull String instanceId) throws SQLException {
+        return database.transaction(conn -> {
+            DungeonInstance instance = instanceRepository.findByIdInTransaction(conn, instanceId)
+                    .orElseThrow(() -> new IllegalArgumentException(
+                            "Cannot end instance " + instanceId + ": not found"));
+
+            if (instance.state() == DungeonInstanceState.ENDED) {
+                return EndPreparation.retryingCleanup(
+                        instance,
+                        membershipRepository.findPlayerIdsByInstanceInTransaction(conn, instanceId)
+                );
+            }
+
+            if (instance.state() != DungeonInstanceState.ACTIVE) {
+                throw new IllegalStateException(
+                        "Cannot end instance " + instanceId + ": current state is " + instance.state());
+            }
+
+            if (!instanceRepository.claimEndStateInTransaction(conn, instanceId)) {
+                throw new IllegalStateException(
+                        "Cannot end instance " + instanceId + ": current state is " + instance.state());
+            }
+
+            return EndPreparation.claimed(
+                    instance,
+                    membershipRepository.findPlayerIdsByInstanceInTransaction(conn, instanceId)
+            );
+        });
     }
 
     @Nonnull
@@ -917,6 +1013,61 @@ public class DungeonInstanceService {
         return current;
     }
 
+    @Nullable
+    private static Throwable unwrapFailureOrNull(@Nullable Throwable throwable) {
+        return throwable != null ? unwrapFailure(throwable) : null;
+    }
+
+    @Nonnull
+    private static IllegalStateException buildEndFailure(
+            @Nonnull String instanceId,
+            @Nonnull String worldName,
+            @Nullable Throwable evacuationFailure,
+            @Nullable Throwable armFailure
+    ) {
+        Objects.requireNonNull(instanceId, "instanceId");
+        Objects.requireNonNull(worldName, "worldName");
+
+        if (evacuationFailure != null && armFailure != null) {
+            IllegalStateException failure = new IllegalStateException(
+                    "Failed to end instance " + instanceId
+                            + " cleanly: evacuation to the shared world and removal arming for "
+                            + worldName + " both failed",
+                    evacuationFailure
+            );
+            if (armFailure != evacuationFailure) {
+                failure.addSuppressed(armFailure);
+            }
+            return failure;
+        }
+        if (evacuationFailure != null) {
+            return new IllegalStateException(
+                    "Failed to end instance " + instanceId + " cleanly: evacuation to the shared world failed",
+                    evacuationFailure
+            );
+        }
+        return new IllegalStateException(
+                "Failed to end instance " + instanceId + " cleanly: arming world "
+                        + worldName + " for removal failed",
+                armFailure
+        );
+    }
+
+    @Nonnull
+    static CompletableFuture<Transform> resolveSpawnOnWorldThread(
+            @Nonnull Function<Supplier<Transform>, CompletableFuture<Transform>> dispatcher,
+            @Nonnull Supplier<Transform> spawnLookup,
+            @Nonnull String missingSpawnMessage
+    ) {
+        Objects.requireNonNull(dispatcher, "dispatcher");
+        Objects.requireNonNull(spawnLookup, "spawnLookup");
+        Objects.requireNonNull(missingSpawnMessage, "missingSpawnMessage");
+        return dispatcher.apply(spawnLookup)
+                .thenCompose(transform -> transform != null
+                        ? CompletableFuture.completedFuture(transform)
+                        : CompletableFuture.failedFuture(new IllegalStateException(missingSpawnMessage)));
+    }
+
     @Nonnull
     private static String describeFailure(@Nonnull Throwable throwable) {
         return throwable.getMessage() != null ? throwable.getMessage() : throwable.toString();
@@ -969,6 +1120,23 @@ public class DungeonInstanceService {
          */
         @Nonnull
         CompletableFuture<Void> armWorldRemoval(@Nonnull String worldName);
+
+        /**
+         * Evacuates the given players to the shared village hub world.
+         *
+         * <p>Only online players still present in the specified source world are teleported to
+         * the default world's spawn position. Offline, invalid, or already-moved players are
+         * skipped.
+         *
+         * @param playerIds        the players to evacuate
+         * @param sourceWorldName the dungeon world players must still be in to be evacuated
+         * @return a future that completes after all evacuation teleports have been queued
+         */
+        @Nonnull
+        CompletableFuture<Void> evacuateToSharedWorld(
+                @Nonnull Collection<UUID> playerIds,
+                @Nonnull String sourceWorldName
+        );
     }
 
     /**
@@ -1133,9 +1301,11 @@ public class DungeonInstanceService {
             }
             World world = universe.getWorld(worldName);
             if (world == null) {
-                return CompletableFuture.failedFuture(
-                        new IllegalStateException("World " + worldName + " not found — cannot arm for removal")
+                LOGGER.at(Level.FINE).log(
+                        "World %s is already absent — removal arming is no longer needed",
+                        worldName
                 );
+                return CompletableFuture.completedFuture(null);
             }
             return queueWorldTask(world, () -> {
                 Store<ChunkStore> chunkStore = world.getChunkStore().getStore();
@@ -1145,6 +1315,95 @@ public class DungeonInstanceService {
                         .setRemovalConditions(WorldEmptyCondition.REMOVE_WHEN_EMPTY);
                 worldConfig.markChanged();
             });
+        }
+
+        @Nonnull
+        @Override
+        public CompletableFuture<Void> evacuateToSharedWorld(
+                @Nonnull Collection<UUID> playerIds,
+                @Nonnull String sourceWorldName
+        ) {
+            Objects.requireNonNull(playerIds, "playerIds");
+            Objects.requireNonNull(sourceWorldName, "sourceWorldName");
+            if (playerIds.isEmpty()) {
+                return CompletableFuture.completedFuture(null);
+            }
+
+            Universe universe = Universe.get();
+            if (universe == null) {
+                return CompletableFuture.failedFuture(
+                        new IllegalStateException("Universe is not available for player evacuation"));
+            }
+
+            World sharedWorld = universe.getDefaultWorld();
+            if (sharedWorld == null) {
+                return CompletableFuture.failedFuture(
+                        new IllegalStateException("No shared world available for player evacuation"));
+            }
+
+            List<CompletableFuture<Void>> futures = new ArrayList<>(playerIds.size());
+            for (UUID playerId : playerIds) {
+                futures.add(queueEvacuation(playerId, sourceWorldName, sharedWorld));
+            }
+            return CompletableFuture.allOf(futures.toArray(CompletableFuture[]::new));
+        }
+
+        @Nonnull
+        private static CompletableFuture<Void> queueEvacuation(
+                @Nonnull UUID playerId,
+                @Nonnull String sourceWorldName,
+                @Nonnull World sharedWorld
+        ) {
+            Universe universe = Universe.get();
+            if (universe == null) {
+                return CompletableFuture.failedFuture(
+                        new IllegalStateException("Universe is not available for player evacuation"));
+            }
+
+            PlayerRef playerRef = universe.getPlayer(playerId);
+            if (playerRef == null) {
+                LOGGER.at(Level.FINE).log("Skipping evacuation for offline player %s", playerId);
+                return CompletableFuture.completedFuture(null);
+            }
+
+            UUID currentWorldId = playerRef.getWorldUuid();
+            if (currentWorldId == null) {
+                LOGGER.at(Level.FINE).log(
+                        "Skipping evacuation for player %s because they are not currently in a world", playerId);
+                return CompletableFuture.completedFuture(null);
+            }
+
+            World currentWorld = universe.getWorld(currentWorldId);
+            if (currentWorld == null) {
+                return CompletableFuture.failedFuture(
+                        new IllegalStateException(
+                                "Cannot evacuate player " + playerId + ": source world is not available")
+                );
+            }
+
+            if (!currentWorld.getName().equalsIgnoreCase(sourceWorldName)) {
+                LOGGER.at(Level.FINE).log(
+                        "Skipping evacuation for player %s because they already left world %s",
+                        playerId,
+                        sourceWorldName
+                );
+                return CompletableFuture.completedFuture(null);
+            }
+
+            return resolveSpawnOnWorldThread(
+                    action -> queueWorldTask(sharedWorld, action::get),
+                    () -> sharedWorld.getWorldConfig()
+                            .getSpawnProvider()
+                            .getSpawnPoint(sharedWorld, playerId),
+                    "Cannot evacuate player " + playerId
+                            + ": shared world " + sharedWorld.getName()
+                            + " does not provide a spawn point"
+            ).thenCompose(spawnTransform -> queueTeleportToTransform(
+                    playerId,
+                    sourceWorldName,
+                    sharedWorld,
+                    spawnTransform
+            ));
         }
 
         @Nonnull
@@ -1220,6 +1479,107 @@ public class DungeonInstanceService {
         }
 
         @Nonnull
+        private static CompletableFuture<Void> queueTeleportToTransform(
+                @Nonnull UUID playerId,
+                @Nonnull String sourceWorldName,
+                @Nonnull World targetWorld,
+                @Nonnull Transform targetTransform
+        ) {
+            Universe universe = Universe.get();
+            if (universe == null) {
+                return CompletableFuture.failedFuture(
+                        new IllegalStateException("Universe is not available for player teleport")
+                );
+            }
+
+            PlayerRef playerRef = universe.getPlayer(playerId);
+            if (playerRef == null) {
+                LOGGER.at(Level.FINE).log("Skipping evacuation for offline player %s", playerId);
+                return CompletableFuture.completedFuture(null);
+            }
+
+            Ref<EntityStore> reference = playerRef.getReference();
+            if (reference == null || !reference.isValid()) {
+                LOGGER.at(Level.FINE).log(
+                        "Skipping evacuation for player %s without an active entity ref", playerId);
+                return CompletableFuture.completedFuture(null);
+            }
+
+            UUID currentWorldId = playerRef.getWorldUuid();
+            if (currentWorldId == null) {
+                LOGGER.at(Level.FINE).log(
+                        "Skipping evacuation for player %s because they are not currently in a world", playerId);
+                return CompletableFuture.completedFuture(null);
+            }
+
+            World currentWorld = universe.getWorld(currentWorldId);
+            if (currentWorld == null) {
+                return CompletableFuture.failedFuture(
+                        new IllegalStateException(
+                                "Cannot evacuate player " + playerId + ": source world is not available")
+                );
+            }
+            if (!currentWorld.getName().equalsIgnoreCase(sourceWorldName)) {
+                LOGGER.at(Level.FINE).log(
+                        "Skipping evacuation for player %s because they already left world %s",
+                        playerId,
+                        sourceWorldName
+                );
+                return CompletableFuture.completedFuture(null);
+            }
+
+            Store<EntityStore> store = reference.getStore();
+            CompletableFuture<Void> completion = new CompletableFuture<>();
+            try {
+                currentWorld.execute(() -> {
+                    try {
+                        if (!reference.isValid()) {
+                            LOGGER.at(Level.FINE).log(
+                                    "Skipping evacuation for player %s because their entity ref became invalid",
+                                    playerId
+                            );
+                            completion.complete(null);
+                            return;
+                        }
+
+                        World liveSourceWorld = store.getExternalData().getWorld();
+                        if (liveSourceWorld == null) {
+                            completion.completeExceptionally(new IllegalStateException(
+                                    "Cannot evacuate player " + playerId + ": no live source world found"));
+                            return;
+                        }
+                        if (!liveSourceWorld.getName().equalsIgnoreCase(sourceWorldName)) {
+                            LOGGER.at(Level.FINE).log(
+                                    "Skipping evacuation for player %s because they already left world %s",
+                                    playerId,
+                                    sourceWorldName
+                            );
+                            completion.complete(null);
+                            return;
+                        }
+
+                        Teleport teleportComponent = Teleport.createForPlayer(targetWorld, targetTransform);
+                        CompletableFuture<Void> transferFuture = new CompletableFuture<>();
+                        transferFuture.whenComplete((unused, throwable) -> {
+                            if (throwable != null) {
+                                completion.completeExceptionally(throwable);
+                                return;
+                            }
+                            completion.complete(null);
+                        });
+                        teleportComponent.setOnComplete(transferFuture);
+                        store.addComponent(reference, Teleport.getComponentType(), teleportComponent);
+                    } catch (Exception e) {
+                        completion.completeExceptionally(e);
+                    }
+                });
+            } catch (Exception e) {
+                completion.completeExceptionally(e);
+            }
+            return completion;
+        }
+
+        @Nonnull
         private static CompletableFuture<Void> queueWorldTask(
                 @Nonnull World world,
                 @Nonnull CheckedRunnable action
@@ -1230,6 +1590,26 @@ public class DungeonInstanceService {
                     try {
                         action.run();
                         future.complete(null);
+                    } catch (Exception e) {
+                        future.completeExceptionally(e);
+                    }
+                });
+            } catch (Exception e) {
+                future.completeExceptionally(e);
+            }
+            return future;
+        }
+
+        @Nonnull
+        private static <T> CompletableFuture<T> queueWorldTask(
+                @Nonnull World world,
+                @Nonnull CheckedSupplier<T> action
+        ) {
+            CompletableFuture<T> future = new CompletableFuture<>();
+            try {
+                world.execute(() -> {
+                    try {
+                        future.complete(action.get());
                     } catch (Exception e) {
                         future.completeExceptionally(e);
                     }
@@ -1286,6 +1666,11 @@ public class DungeonInstanceService {
     @FunctionalInterface
     private interface CheckedRunnable {
         void run() throws Exception;
+    }
+
+    @FunctionalInterface
+    private interface CheckedSupplier<T> {
+        T get() throws Exception;
     }
 
     // ============================================
@@ -1350,6 +1735,23 @@ public class DungeonInstanceService {
                 return activationFailure;
             }
             return cleanupFailure;
+        }
+    }
+
+    private record EndPreparation(
+            @Nonnull DungeonInstance instance,
+            @Nonnull Set<UUID> roster,
+            boolean retryingCleanup
+    ) {
+
+        @Nonnull
+        private static EndPreparation claimed(@Nonnull DungeonInstance instance, @Nonnull Set<UUID> roster) {
+            return new EndPreparation(instance, Set.copyOf(roster), false);
+        }
+
+        @Nonnull
+        private static EndPreparation retryingCleanup(@Nonnull DungeonInstance instance, @Nonnull Set<UUID> roster) {
+            return new EndPreparation(instance, Set.copyOf(roster), true);
         }
     }
 
