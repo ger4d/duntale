@@ -68,7 +68,7 @@ public class SpawnerFactory {
             int wy = worldOrigin.y() + def.y();
             int wz = worldOrigin.z() + def.z();
 
-            LOGGER.atInfo().log("[Spawner] Creating spawner #%d at (%d,%d,%d) room=%d pool=%d budget=%d variant=%s",
+            LOGGER.atFine().log("[Spawner] Creating spawner #%d at (%d,%d,%d) room=%d pool=%d budget=%d variant=%s",
                     def.id(), wx, wy, wz, def.roomId(), def.spawnPool().size(),
                     def.totalCount(), def.variant());
 

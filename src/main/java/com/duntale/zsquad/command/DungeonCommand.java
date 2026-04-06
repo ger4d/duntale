@@ -8,7 +8,14 @@ import com.hypixel.hytale.server.core.Message;
 import com.hypixel.hytale.server.core.command.system.CommandContext;
 import com.hypixel.hytale.server.core.command.system.arguments.system.RequiredArg;
 import com.hypixel.hytale.server.core.command.system.arguments.types.ArgTypes;
+import com.hypixel.hytale.server.core.command.system.basecommands.AbstractPlayerCommand;
 import com.hypixel.hytale.server.core.command.system.basecommands.CommandBase;
+import com.hypixel.hytale.server.core.universe.PlayerRef;
+import com.hypixel.hytale.server.core.universe.Universe;
+import com.hypixel.hytale.server.core.universe.world.World;
+import com.hypixel.hytale.server.core.universe.world.storage.EntityStore;
+import com.hypixel.hytale.component.Ref;
+import com.hypixel.hytale.component.Store;
 
 import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
@@ -30,6 +37,8 @@ import java.util.concurrent.CompletionException;
  * /dungeon info <instanceId>
  * /dungeon end <instanceId>
  * /dungeon player <uuid>
+ * /dungeon start <theme>
+ * /dungeon transition <instanceId>
  * }</pre>
  *
  * @since 1.6.0
@@ -62,12 +71,14 @@ public class DungeonCommand extends CommandBase {
         this.addSubCommand(new InfoSubCommand());
         this.addSubCommand(new EndSubCommand());
         this.addSubCommand(new PlayerSubCommand());
+        this.addSubCommand(new StartSubCommand());
+        this.addSubCommand(new TransitionSubCommand());
     }
 
     @Override
     protected void executeSync(@Nonnull CommandContext context) {
         context.sendMessage(
-                Message.raw("Usage: /dungeon list|info|end|player").color(YELLOW)
+                Message.raw("Usage: /dungeon list|info|end|player|start|transition").color(YELLOW)
         );
         context.sendMessage(
                 Message.raw("  list").color(GOLD)
@@ -84,6 +95,14 @@ public class DungeonCommand extends CommandBase {
         context.sendMessage(
                 Message.raw("  player <uuid>").color(GOLD)
                         .insert(Message.raw(" — look up a player's active instance").color(GRAY))
+        );
+        context.sendMessage(
+                Message.raw("  start <theme>").color(GOLD)
+                        .insert(Message.raw(" — start a dungeon instance (uses party or solo)").color(GRAY))
+        );
+        context.sendMessage(
+                Message.raw("  transition <instanceId>").color(GOLD)
+                        .insert(Message.raw(" — advance instance to next floor").color(GRAY))
         );
     }
 
@@ -305,6 +324,112 @@ public class DungeonCommand extends CommandBase {
                             .insert(Message.raw(" floor=" + instance.floorLevel()
                                     + " world=" + instance.worldName()).color(GRAY))
             );
+        }
+    }
+
+    // ============================================
+    // start
+    // ============================================
+
+    private class StartSubCommand extends AbstractPlayerCommand {
+
+        private final RequiredArg<String> themeArg =
+                this.withRequiredArg("theme", "Dungeon theme (e.g. crypt, hive, mine)", ArgTypes.STRING);
+
+        StartSubCommand() {
+            super("start", "Start a dungeon instance");
+        }
+
+        @Override
+        protected void execute(
+                @Nonnull CommandContext context,
+                @Nonnull Store<EntityStore> store,
+                @Nonnull Ref<EntityStore> ref,
+                @Nonnull PlayerRef playerRef,
+                @Nonnull World world
+        ) {
+            UUID playerId = playerRef.getUuid();
+            String theme = themeArg.get(context);
+
+            dungeonInstanceService.createInstanceForPlayer(playerId, 1, theme)
+                    .thenAccept(instance -> context.sendMessage(
+                            Message.raw("Dungeon instance created: ").color(GREEN)
+                                    .insert(Message.raw(truncateId(instance.instanceId())).color(AQUA).monospace(true))
+                    ))
+                    .exceptionally(throwable -> {
+                        Throwable cause = throwable;
+                        while (cause instanceof CompletionException && cause.getCause() != null) {
+                            cause = cause.getCause();
+                        }
+                        if (cause instanceof DungeonInstanceService.RosterValidationException rve) {
+                            StringBuilder names = new StringBuilder();
+                            for (UUID blocked : rve.getBlockedPlayers()) {
+                                if (!names.isEmpty()) names.append(", ");
+                                PlayerRef blockedRef = Universe.get().getPlayer(blocked);
+                                names.append(blockedRef != null ? blockedRef.getUsername() : blocked.toString());
+                            }
+                            context.sendMessage(
+                                    Message.raw("Cannot start: players already in a dungeon: ").color(RED)
+                                            .insert(Message.raw(names.toString()).color(AQUA))
+                            );
+                        } else {
+                            context.sendMessage(
+                                    Message.raw("Failed to create instance: " + describeFailure(throwable)).color(RED)
+                            );
+                        }
+                        return null;
+                    });
+        }
+    }
+
+    // ============================================
+    // transition
+    // ============================================
+
+    private class TransitionSubCommand extends CommandBase {
+
+        private final RequiredArg<String> instanceIdArg =
+                this.withRequiredArg("instanceId", "Instance ID (full or prefix)", ArgTypes.STRING);
+
+        TransitionSubCommand() {
+            super("transition", "Advance instance to next floor");
+        }
+
+        @Override
+        protected void executeSync(@Nonnull CommandContext context) {
+            String query = instanceIdArg.get(context);
+
+            DungeonInstance instance;
+            try {
+                instance = resolveInstance(query);
+            } catch (SQLException e) {
+                context.sendMessage(Message.raw("Failed to query instance: " + e.getMessage()).color(RED));
+                return;
+            }
+
+            if (instance == null) {
+                context.sendMessage(Message.raw("Instance not found: " + query).color(RED));
+                return;
+            }
+
+            String instanceId = instance.instanceId();
+
+            try {
+                DungeonInstance result = dungeonInstanceService.transitionFloor(instanceId).join();
+                context.sendMessage(
+                        Message.raw("Transitioned instance ").color(GREEN)
+                                .insert(Message.raw(truncateId(instanceId)).color(AQUA).monospace(true))
+                                .insert(Message.raw(" to floor " + result.floorLevel() + ".").color(GREEN))
+                );
+            } catch (CompletionException e) {
+                context.sendMessage(
+                        Message.raw("Transition failed: " + describeFailure(e)).color(RED)
+                );
+            } catch (SQLException | IllegalArgumentException | IllegalStateException e) {
+                context.sendMessage(
+                        Message.raw("Transition failed: " + describeFailure(e)).color(RED)
+                );
+            }
         }
     }
 

@@ -7,6 +7,7 @@ import com.duntale.zsquad.camera.ClickToMoveManager;
 import com.duntale.zsquad.camera.ClickToMoveTickSystem;
 import com.duntale.zsquad.command.DGiveCommand;
 import com.duntale.zsquad.command.DungeonCommand;
+import com.duntale.zsquad.command.PartyCommand;
 import com.duntale.zsquad.command.DListCommand;
 import com.duntale.zsquad.command.DSpawnCommand;
 import com.duntale.zsquad.command.GenerateCommand;
@@ -459,6 +460,7 @@ public class ZSquadPlugin extends JavaPlugin {
         this.getCommandRegistry().registerCommand(new StatAssignCommand(rpgService));
         this.getCommandRegistry().registerCommand(new CompanionCommand(companionService));
         this.getCommandRegistry().registerCommand(new DungeonCommand(dungeonInstanceService));
+        this.getCommandRegistry().registerCommand(new PartyCommand(partyService));
 
         // ── Player join/leave events ─────────────────────────────────
         this.getEventRegistry().registerGlobal(AllWorldsLoadedEvent.class, this::onAllWorldsLoaded);
@@ -616,6 +618,7 @@ public class ZSquadPlugin extends JavaPlugin {
 
     private void onPlayerDisconnect(@Nonnull PlayerDisconnectEvent event) {
         UUID uuid = event.getPlayerRef().getUuid();
+        partyService.onPlayerDisconnect(uuid);
         rpgService.onPlayerLeave(uuid);
         progressionService.onPlayerLeave(uuid);
         clickToMoveManager.disable(uuid);
