@@ -99,6 +99,9 @@ public class CompanionService {
      * The companion entity is marked {@link NonSerialized} so it is never written
      * to chunk data.
      *
+     * <p>The companion spawns near the player's current position. Use
+     * {@link #summon(Store, Ref, UUID, String, Vector3d)} to override the spawn origin.
+     *
      * @param store     the entity store (must be on WorldThread)
      * @param playerRef the player's entity reference
      * @param playerId  the player's UUID
@@ -111,6 +114,35 @@ public class CompanionService {
             @Nonnull Ref<EntityStore> playerRef,
             @Nonnull UUID playerId,
             @Nonnull String roleName
+    ) {
+        return summon(store, playerRef, playerId, roleName, null);
+    }
+
+    /**
+     * Spawns a companion NPC for the given player at an explicit spawn origin.
+     *
+     * <p>When {@code spawnOrigin} is non-null it is used as the base position for
+     * companion placement (with the usual random XZ offset). When it is {@code null}
+     * the player's current {@link TransformComponent} position is used instead.
+     *
+     * <p>Providing an authoritative origin avoids relying on the player's runtime
+     * transform, which may not yet reflect the intended position after a cross-world
+     * teleport (e.g. the dungeon entrance coordinate from instance metadata).
+     *
+     * @param store       the entity store (must be on WorldThread)
+     * @param playerRef   the player's entity reference
+     * @param playerId    the player's UUID
+     * @param roleName    the NPC role name to spawn
+     * @param spawnOrigin explicit spawn base position, or {@code null} to use the player's transform
+     * @return the active companion data, or {@code null} if spawning failed or player already has one
+     */
+    @Nullable
+    public ActiveCompanion summon(
+            @Nonnull Store<EntityStore> store,
+            @Nonnull Ref<EntityStore> playerRef,
+            @Nonnull UUID playerId,
+            @Nonnull String roleName,
+            @Nullable Vector3d spawnOrigin
     ) {
         // Auto-clean stale entries
         cleanIfInvalid(playerId);
@@ -129,19 +161,24 @@ public class CompanionService {
         // Get player level
         int level = Math.max(1, progressionService.getLevel(playerId));
 
-        // Get spawn position near the player
-        TransformComponent transform = store.getComponent(playerRef, TransformComponent.getComponentType());
-        if (transform == null) {
-            LOGGER.atWarning().log("Cannot summon companion — player has no transform");
-            return null;
+        // Resolve spawn origin
+        Vector3d basePos;
+        if (spawnOrigin != null) {
+            basePos = spawnOrigin;
+        } else {
+            TransformComponent transform = store.getComponent(playerRef, TransformComponent.getComponentType());
+            if (transform == null) {
+                LOGGER.atWarning().log("Cannot summon companion — player has no transform");
+                return null;
+            }
+            basePos = transform.getPosition();
         }
-        Vector3d playerPos = transform.getPosition();
         double offsetX = (ThreadLocalRandom.current().nextDouble() - 0.5) * 2.0 * SPAWN_OFFSET_RANGE;
         double offsetZ = (ThreadLocalRandom.current().nextDouble() - 0.5) * 2.0 * SPAWN_OFFSET_RANGE;
         Vector3d spawnPos = new Vector3d(
-                playerPos.x + offsetX,
-                playerPos.y,
-                playerPos.z + offsetZ
+                basePos.x + offsetX,
+                basePos.y,
+                basePos.z + offsetZ
         );
 
         // Spawn the companion with level scaling
@@ -208,11 +245,31 @@ public class CompanionService {
             @Nonnull Ref<EntityStore> playerRef,
             @Nonnull UUID playerId
     ) {
+        spawn(store, playerRef, playerId, null);
+    }
+
+    /**
+     * Auto-spawns a companion for the player using their stored preference.
+     *
+     * <p>Must be called on the WorldThread. Reads the preference from cache or DB
+     * synchronously, then spawns the companion immediately.
+     *
+     * @param store       the entity store (must be on WorldThread)
+     * @param playerRef   the player's entity reference
+     * @param playerId    the player's UUID
+     * @param spawnOrigin explicit spawn base position, or {@code null} to use the player's transform
+     */
+    public void spawn(
+            @Nonnull Store<EntityStore> store,
+            @Nonnull Ref<EntityStore> playerRef,
+            @Nonnull UUID playerId,
+            @Nullable Vector3d spawnOrigin
+    ) {
         cleanIfInvalid(playerId);
         if (hasCompanion(playerId)) return;
 
         String roleName = loadPreference(playerId);
-        summon(store, playerRef, playerId, roleName);
+        summon(store, playerRef, playerId, roleName, spawnOrigin);
     }
 
     /**

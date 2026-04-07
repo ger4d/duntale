@@ -16,6 +16,7 @@ import com.hypixel.hytale.component.Ref;
 import com.hypixel.hytale.component.Store;
 import com.hypixel.hytale.logger.HytaleLogger;
 import com.hypixel.hytale.math.vector.Transform;
+import com.hypixel.hytale.protocol.GameMode;
 import com.hypixel.hytale.server.core.modules.entity.teleport.Teleport;
 import com.hypixel.hytale.server.core.universe.PlayerRef;
 import com.hypixel.hytale.server.core.universe.Universe;
@@ -1433,9 +1434,10 @@ public class DungeonInstanceService {
             worldConfig.setBlockTicking(false);
             worldConfig.setSpawningNPC(false);
             worldConfig.setSavingPlayers(false);
-            worldConfig.setDeleteOnRemove(true);
+            worldConfig.setDeleteOnRemove(false);
             worldConfig.setDeleteOnUniverseStart(false);
             worldConfig.setGameTimePaused(true);
+            worldConfig.setGameMode(GameMode.Adventure);
             worldConfig.markChanged();
 
             return universe.makeWorld(worldName, savePath, worldConfig)
@@ -1541,6 +1543,7 @@ public class DungeonInstanceService {
                 Store<ChunkStore> chunkStore = world.getChunkStore().getStore();
                 chunkStore.getResource(InstanceDataResource.getResourceType()).setHadPlayer(true);
                 WorldConfig worldConfig = world.getWorldConfig();
+                worldConfig.setDeleteOnRemove(true);
                 InstanceWorldConfig.ensureAndGet(worldConfig)
                         .setRemovalConditions(WorldEmptyCondition.REMOVE_WHEN_EMPTY);
                 worldConfig.markChanged();

@@ -52,6 +52,7 @@ import com.duntale.zsquad.progression.ProgressionRepository;
 import com.duntale.zsquad.progression.ProgressionService;
 import com.duntale.zsquad.companion.CompanionSpawner;
 import com.duntale.zsquad.dungeon.DungeonInstanceRepository;
+import com.duntale.zsquad.dungeon.DungeonInstance;
 import com.duntale.zsquad.dungeon.DungeonInstanceService;
 import com.duntale.zsquad.dungeon.DungeonMembershipRepository;
 import com.duntale.zsquad.dungeon.PartyService;
@@ -88,6 +89,7 @@ import com.hypixel.hytale.server.core.universe.world.events.AllWorldsLoadedEvent
 import com.hypixel.hytale.server.core.universe.world.storage.EntityStore;
 import com.hypixel.hytale.server.npc.NPCPlugin;
 import org.herolias.tooltips.api.DynamicTooltipsApiProvider;
+import org.joml.Vector3d;
 
 import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
@@ -585,7 +587,8 @@ public class ZSquadPlugin extends JavaPlugin {
     private void onPlayerReady(@Nonnull PlayerReadyEvent event) {
         Player player = event.getPlayer();
         Ref<EntityStore> ref = event.getPlayerRef();
-        PlayerRef playerRef = (PlayerRef) ref.getStore().getComponent(ref, PlayerRef.getComponentType());
+        Store<EntityStore> store = ref.getStore();
+        PlayerRef playerRef = (PlayerRef) store.getComponent(ref, PlayerRef.getComponentType());
         if (playerRef == null) return;
         World world = player.getWorld();
         if (world == null) return;
@@ -596,15 +599,33 @@ public class ZSquadPlugin extends JavaPlugin {
         scoreboard.updateData(buildScoreboardData(uuid));
         scoreboards.put(uuid, scoreboard);
 
-        // Auto-spawn companion using stored preference
-        companionService.spawn(ref.getStore(), ref, uuid);
+        // WorldConfig only seeds the player's mode when they do not already have one.
+        // Players entering a dungeon from a Creative world keep Creative unless we
+        // explicitly reapply the dungeon world's configured mode on entry.
+        DungeonInstance dungeonInstance = resolveDungeonInstance(world.getName());
+        if (dungeonInstance != null && player.getGameMode() != world.getWorldConfig().getGameMode()) {
+            Player.setGameMode(ref, world.getWorldConfig().getGameMode(), store);
+        }
 
-        if (shouldAutoEnableClickToMove(world) && !clickToMoveManager.isEnabled(uuid)) {
-            clickToMoveManager.enable(uuid, ref.getStore(), ref);
+        // Auto-spawn companion using stored preference.
+        // In dungeon worlds, use the authoritative entrance position from instance
+        // metadata instead of the player's TransformComponent. This avoids spawning
+        // the companion at a stale or incorrect Y-level after a cross-world teleport.
+        Vector3d companionSpawnOrigin = dungeonInstance != null
+                ? new Vector3d(
+                        dungeonInstance.entrancePosition().x() + 0.5,
+                        dungeonInstance.entrancePosition().y(),
+                        dungeonInstance.entrancePosition().z() + 0.5
+                )
+                : null;
+        companionService.spawn(store, ref, uuid, companionSpawnOrigin);
+
+        if ((isSharedWorld(world) || dungeonInstance != null) && !clickToMoveManager.isEnabled(uuid)) {
+            clickToMoveManager.enable(uuid, store, ref);
         }
 
         if (entryMenuPending.remove(uuid) && isSharedWorld(world) && player.getPageManager().getCustomPage() == null) {
-            player.getPageManager().openCustomPage(ref, ref.getStore(), new DungeonEntryPage(playerRef));
+            player.getPageManager().openCustomPage(ref, store, new DungeonEntryPage(playerRef));
         }
     }
 
@@ -667,11 +688,12 @@ public class ZSquadPlugin extends JavaPlugin {
         World targetWorld = Universe.get().getWorld(continueRoute.instance().worldName());
         if (targetWorld == null) {
             LOGGER.atWarning().log(
-                    "Continue route for player %s failed because world %s is not loaded",
+                    "Continue route for player %s failed because world %s is not loaded; routing to village",
                     playerId,
                     continueRoute.instance().worldName()
             );
-            playerRef.sendMessage(Message.raw("Your dungeon world is not available right now.").color("#FF5555"));
+            playerRef.sendMessage(Message.raw("Your dungeon world is no longer available. Routing to village.").color("#FF5555"));
+            routeToSharedWorld(ref, store, playerRef, Message.raw("Entering village.").color("#55FF55"));
             return;
         }
 
@@ -722,17 +744,15 @@ public class ZSquadPlugin extends JavaPlugin {
         playerRef.sendMessage(statusMessage);
     }
 
-    private boolean shouldAutoEnableClickToMove(@Nonnull World world) {
-        if (isSharedWorld(world)) {
-            return true;
-        }
+    @Nullable
+    private DungeonInstance resolveDungeonInstance(@Nonnull String worldName) {
         try {
-            return dungeonInstanceService.getInstanceByWorld(world.getName()) != null;
+            return dungeonInstanceService.getInstanceByWorld(worldName);
         } catch (SQLException e) {
             LOGGER.atWarning()
                     .withCause(e)
-                    .log("Failed to resolve dungeon world context for %s", world.getName());
-            return false;
+                    .log("Failed to resolve dungeon world context for %s", worldName);
+            return null;
         }
     }
 

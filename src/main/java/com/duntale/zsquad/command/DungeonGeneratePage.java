@@ -20,6 +20,7 @@ import com.hypixel.hytale.component.Store;
 import com.hypixel.hytale.logger.HytaleLogger;
 import com.hypixel.hytale.math.vector.Transform;
 import org.joml.Vector3d;
+import com.hypixel.hytale.protocol.GameMode;
 import com.hypixel.hytale.protocol.packets.interface_.CustomPageLifetime;
 import com.hypixel.hytale.protocol.packets.interface_.Page;
 import com.hypixel.hytale.protocol.packets.interface_.CustomUIEventBindingType;
@@ -284,6 +285,7 @@ public class DungeonGeneratePage extends InteractiveCustomUIPage<DungeonGenerate
         previewWorldConfig.setDeleteOnRemove(true);
         previewWorldConfig.setDeleteOnUniverseStart(false);
         previewWorldConfig.setGameTimePaused(true);
+        previewWorldConfig.setGameMode(GameMode.Adventure);
         InstanceWorldConfig.ensureAndGet(previewWorldConfig).setRemovalConditions(WorldEmptyCondition.INSTANCE);
         previewWorldConfig.markChanged();
 
