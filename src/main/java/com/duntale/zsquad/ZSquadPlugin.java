@@ -620,8 +620,8 @@ public class ZSquadPlugin extends JavaPlugin {
                 : null;
         companionService.spawn(store, ref, uuid, companionSpawnOrigin);
 
-        if ((isSharedWorld(world) || dungeonInstance != null) && !clickToMoveManager.isEnabled(uuid)) {
-            clickToMoveManager.enable(uuid, store, ref);
+        if (isSharedWorld(world) || dungeonInstance != null) {
+            clickToMoveManager.enableWithCamera(uuid, store, ref, playerRef);
         }
 
         if (entryMenuPending.remove(uuid) && isSharedWorld(world) && player.getPageManager().getCustomPage() == null) {

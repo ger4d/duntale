@@ -28,6 +28,8 @@ import com.hypixel.hytale.server.core.universe.Universe;
 import com.hypixel.hytale.server.core.universe.world.ParticleUtil;
 import com.hypixel.hytale.server.core.universe.world.World;
 import com.hypixel.hytale.server.core.universe.world.storage.EntityStore;
+import com.hypixel.hytale.server.core.asset.type.entityeffect.config.EntityEffect;
+import com.hypixel.hytale.server.core.entity.effect.EffectControllerComponent;
 
 import com.duntale.zsquad.rpg.RpgService;
 import com.duntale.zsquad.rpg.RpgStat;
@@ -38,6 +40,14 @@ import com.duntale.zsquad.merchant.MerchantComponent;
 import com.duntale.zsquad.merchant.MerchantService;
 import com.duntale.zsquad.ZSquadPlugin;
 import com.hypixel.hytale.protocol.SoundCategory;
+import com.hypixel.hytale.protocol.ClientCameraView;
+import com.hypixel.hytale.protocol.Direction;
+import com.hypixel.hytale.protocol.MouseInputType;
+import com.hypixel.hytale.protocol.MovementForceRotationType;
+import com.hypixel.hytale.protocol.PositionDistanceOffsetType;
+import com.hypixel.hytale.protocol.RotationType;
+import com.hypixel.hytale.protocol.ServerCameraSettings;
+import com.hypixel.hytale.protocol.packets.camera.SetServerCamera;
 import com.hypixel.hytale.protocol.packets.entities.PlayAnimation;
 import com.hypixel.hytale.protocol.packets.interface_.Page;
 import com.hypixel.hytale.protocol.packets.interface_.SetPage;
@@ -55,6 +65,7 @@ import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
+import org.joml.Vector3f;
 
 /**
  * Click-to-move manager: detects left-click / left-drag and moves
@@ -124,6 +135,13 @@ public class ClickToMoveManager {
     private static final CameraAxis FOLLOW_YAW_RANGE = new CameraAxis(
             new Rangef(-1.0F, 1.0F), new CameraNode[]{CameraNode.Head}
     );
+
+    // --- Default isometric camera preset (NW, distance 10, elevation 4) ---
+    private static final float DEFAULT_ISO_DISTANCE = 10.0F;
+    private static final float DEFAULT_ISO_ELEVATION = 4.0F;
+    private static final float ISO_BASE_PITCH = (float) (-Math.PI / 4);
+    private static final float DEFAULT_ISO_YAW = (float) (7 * Math.PI / 4); // NW
+    private static final String DISABLE_PRIMARY_EFFECT_KEY = "DisablePrimary";
 
     // ============================================
     // Instance Fields
@@ -262,6 +280,80 @@ public class ClickToMoveManager {
     }
 
     /**
+     * Enables click-to-move with the default isometric camera preset.
+     *
+     * <p>Equivalent to {@code /camera iso --angle NW --distance 10 --elevation 4 --clickmove}.
+     * Sends the camera packet, applies the {@code DisablePrimary} entity effect, and
+     * enables CTM with model angle range widening.
+     *
+     * @param uuid      the player UUID
+     * @param store     the entity store
+     * @param ref       the player entity reference
+     * @param playerRef the player ref (for packet sending)
+     */
+    public void enableWithCamera(@Nonnull UUID uuid,
+                                 @Nonnull Store<EntityStore> store,
+                                 @Nonnull Ref<EntityStore> ref,
+                                 @Nonnull PlayerRef playerRef) {
+        enableWithCamera(uuid, store, ref, playerRef,
+                DEFAULT_ISO_YAW, DEFAULT_ISO_DISTANCE, DEFAULT_ISO_ELEVATION);
+    }
+
+    /**
+     * Enables click-to-move with a custom isometric camera configuration.
+     *
+     * <p>Sends the camera packet, applies the {@code DisablePrimary} entity effect, and
+     * enables CTM with model angle range widening.
+     *
+     * @param uuid      the player UUID
+     * @param store     the entity store
+     * @param ref       the player entity reference
+     * @param playerRef the player ref (for packet sending)
+     * @param yaw       camera yaw in radians (compass direction)
+     * @param distance  camera distance from the player
+     * @param elevation camera Y elevation offset
+     */
+    public void enableWithCamera(@Nonnull UUID uuid,
+                                 @Nonnull Store<EntityStore> store,
+                                 @Nonnull Ref<EntityStore> ref,
+                                 @Nonnull PlayerRef playerRef,
+                                 float yaw,
+                                 float distance,
+                                 float elevation) {
+        // Compute adjusted pitch and distance for the elevation offset
+        double horizDist = distance * Math.cos(-ISO_BASE_PITCH);
+        double vertDist  = distance * Math.sin(-ISO_BASE_PITCH) + elevation;
+        float pitch = (float) -Math.atan2(vertDist, horizDist);
+        float effectiveDistance = (float) Math.sqrt(horizDist * horizDist + vertDist * vertDist);
+
+        // Build and send camera packet
+        ServerCameraSettings settings = new ServerCameraSettings();
+        settings.positionLerpSpeed = 0.2F;
+        settings.rotationLerpSpeed = 5.0F;
+        settings.distance = effectiveDistance;
+        settings.displayCursor = true;
+        settings.sendMouseMotion = true;
+        settings.isFirstPerson = false;
+        settings.eyeOffset = true;
+        settings.positionDistanceOffsetType = PositionDistanceOffsetType.DistanceOffset;
+        settings.rotationType = RotationType.Custom;
+        settings.mouseInputType = MouseInputType.LookAtPlane;
+        settings.planeNormal = new Vector3f(0.0F, 1.0F, 0.0F);
+        settings.movementForceRotationType = MovementForceRotationType.Custom;
+        settings.rotation = new Direction(yaw, pitch, 0.0F);
+
+        playerRef.getPacketHandler().writeNoCache(
+                new SetServerCamera(ClientCameraView.Custom, true, settings)
+        );
+
+        // Apply DisablePrimary effect to prevent accidental hits in overhead view
+        applyDisablePrimary(store, ref);
+
+        // Enable CTM (widens model angle range for iso body follow)
+        enable(uuid, store, ref);
+    }
+
+    /**
      * Disables click-to-move for a player. Stops active movement, restores the original model.
      */
     public void disable(@Nonnull UUID uuid,
@@ -306,6 +398,22 @@ public class ClickToMoveManager {
 
     public boolean isEnabled(@Nonnull UUID uuid) {
         return players.containsKey(uuid);
+    }
+
+    /**
+     * Applies the DisablePrimary entity effect to prevent primary interaction (hit/swing/shot).
+     */
+    private static void applyDisablePrimary(@Nonnull Store<EntityStore> store,
+                                             @Nonnull Ref<EntityStore> ref) {
+        EntityEffect effect = EntityEffect.getAssetMap().getAsset(DISABLE_PRIMARY_EFFECT_KEY);
+        if (effect == null) {
+            LOGGER.atWarning().log("DisablePrimary EntityEffect asset not found");
+            return;
+        }
+        EffectControllerComponent ecc = store.getComponent(ref, EffectControllerComponent.getComponentType());
+        if (ecc != null) {
+            ecc.addEffect(ref, effect, store);
+        }
     }
 
     /**
