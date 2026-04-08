@@ -4,12 +4,14 @@ import com.duntale.dungeongen.config.Vec3i;
 import com.duntale.zsquad.dungeon.DungeonInstance;
 import com.duntale.zsquad.dungeon.DungeonInstanceService;
 import com.duntale.zsquad.dungeon.DungeonInstanceState;
+import com.duntale.zsquad.dungeon.FloorConfigService;
 import com.hypixel.hytale.server.core.Message;
 import com.hypixel.hytale.server.core.command.system.CommandContext;
 import com.hypixel.hytale.server.core.command.system.arguments.system.RequiredArg;
 import com.hypixel.hytale.server.core.command.system.arguments.types.ArgTypes;
 import com.hypixel.hytale.server.core.command.system.basecommands.AbstractPlayerCommand;
 import com.hypixel.hytale.server.core.command.system.basecommands.CommandBase;
+import com.hypixel.hytale.server.core.entity.entities.Player;
 import com.hypixel.hytale.server.core.universe.PlayerRef;
 import com.hypixel.hytale.server.core.universe.Universe;
 import com.hypixel.hytale.server.core.universe.world.World;
@@ -39,6 +41,8 @@ import java.util.concurrent.CompletionException;
  * /dungeon player <uuid>
  * /dungeon start <theme>
  * /dungeon transition <instanceId>
+ * /dungeon floorconfig <floor>
+ * /dungeon floorconfig list
  * }</pre>
  *
  * @since 1.6.0
@@ -57,15 +61,21 @@ public class DungeonCommand extends CommandBase {
             DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss").withZone(ZoneId.systemDefault());
 
     private final DungeonInstanceService dungeonInstanceService;
+    private final FloorConfigService floorConfigService;
 
     /**
      * Creates the /dungeon admin command.
      *
      * @param dungeonInstanceService the dungeon instance service
+     * @param floorConfigService     the floor config service for per-floor overrides
      */
-    public DungeonCommand(@Nonnull DungeonInstanceService dungeonInstanceService) {
+    public DungeonCommand(
+            @Nonnull DungeonInstanceService dungeonInstanceService,
+            @Nonnull FloorConfigService floorConfigService
+    ) {
         super("dungeon", "Manage dungeon instances");
         this.dungeonInstanceService = dungeonInstanceService;
+        this.floorConfigService = floorConfigService;
 
         this.addSubCommand(new ListSubCommand());
         this.addSubCommand(new InfoSubCommand());
@@ -73,12 +83,13 @@ public class DungeonCommand extends CommandBase {
         this.addSubCommand(new PlayerSubCommand());
         this.addSubCommand(new StartSubCommand());
         this.addSubCommand(new TransitionSubCommand());
+        this.addSubCommand(new FloorConfigSubCommand());
     }
 
     @Override
     protected void executeSync(@Nonnull CommandContext context) {
         context.sendMessage(
-                Message.raw("Usage: /dungeon list|info|end|player|start|transition").color(YELLOW)
+                Message.raw("Usage: /dungeon list|info|end|player|start|transition|floorconfig").color(YELLOW)
         );
         context.sendMessage(
                 Message.raw("  list").color(GOLD)
@@ -103,6 +114,14 @@ public class DungeonCommand extends CommandBase {
         context.sendMessage(
                 Message.raw("  transition <instanceId>").color(GOLD)
                         .insert(Message.raw(" — advance instance to next floor").color(GRAY))
+        );
+        context.sendMessage(
+                Message.raw("  floorconfig <floor>").color(GOLD)
+                        .insert(Message.raw(" — open floor config UI for a floor level").color(GRAY))
+        );
+        context.sendMessage(
+                Message.raw("  floorconfig list").color(GOLD)
+                        .insert(Message.raw(" — list all defined override floors").color(GRAY))
         );
     }
 
@@ -429,6 +448,91 @@ public class DungeonCommand extends CommandBase {
                 context.sendMessage(
                         Message.raw("Transition failed: " + describeFailure(e)).color(RED)
                 );
+            }
+        }
+    }
+
+    // ============================================
+    // floorconfig
+    // ============================================
+
+    private class FloorConfigSubCommand extends AbstractPlayerCommand {
+
+        private final RequiredArg<String> floorArg =
+                this.withRequiredArg("floor", "Floor level", ArgTypes.STRING);
+
+        FloorConfigSubCommand() {
+            super("floorconfig", "Manage per-floor generation overrides");
+            this.addSubCommand(new FCListSubCommand());
+        }
+
+        @Override
+        protected void execute(
+                @Nonnull CommandContext context,
+                @Nonnull Store<EntityStore> store,
+                @Nonnull Ref<EntityStore> ref,
+                @Nonnull PlayerRef playerRef,
+                @Nonnull World world
+        ) {
+            String floorStr = floorArg.get(context);
+
+            int floorLevel;
+            try {
+                floorLevel = Integer.parseInt(floorStr);
+            } catch (NumberFormatException e) {
+                context.sendMessage(
+                        Message.raw("Usage: /dungeon floorconfig <floor> or /dungeon floorconfig list").color(YELLOW)
+                );
+                return;
+            }
+
+            if (floorLevel < 1) {
+                context.sendMessage(Message.raw("Floor level must be >= 1.").color(RED));
+                return;
+            }
+
+            Player player = store.getComponent(ref, Player.getComponentType());
+            if (player == null) {
+                return;
+            }
+
+            player.getPageManager().openCustomPage(ref, store,
+                    new FloorConfigPage(playerRef, floorLevel, floorConfigService));
+        }
+
+        // ── list ─────────────────────────────────────────────────────
+
+        private class FCListSubCommand extends CommandBase {
+
+            FCListSubCommand() {
+                super("list", "List all defined override floors");
+            }
+
+            @Override
+            protected void executeSync(@Nonnull CommandContext context) {
+                List<Integer> floors;
+                try {
+                    floors = floorConfigService.listDefinedFloors();
+                } catch (SQLException e) {
+                    context.sendMessage(Message.raw("Failed to list floors: " + e.getMessage()).color(RED));
+                    return;
+                }
+
+                if (floors.isEmpty()) {
+                    context.sendMessage(
+                            Message.raw("No floor config overrides defined. All floors use defaults.").color(GRAY)
+                    );
+                    return;
+                }
+
+                context.sendMessage(
+                        Message.raw("Defined Floor Overrides (" + floors.size() + "):").color(GOLD).bold(true)
+                );
+                for (int floor : floors) {
+                    context.sendMessage(
+                            Message.raw("  Floor " + floor).color(AQUA)
+                    );
+                }
             }
         }
     }

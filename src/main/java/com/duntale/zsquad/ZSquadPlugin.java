@@ -55,6 +55,8 @@ import com.duntale.zsquad.dungeon.DungeonInstanceRepository;
 import com.duntale.zsquad.dungeon.DungeonInstance;
 import com.duntale.zsquad.dungeon.DungeonInstanceService;
 import com.duntale.zsquad.dungeon.DungeonMembershipRepository;
+import com.duntale.zsquad.dungeon.FloorConfigRepository;
+import com.duntale.zsquad.dungeon.FloorConfigService;
 import com.duntale.zsquad.dungeon.PartyService;
 import com.duntale.zsquad.rpg.RpgDamageScalingSystem;
 import com.duntale.zsquad.rpg.RpgProfile;
@@ -144,6 +146,7 @@ public class ZSquadPlugin extends JavaPlugin {
 
     // Dungeon instance flow
     private PartyService partyService;
+    private FloorConfigService floorConfigService;
     private DungeonInstanceService dungeonInstanceService;
     private final AtomicBoolean dungeonStartupRecoveryLoaded = new AtomicBoolean();
 
@@ -348,6 +351,7 @@ public class ZSquadPlugin extends JavaPlugin {
         this.partyService = new PartyService();
         DungeonInstanceRepository dungeonInstanceRepository;
         DungeonMembershipRepository dungeonMembershipRepository;
+        FloorConfigRepository floorConfigRepository;
         try {
             Path dbPath = getDataDirectory().resolve("zsquad.db");
             databaseProvider.initialize(dbPath);
@@ -373,6 +377,9 @@ public class ZSquadPlugin extends JavaPlugin {
 
             dungeonMembershipRepository = new DungeonMembershipRepository(databaseProvider);
             dungeonMembershipRepository.initialize();
+
+            floorConfigRepository = new FloorConfigRepository(databaseProvider);
+            floorConfigRepository.initialize();
         } catch (SQLException e) {
             LOGGER.atSevere().log("Failed to initialize RPG database: %s", e.getMessage());
             this.rpgService = new RpgService(new RpgRepository(databaseProvider));
@@ -381,12 +388,16 @@ public class ZSquadPlugin extends JavaPlugin {
             this.companionRepository = new CompanionRepository(databaseProvider);
             dungeonInstanceRepository = new DungeonInstanceRepository(databaseProvider);
             dungeonMembershipRepository = new DungeonMembershipRepository(databaseProvider);
+            floorConfigRepository = new FloorConfigRepository(databaseProvider);
         }
+        this.floorConfigService = new FloorConfigService(floorConfigRepository);
+        this.floorConfigService.loadOnStartup();
         this.dungeonInstanceService = new DungeonInstanceService(
                 databaseProvider,
                 dungeonInstanceRepository,
                 dungeonMembershipRepository,
-                partyService
+                partyService,
+                floorConfigService
         );
         this.clickToMoveManager.setRpgService(rpgService);
 
@@ -461,7 +472,7 @@ public class ZSquadPlugin extends JavaPlugin {
         this.getCommandRegistry().registerCommand(new MerchantCommand(merchantService, catalogGenerator));
         this.getCommandRegistry().registerCommand(new StatAssignCommand(rpgService));
         this.getCommandRegistry().registerCommand(new CompanionCommand(companionService));
-        this.getCommandRegistry().registerCommand(new DungeonCommand(dungeonInstanceService));
+        this.getCommandRegistry().registerCommand(new DungeonCommand(dungeonInstanceService, floorConfigService));
         this.getCommandRegistry().registerCommand(new PartyCommand(partyService));
 
         // ── Player join/leave events ─────────────────────────────────

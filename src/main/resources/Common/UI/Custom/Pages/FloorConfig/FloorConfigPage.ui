@@ -1,0 +1,421 @@
+$C = "../../Common.ui";
+
+$C.@PageOverlay {}
+
+$C.@Container {
+  Anchor: (Width: 920, Height: 700);
+
+  #Title {
+    Group {
+      $C.@Title { @Text = "Floor Config"; }
+    }
+  }
+
+  #Content {
+    LayoutMode: TopScrolling;
+    ScrollbarStyle: $C.@DefaultScrollbarStyle;
+    Padding: (Horizontal: 20, Bottom: 20, Top: 4);
+
+    // == HEADER INFO =====================================================
+    Group {
+      LayoutMode: Top;
+      Anchor: (Bottom: 8);
+
+      Group {
+        LayoutMode: Left;
+        Anchor: (Height: 28, Bottom: 2);
+        Padding: (Horizontal: 6);
+
+        Label #FloorLabel {
+          Style: (FontSize: 17, TextColor: #FFD700, RenderBold: true, VerticalAlignment: Center);
+          Text: "Floor 1 Config";
+        }
+      }
+
+      Group {
+        LayoutMode: Left;
+        Anchor: (Height: 22);
+        Padding: (Horizontal: 6);
+
+        Label #BaseLabel {
+          Style: (FontSize: 12, TextColor: #96a9be, VerticalAlignment: Center);
+          Text: "All defaults";
+        }
+
+        Label {
+          Style: (FontSize: 12, TextColor: #55FF55, VerticalAlignment: Center);
+          Anchor: (Left: 20);
+          Text: "* = overridden on this floor";
+        }
+      }
+    }
+
+    // == SIZE ============================================================
+    Group {
+      LayoutMode: Top;
+      Background: (TexturePath: "../../Common/ContainerPanelPatch.png", Border: 4);
+      Anchor: (Bottom: 12);
+
+      Group { Anchor: (Height: 34, Bottom: 4); $C.@PanelTitle { @Text = "Size"; } }
+
+      Group {
+        LayoutMode: Left;
+        Padding: (Horizontal: 14, Top: 4, Bottom: 12);
+
+        Label #WidthTag { Text: ""; Style: (FontSize: 14, TextColor: #55FF55, VerticalAlignment: Center); Anchor: (Width: 14); }
+        Label { Text: "Width"; Style: (FontSize: 14, TextColor: #96a9be, VerticalAlignment: Center); Anchor: (Width: 55); }
+        $C.@NumberField #Width { @Anchor = (Width: 85, Right: 30); Value: 64; Format: (MaxDecimalPlaces: 0, Step: 8, MinValue: 16, MaxValue: 256); }
+        Label #DepthTag { Text: ""; Style: (FontSize: 14, TextColor: #55FF55, VerticalAlignment: Center); Anchor: (Width: 14); }
+        Label { Text: "Depth"; Style: (FontSize: 14, TextColor: #96a9be, VerticalAlignment: Center); Anchor: (Width: 55); }
+        $C.@NumberField #Depth { @Anchor = (Width: 85, Right: 30); Value: 64; Format: (MaxDecimalPlaces: 0, Step: 8, MinValue: 16, MaxValue: 256); }
+        Label #HeightTag { Text: ""; Style: (FontSize: 14, TextColor: #55FF55, VerticalAlignment: Center); Anchor: (Width: 14); }
+        Label { Text: "Height"; Style: (FontSize: 14, TextColor: #96a9be, VerticalAlignment: Center); Anchor: (Width: 55); }
+        $C.@NumberField #Height { @Anchor = (Width: 85); Value: 12; Format: (MaxDecimalPlaces: 0, Step: 1, MinValue: 4, MaxValue: 64); }
+      }
+    }
+
+    // == ROOMS ===========================================================
+    Group {
+      LayoutMode: Top;
+      Background: (TexturePath: "../../Common/ContainerPanelPatch.png", Border: 4);
+      Anchor: (Bottom: 12);
+
+      Group { Anchor: (Height: 34, Bottom: 4); $C.@PanelTitle { @Text = "Rooms"; } }
+
+      Group {
+        LayoutMode: Top;
+        Padding: (Horizontal: 14, Top: 4, Bottom: 12);
+
+        Group {
+          LayoutMode: Left;
+          Anchor: (Height: 44, Bottom: 4);
+          Label #MaxRoomsTag { Text: ""; Style: (FontSize: 14, TextColor: #55FF55, VerticalAlignment: Center); Anchor: (Width: 14); }
+          Label { Text: "Max Rooms"; Style: (FontSize: 14, TextColor: #96a9be, VerticalAlignment: Center); Anchor: (Width: 85); }
+          $C.@NumberField #MaxRooms { @Anchor = (Width: 75); Value: 20; Format: (MaxDecimalPlaces: 0, Step: 1, MinValue: 1, MaxValue: 100); }
+        }
+
+        Group {
+          LayoutMode: Left;
+          Anchor: (Height: 44, Bottom: 4);
+          Label #RoomDensityTag { Text: ""; Style: (FontSize: 14, TextColor: #55FF55, VerticalAlignment: Center); Anchor: (Width: 14); }
+          Label { Text: "Density"; Style: (FontSize: 14, TextColor: #96a9be, VerticalAlignment: Center); Anchor: (Width: 70); }
+          $C.@FloatSlider #RoomDensity { @Anchor = (Width: 250, Right: 30); Min: 0.0; Max: 1.0; Value: 0.45; Step: 0.01; }
+          Label #ComplexityTag { Text: ""; Style: (FontSize: 14, TextColor: #55FF55, VerticalAlignment: Center); Anchor: (Width: 14); }
+          Label { Text: "Complexity"; Style: (FontSize: 14, TextColor: #96a9be, VerticalAlignment: Center); Anchor: (Width: 90); }
+          $C.@FloatSlider #Complexity { @Anchor = (Width: 250); Min: 0.0; Max: 1.0; Value: 0.5; Step: 0.01; }
+        }
+
+        Group {
+          LayoutMode: Left;
+          Anchor: (Height: 44, Bottom: 4);
+          Label #MinRoomSizeTag { Text: ""; Style: (FontSize: 14, TextColor: #55FF55, VerticalAlignment: Center); Anchor: (Width: 14); }
+          Label { Text: "Min Size"; Style: (FontSize: 14, TextColor: #96a9be, VerticalAlignment: Center); Anchor: (Width: 65); }
+          $C.@NumberField #MinRoomSize { @Anchor = (Width: 65, Right: 20); Value: 4; Format: (MaxDecimalPlaces: 0, Step: 1, MinValue: 2, MaxValue: 30); }
+          Label #MaxRoomSizeTag { Text: ""; Style: (FontSize: 14, TextColor: #55FF55, VerticalAlignment: Center); Anchor: (Width: 14); }
+          Label { Text: "Max Size"; Style: (FontSize: 14, TextColor: #96a9be, VerticalAlignment: Center); Anchor: (Width: 65); }
+          $C.@NumberField #MaxRoomSize { @Anchor = (Width: 65, Right: 20); Value: 14; Format: (MaxDecimalPlaces: 0, Step: 1, MinValue: 4, MaxValue: 60); }
+          Label #RoomShapeTag { Text: ""; Style: (FontSize: 14, TextColor: #55FF55, VerticalAlignment: Center); Anchor: (Width: 14); }
+          Label { Text: "Shape"; Style: (FontSize: 14, TextColor: #96a9be, VerticalAlignment: Center); Anchor: (Width: 50); }
+          $C.@DropdownBox #RoomShape {
+            @Anchor = (Width: 170);
+            Value: "rectangular";
+            DropdownEntry { Value: "rectangular"; Text: "Rectangular"; }
+            DropdownEntry { Value: "circular"; Text: "Circular"; }
+            DropdownEntry { Value: "lshaped"; Text: "L-Shaped"; }
+            DropdownEntry { Value: "cross"; Text: "Cross"; }
+            DropdownEntry { Value: "irregular"; Text: "Irregular"; }
+          }
+        }
+
+        Group {
+          LayoutMode: Left;
+          Anchor: (Height: 44);
+          Label #IrregularityTag { Text: ""; Style: (FontSize: 14, TextColor: #55FF55, VerticalAlignment: Center); Anchor: (Width: 14); }
+          Label { Text: "Irregularity"; Style: (FontSize: 14, TextColor: #96a9be, VerticalAlignment: Center); Anchor: (Width: 95); }
+          $C.@FloatSlider #Irregularity { @Anchor = (Width: 260); Min: 0.0; Max: 1.0; Value: 0.2; Step: 0.01; }
+        }
+      }
+    }
+
+    // == CORRIDORS =======================================================
+    Group {
+      LayoutMode: Top;
+      Background: (TexturePath: "../../Common/ContainerPanelPatch.png", Border: 4);
+      Anchor: (Bottom: 12);
+
+      Group { Anchor: (Height: 34, Bottom: 4); $C.@PanelTitle { @Text = "Corridors"; } }
+
+      Group {
+        LayoutMode: Top;
+        Padding: (Horizontal: 14, Top: 4, Bottom: 12);
+
+        Group {
+          LayoutMode: Left;
+          Anchor: (Height: 44, Bottom: 4);
+          Label #CorridorWidthTag { Text: ""; Style: (FontSize: 14, TextColor: #55FF55, VerticalAlignment: Center); Anchor: (Width: 14); }
+          Label { Text: "Width"; Style: (FontSize: 14, TextColor: #96a9be, VerticalAlignment: Center); Anchor: (Width: 55); }
+          $C.@NumberField #CorridorWidth { @Anchor = (Width: 65); Value: 2; Format: (MaxDecimalPlaces: 0, Step: 1, MinValue: 1, MaxValue: 4); }
+        }
+
+        Group {
+          LayoutMode: Left;
+          Anchor: (Height: 44, Bottom: 4);
+          Label #BranchChanceTag { Text: ""; Style: (FontSize: 14, TextColor: #55FF55, VerticalAlignment: Center); Anchor: (Width: 14); }
+          Label { Text: "Branch %"; Style: (FontSize: 14, TextColor: #96a9be, VerticalAlignment: Center); Anchor: (Width: 75); }
+          $C.@FloatSlider #BranchChance { @Anchor = (Width: 250, Right: 30); Min: 0.0; Max: 1.0; Value: 0.3; Step: 0.01; }
+          Label #LoopChanceTag { Text: ""; Style: (FontSize: 14, TextColor: #55FF55, VerticalAlignment: Center); Anchor: (Width: 14); }
+          Label { Text: "Loop %"; Style: (FontSize: 14, TextColor: #96a9be, VerticalAlignment: Center); Anchor: (Width: 65); }
+          $C.@FloatSlider #LoopChance { @Anchor = (Width: 250); Min: 0.0; Max: 1.0; Value: 0.15; Step: 0.01; }
+        }
+
+        Group {
+          LayoutMode: Left;
+          Anchor: (Height: 44);
+          Label #WindingTag { Text: ""; Style: (FontSize: 14, TextColor: #55FF55, VerticalAlignment: Center); Anchor: (Width: 14); }
+          $C.@CheckBoxWithLabel #WindingCheck { @Text = "Winding Corridors"; @Checked = false; Anchor: (Right: 30); }
+          Label #WindingFactorTag { Text: ""; Style: (FontSize: 14, TextColor: #55FF55, VerticalAlignment: Center); Anchor: (Width: 14); }
+          Label { Text: "Factor"; Style: (FontSize: 14, TextColor: #96a9be, VerticalAlignment: Center); Anchor: (Width: 55); }
+          $C.@FloatSlider #WindingFactor { @Anchor = (Width: 250); Min: 0.0; Max: 1.0; Value: 0.5; Step: 0.01; }
+        }
+      }
+    }
+
+    // == FEATURES ========================================================
+    Group {
+      LayoutMode: Top;
+      Background: (TexturePath: "../../Common/ContainerPanelPatch.png", Border: 4);
+      Anchor: (Bottom: 12);
+
+      Group { Anchor: (Height: 34, Bottom: 4); $C.@PanelTitle { @Text = "Features"; } }
+
+      Group {
+        LayoutMode: Top;
+        Padding: (Horizontal: 14, Top: 4, Bottom: 12);
+
+        Group {
+          LayoutMode: Left;
+          Anchor: (Height: 44, Bottom: 4);
+          Label #PillarFreqTag { Text: ""; Style: (FontSize: 14, TextColor: #55FF55, VerticalAlignment: Center); Anchor: (Width: 14); }
+          Label { Text: "Pillars"; Style: (FontSize: 14, TextColor: #96a9be, VerticalAlignment: Center); Anchor: (Width: 60); }
+          $C.@FloatSlider #PillarFreq { @Anchor = (Width: 250, Right: 30); Min: 0.0; Max: 1.0; Value: 0.1; Step: 0.01; }
+          Label #WaterFreqTag { Text: ""; Style: (FontSize: 14, TextColor: #55FF55, VerticalAlignment: Center); Anchor: (Width: 14); }
+          Label { Text: "Water"; Style: (FontSize: 14, TextColor: #96a9be, VerticalAlignment: Center); Anchor: (Width: 55); }
+          $C.@FloatSlider #WaterFreq { @Anchor = (Width: 250); Min: 0.0; Max: 1.0; Value: 0.05; Step: 0.01; }
+        }
+
+        Group {
+          LayoutMode: Left;
+          Anchor: (Height: 44, Bottom: 4);
+          Label #LavaFreqTag { Text: ""; Style: (FontSize: 14, TextColor: #55FF55, VerticalAlignment: Center); Anchor: (Width: 14); }
+          Label { Text: "Lava"; Style: (FontSize: 14, TextColor: #96a9be, VerticalAlignment: Center); Anchor: (Width: 60); }
+          $C.@FloatSlider #LavaFreq { @Anchor = (Width: 250, Right: 30); Min: 0.0; Max: 1.0; Value: 0.0; Step: 0.01; }
+          Label #TrapDensityTag { Text: ""; Style: (FontSize: 14, TextColor: #55FF55, VerticalAlignment: Center); Anchor: (Width: 14); }
+          Label { Text: "Traps"; Style: (FontSize: 14, TextColor: #96a9be, VerticalAlignment: Center); Anchor: (Width: 55); }
+          $C.@FloatSlider #TrapDensity { @Anchor = (Width: 250); Min: 0.0; Max: 1.0; Value: 0.08; Step: 0.01; }
+        }
+
+        Group {
+          LayoutMode: Left;
+          Anchor: (Height: 44, Bottom: 4);
+          Label #SecretWallChanceTag { Text: ""; Style: (FontSize: 14, TextColor: #55FF55, VerticalAlignment: Center); Anchor: (Width: 14); }
+          Label { Text: "Secrets"; Style: (FontSize: 14, TextColor: #96a9be, VerticalAlignment: Center); Anchor: (Width: 60); }
+          $C.@FloatSlider #SecretWallChance { @Anchor = (Width: 250, Right: 30); Min: 0.0; Max: 1.0; Value: 0.05; Step: 0.01; }
+          Label #FloorTrapsTag { Text: ""; Style: (FontSize: 14, TextColor: #55FF55, VerticalAlignment: Center); Anchor: (Width: 14); }
+          $C.@CheckBoxWithLabel #FloorTrapsCheck { @Text = "Floor Traps"; @Checked = false; }
+        }
+
+        Group {
+          LayoutMode: Left;
+          Anchor: (Height: 44);
+          Label #MerchantChanceTag { Text: ""; Style: (FontSize: 14, TextColor: #55FF55, VerticalAlignment: Center); Anchor: (Width: 14); }
+          Label { Text: "Merchant %"; Style: (FontSize: 14, TextColor: #96a9be, VerticalAlignment: Center); Anchor: (Width: 90); }
+          $C.@FloatSlider #MerchantChance { @Anchor = (Width: 260); Min: 0.0; Max: 1.0; Value: 0.3; Step: 0.01; }
+        }
+      }
+    }
+
+    // == NAVIGATION ======================================================
+    Group {
+      LayoutMode: Top;
+      Background: (TexturePath: "../../Common/ContainerPanelPatch.png", Border: 4);
+      Anchor: (Bottom: 12);
+
+      Group { Anchor: (Height: 34, Bottom: 4); $C.@PanelTitle { @Text = "Navigation"; } }
+
+      Group {
+        LayoutMode: Left;
+        Padding: (Horizontal: 14, Top: 4, Bottom: 12);
+
+        Label #EntrancePlacementTag { Text: ""; Style: (FontSize: 14, TextColor: #55FF55, VerticalAlignment: Center); Anchor: (Width: 14); }
+        Label { Text: "Entrance"; Style: (FontSize: 14, TextColor: #96a9be, VerticalAlignment: Center); Anchor: (Width: 75); }
+        $C.@DropdownBox #EntrancePlacement {
+          @Anchor = (Width: 160, Right: 30);
+          Value: "edge";
+          DropdownEntry { Value: "edge"; Text: "Edge"; }
+          DropdownEntry { Value: "corner"; Text: "Corner"; }
+          DropdownEntry { Value: "center"; Text: "Center"; }
+          DropdownEntry { Value: "random"; Text: "Random"; }
+        }
+        Label #ExitDistanceTag { Text: ""; Style: (FontSize: 14, TextColor: #55FF55, VerticalAlignment: Center); Anchor: (Width: 14); }
+        Label { Text: "Exit Dist"; Style: (FontSize: 14, TextColor: #96a9be, VerticalAlignment: Center); Anchor: (Width: 70); }
+        $C.@FloatSlider #ExitDistance { @Anchor = (Width: 260); Min: 0.0; Max: 1.0; Value: 0.7; Step: 0.01; }
+      }
+    }
+
+    // == ENEMIES =========================================================
+    Group {
+      LayoutMode: Top;
+      Background: (TexturePath: "../../Common/ContainerPanelPatch.png", Border: 4);
+      Anchor: (Bottom: 12);
+
+      Group { Anchor: (Height: 34, Bottom: 4); $C.@PanelTitle { @Text = "Enemies"; } }
+
+      Group {
+        LayoutMode: Top;
+        Padding: (Horizontal: 14, Top: 4, Bottom: 12);
+
+        Group {
+          LayoutMode: Left;
+          Anchor: (Height: 44, Bottom: 4);
+          Label #EnemyDensityTag { Text: ""; Style: (FontSize: 14, TextColor: #55FF55, VerticalAlignment: Center); Anchor: (Width: 14); }
+          Label { Text: "Density"; Style: (FontSize: 14, TextColor: #96a9be, VerticalAlignment: Center); Anchor: (Width: 65); }
+          $C.@FloatSlider #EnemyDensity { @Anchor = (Width: 250, Right: 30); Min: 0.0; Max: 1.0; Value: 0.4; Step: 0.01; }
+          Label #MaxEnemiesPerRoomTag { Text: ""; Style: (FontSize: 14, TextColor: #55FF55, VerticalAlignment: Center); Anchor: (Width: 14); }
+          Label { Text: "Max/Room"; Style: (FontSize: 14, TextColor: #96a9be, VerticalAlignment: Center); Anchor: (Width: 75); }
+          $C.@NumberField #MaxEnemiesPerRoom { @Anchor = (Width: 65); Value: 5; Format: (MaxDecimalPlaces: 0, Step: 1, MinValue: 1, MaxValue: 20); }
+        }
+
+        Group {
+          LayoutMode: Left;
+          Anchor: (Height: 44);
+          Label #AmbushChanceTag { Text: ""; Style: (FontSize: 14, TextColor: #55FF55, VerticalAlignment: Center); Anchor: (Width: 14); }
+          Label { Text: "Ambush %"; Style: (FontSize: 14, TextColor: #96a9be, VerticalAlignment: Center); Anchor: (Width: 75); }
+          $C.@FloatSlider #AmbushChance { @Anchor = (Width: 250, Right: 30); Min: 0.0; Max: 1.0; Value: 0.1; Step: 0.01; }
+          Label #BossRoomTag { Text: ""; Style: (FontSize: 14, TextColor: #55FF55, VerticalAlignment: Center); Anchor: (Width: 14); }
+          $C.@CheckBoxWithLabel #BossRoomCheck { @Text = "Boss Room"; @Checked = true; }
+        }
+      }
+    }
+
+    // == ARCHITECTURE ====================================================
+    Group {
+      LayoutMode: Top;
+      Background: (TexturePath: "../../Common/ContainerPanelPatch.png", Border: 4);
+      Anchor: (Bottom: 12);
+
+      Group { Anchor: (Height: 34, Bottom: 4); $C.@PanelTitle { @Text = "Architecture"; } }
+
+      Group {
+        LayoutMode: Top;
+        Padding: (Horizontal: 14, Top: 4, Bottom: 12);
+
+        Group {
+          LayoutMode: Left;
+          Anchor: (Height: 44, Bottom: 4);
+          Label #ErosionTag { Text: ""; Style: (FontSize: 14, TextColor: #55FF55, VerticalAlignment: Center); Anchor: (Width: 14); }
+          Label { Text: "Erosion"; Style: (FontSize: 14, TextColor: #96a9be, VerticalAlignment: Center); Anchor: (Width: 65); }
+          $C.@FloatSlider #Erosion { @Anchor = (Width: 260); Min: 0.0; Max: 1.0; Value: 0.1; Step: 0.01; }
+        }
+
+        Group {
+          LayoutMode: Left;
+          Anchor: (Height: 34);
+          Label #RemoveCeilingTag { Text: ""; Style: (FontSize: 14, TextColor: #55FF55, VerticalAlignment: Center); Anchor: (Width: 14); }
+          $C.@CheckBoxWithLabel #RemoveCeilingCheck { @Text = "Remove Ceiling"; @Checked = false; Anchor: (Right: 30); }
+          Label #FlatFloorTag { Text: ""; Style: (FontSize: 14, TextColor: #55FF55, VerticalAlignment: Center); Anchor: (Width: 14); }
+          $C.@CheckBoxWithLabel #FlatFloorCheck { @Text = "Flat Floor"; @Checked = true; Anchor: (Right: 30); }
+          Label #SolidFillTag { Text: ""; Style: (FontSize: 14, TextColor: #55FF55, VerticalAlignment: Center); Anchor: (Width: 14); }
+          $C.@CheckBoxWithLabel #SolidFillCheck { @Text = "Solid Fill"; @Checked = true; }
+        }
+      }
+    }
+
+    // == THEME ===========================================================
+    Group {
+      LayoutMode: Top;
+      Background: (TexturePath: "../../Common/ContainerPanelPatch.png", Border: 4);
+      Anchor: (Bottom: 12);
+
+      Group { Anchor: (Height: 34, Bottom: 4); $C.@PanelTitle { @Text = "Theme"; } }
+
+      Group {
+        LayoutMode: Top;
+        Padding: (Horizontal: 14, Top: 4, Bottom: 12);
+
+        Group {
+          LayoutMode: Left;
+          Anchor: (Height: 44, Bottom: 4);
+          Label #DecayFactorTag { Text: ""; Style: (FontSize: 14, TextColor: #55FF55, VerticalAlignment: Center); Anchor: (Width: 14); }
+          Label { Text: "Decay"; Style: (FontSize: 14, TextColor: #96a9be, VerticalAlignment: Center); Anchor: (Width: 60); }
+          $C.@FloatSlider #DecayFactor { @Anchor = (Width: 250, Right: 30); Min: 0.0; Max: 1.0; Value: 0.3; Step: 0.01; }
+          Label #OvergrowthFactorTag { Text: ""; Style: (FontSize: 14, TextColor: #55FF55, VerticalAlignment: Center); Anchor: (Width: 14); }
+          Label { Text: "Overgrowth"; Style: (FontSize: 14, TextColor: #96a9be, VerticalAlignment: Center); Anchor: (Width: 90); }
+          $C.@FloatSlider #OvergrowthFactor { @Anchor = (Width: 250); Min: 0.0; Max: 1.0; Value: 0.1; Step: 0.01; }
+        }
+
+        Group {
+          LayoutMode: Left;
+          Anchor: (Height: 44);
+          Label #FloodingFactorTag { Text: ""; Style: (FontSize: 14, TextColor: #55FF55, VerticalAlignment: Center); Anchor: (Width: 14); }
+          Label { Text: "Flooding"; Style: (FontSize: 14, TextColor: #96a9be, VerticalAlignment: Center); Anchor: (Width: 70); }
+          $C.@FloatSlider #FloodingFactor { @Anchor = (Width: 260); Min: 0.0; Max: 1.0; Value: 0.0; Step: 0.01; }
+        }
+      }
+    }
+
+    // == PACING ==========================================================
+    Group {
+      LayoutMode: Top;
+      Background: (TexturePath: "../../Common/ContainerPanelPatch.png", Border: 4);
+      Anchor: (Bottom: 12);
+
+      Group { Anchor: (Height: 34, Bottom: 4); $C.@PanelTitle { @Text = "Pacing"; } }
+
+      Group {
+        LayoutMode: Left;
+        Padding: (Horizontal: 14, Top: 4, Bottom: 12);
+
+        Label #BreatheRoomFreqTag { Text: ""; Style: (FontSize: 14, TextColor: #55FF55, VerticalAlignment: Center); Anchor: (Width: 14); }
+        Label { Text: "Breathe Rooms"; Style: (FontSize: 14, TextColor: #96a9be, VerticalAlignment: Center); Anchor: (Width: 110); }
+        $C.@FloatSlider #BreatheRoomFreq { @Anchor = (Width: 220, Right: 30); Min: 0.0; Max: 1.0; Value: 0.3; Step: 0.01; }
+        Label #DifficultyRampTag { Text: ""; Style: (FontSize: 14, TextColor: #55FF55, VerticalAlignment: Center); Anchor: (Width: 14); }
+        Label { Text: "Diff Ramp"; Style: (FontSize: 14, TextColor: #96a9be, VerticalAlignment: Center); Anchor: (Width: 80); }
+        $C.@FloatSlider #DifficultyRamp { @Anchor = (Width: 220); Min: 0.0; Max: 1.0; Value: 0.5; Step: 0.01; }
+      }
+    }
+
+    // == STATUS ==========================================================
+    Group {
+      LayoutMode: Left;
+      Anchor: (Top: 6, Bottom: 12, Height: 24);
+
+      Group { Anchor: (Width: 0); FlexWeight: 1; }
+
+      Label #StatusLabel {
+        Style: (FontSize: 13, TextColor: #55FF55, VerticalAlignment: Center);
+        Text: "";
+        Visible: false;
+      }
+
+      Group { Anchor: (Width: 0); FlexWeight: 1; }
+    }
+
+    // == BUTTONS =========================================================
+    Group {
+      LayoutMode: Left;
+      Anchor: (Bottom: 4);
+
+      $C.@TextButton #SaveButton {
+        Anchor: (Width: 200, Height: 44, Right: 20);
+        Text: "Save Overrides";
+      }
+
+      $C.@TextButton #ResetButton {
+        Anchor: (Width: 200, Height: 44);
+        Text: "Reset All";
+      }
+    }
+  }
+}
+
+$C.@BackButton {}
