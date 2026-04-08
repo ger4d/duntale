@@ -62,6 +62,7 @@ import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
@@ -150,8 +151,7 @@ public class ClickToMoveManager {
     private final Map<UUID, PlayerState> players = new ConcurrentHashMap<>();
     private final EventRegistry eventRegistry;
 
-    /** Optional RPG service for per-player speed and attack throttle scaling. */
-    @Nullable
+    /** RPG service for per-player speed and attack throttle scaling. */
     private RpgService rpgService;
 
     /**
@@ -261,10 +261,10 @@ public class ClickToMoveManager {
     /**
      * Sets the RPG service for per-player stat-based speed and attack throttle.
      *
-     * @param rpgService the RPG service, or {@code null} to use defaults
+     * @param rpgService the RPG service
      */
-    public void setRpgService(@Nullable RpgService rpgService) {
-        this.rpgService = rpgService;
+    public void setRpgService(@Nonnull RpgService rpgService) {
+        this.rpgService = Objects.requireNonNull(rpgService, "rpgService");
     }
 
     /**
@@ -577,7 +577,6 @@ public class ClickToMoveManager {
         if (player == null) return;
 
         MerchantService merchantService = ZSquadPlugin.get().getMerchantService();
-        if (merchantService == null) return;
 
         int floorLevel = mc.getFloorLevel();
         java.util.List<CatalogEntry> catalog;
@@ -594,20 +593,16 @@ public class ClickToMoveManager {
 
     /**
      * Computes per-player move speed from the Speed RPG stat.
-     * Falls back to {@link MovementHelper#MOVE_SPEED} when no RPG service is set.
      */
     private double getPlayerMoveSpeed(@Nonnull UUID uuid) {
-        if (rpgService == null) return MovementHelper.MOVE_SPEED;
         int speedLevel = rpgService.getStat(uuid, RpgStat.SPEED);
         return RpgStatEffects.computeMoveSpeed(speedLevel);
     }
 
     /**
      * Computes per-player attack throttle from the Agility RPG stat.
-     * Falls back to {@link #ATTACK_THROTTLE_NS} when no RPG service is set.
      */
     private long getPlayerAttackThrottle(@Nonnull UUID uuid) {
-        if (rpgService == null) return ATTACK_THROTTLE_NS;
         int agilityLevel = rpgService.getStat(uuid, RpgStat.AGILITY);
         return RpgStatEffects.computeAttackThrottleNs(agilityLevel);
     }

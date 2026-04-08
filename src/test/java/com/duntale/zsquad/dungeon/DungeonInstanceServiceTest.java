@@ -49,6 +49,7 @@ class DungeonInstanceServiceTest {
     private DatabaseProvider database;
     private DungeonInstanceRepository instanceRepository;
     private DungeonMembershipRepository membershipRepository;
+    private FloorConfigService floorConfigService;
     private DungeonInstanceService service;
 
     @BeforeEach
@@ -62,7 +63,11 @@ class DungeonInstanceServiceTest {
         membershipRepository = new DungeonMembershipRepository(database);
         membershipRepository.initialize();
 
-        service = new DungeonInstanceService(database, instanceRepository, membershipRepository);
+        FloorConfigRepository floorConfigRepository = new FloorConfigRepository(database);
+        floorConfigRepository.initialize();
+        floorConfigService = new FloorConfigService(floorConfigRepository);
+
+        service = new DungeonInstanceService(database, instanceRepository, membershipRepository, new PartyService(), floorConfigService);
     }
 
     @AfterEach
@@ -239,7 +244,7 @@ class DungeonInstanceServiceTest {
                     instanceRepository,
                     membershipRepository,
                     new PartyService(),
-                    null,
+                    floorConfigService,
                     runtime
             );
 
@@ -289,7 +294,7 @@ class DungeonInstanceServiceTest {
                     instanceRepository,
                     membershipRepository,
                     partyService,
-                    null,
+                    floorConfigService,
                     runtime
             );
 
@@ -318,7 +323,7 @@ class DungeonInstanceServiceTest {
                     instanceRepository,
                     membershipRepository,
                     new PartyService(),
-                    null,
+                    floorConfigService,
                     failingRuntime
             );
 
@@ -341,7 +346,7 @@ class DungeonInstanceServiceTest {
                     instanceRepository,
                     membershipRepository,
                     new PartyService(),
-                    null,
+                    floorConfigService,
                     retryRuntime
             );
 
@@ -363,7 +368,7 @@ class DungeonInstanceServiceTest {
         @DisplayName("Should complete without error when no instances exist")
         void shouldCompleteWithoutErrorWhenNoInstancesExist() {
             DungeonInstanceService freshService = new DungeonInstanceService(
-                    database, instanceRepository, membershipRepository);
+                    database, instanceRepository, membershipRepository, new PartyService(), floorConfigService);
             assertDoesNotThrow(freshService::loadOnStartup);
         }
 
@@ -377,7 +382,7 @@ class DungeonInstanceServiceTest {
 
             FakeRuntime restartRuntime = restartRuntimeAfterWorldsLoaded();
             DungeonInstanceService freshService = new DungeonInstanceService(
-                    database, instanceRepository, membershipRepository, new PartyService(), null, restartRuntime);
+                    database, instanceRepository, membershipRepository, new PartyService(), floorConfigService, restartRuntime);
             freshService.loadOnStartup();
 
             DungeonInstance loaded = instanceRepository.findById("inst-1").orElseThrow();
@@ -393,7 +398,7 @@ class DungeonInstanceServiceTest {
 
             FakeRuntime restartRuntime = restartRuntimeAfterWorldsLoaded();
             DungeonInstanceService freshService = new DungeonInstanceService(
-                    database, instanceRepository, membershipRepository, new PartyService(), null, restartRuntime);
+                    database, instanceRepository, membershipRepository, new PartyService(), floorConfigService, restartRuntime);
             freshService.loadOnStartup();
 
             DungeonInstance loaded = instanceRepository.findById("inst-1").orElseThrow();
@@ -411,7 +416,7 @@ class DungeonInstanceServiceTest {
 
             FakeRuntime restartRuntime = restartRuntimeAfterWorldsLoaded();
             DungeonInstanceService freshService = new DungeonInstanceService(
-                    database, instanceRepository, membershipRepository, new PartyService(), null, restartRuntime);
+                    database, instanceRepository, membershipRepository, new PartyService(), floorConfigService, restartRuntime);
             freshService.loadOnStartup();
 
             DungeonInstance loaded = instanceRepository.findById("inst-1").orElseThrow();
@@ -438,7 +443,7 @@ class DungeonInstanceServiceTest {
 
             FakeRuntime restartRuntime = restartRuntimeAfterWorldsLoaded();
             DungeonInstanceService freshService = new DungeonInstanceService(
-                    database, instanceRepository, membershipRepository, new PartyService(), null, restartRuntime);
+                    database, instanceRepository, membershipRepository, new PartyService(), floorConfigService, restartRuntime);
             freshService.loadOnStartup();
 
             assertEquals(DungeonInstanceState.ACTIVE,
@@ -464,7 +469,7 @@ class DungeonInstanceServiceTest {
         void shouldTransitionActiveInstanceToNextFloor() throws SQLException {
             FakeRuntime runtime = new FakeRuntime();
             service = new DungeonInstanceService(
-                    database, instanceRepository, membershipRepository, new PartyService(), null, runtime);
+                    database, instanceRepository, membershipRepository, new PartyService(), floorConfigService, runtime);
 
             UUID player = UUID.randomUUID();
             DungeonInstance active = service.createInstance(List.of(player), 1, "crypt").join();
@@ -490,7 +495,7 @@ class DungeonInstanceServiceTest {
         void shouldArmOldWorldForRemovalAfterTransition() throws SQLException {
             FakeRuntime runtime = new FakeRuntime();
             service = new DungeonInstanceService(
-                    database, instanceRepository, membershipRepository, new PartyService(), null, runtime);
+                    database, instanceRepository, membershipRepository, new PartyService(), floorConfigService, runtime);
 
             UUID player = UUID.randomUUID();
             DungeonInstance active = service.createInstance(List.of(player), 1, "crypt").join();
@@ -507,13 +512,13 @@ class DungeonInstanceServiceTest {
         void shouldTeleportRosterToNewWorldEntrance() throws SQLException {
             FakeRuntime runtime = new FakeRuntime();
             service = new DungeonInstanceService(
-                    database, instanceRepository, membershipRepository, new PartyService(), null, runtime);
+                    database, instanceRepository, membershipRepository, new PartyService(), floorConfigService, runtime);
 
             UUID playerA = UUID.randomUUID();
             UUID playerB = UUID.randomUUID();
             PartyService partyService = new PartyService();
             service = new DungeonInstanceService(
-                    database, instanceRepository, membershipRepository, partyService, null, runtime);
+                    database, instanceRepository, membershipRepository, partyService, floorConfigService, runtime);
             assertTrue(partyService.createParty(playerA));
             assertEquals(PartyService.InviteResult.SUCCESS, partyService.invitePlayer(playerA, playerB));
 
@@ -560,7 +565,7 @@ class DungeonInstanceServiceTest {
         void shouldCleanUpNewWorldAndRevertToActiveOnGenerationFailure() throws SQLException {
             FakeRuntime runtime = new FakeRuntime();
             service = new DungeonInstanceService(
-                    database, instanceRepository, membershipRepository, new PartyService(), null, runtime);
+                    database, instanceRepository, membershipRepository, new PartyService(), floorConfigService, runtime);
 
             UUID player = UUID.randomUUID();
             DungeonInstance active = service.createInstance(List.of(player), 1, "crypt").join();
@@ -590,7 +595,7 @@ class DungeonInstanceServiceTest {
         void shouldKeepInstanceTransitioningUntilTeleportCompletes() throws SQLException {
             FakeRuntime runtime = new FakeRuntime();
             service = new DungeonInstanceService(
-                    database, instanceRepository, membershipRepository, new PartyService(), null, runtime);
+                    database, instanceRepository, membershipRepository, new PartyService(), floorConfigService, runtime);
 
             UUID player = UUID.randomUUID();
             DungeonInstance active = service.createInstance(List.of(player), 1, "crypt").join();
@@ -615,7 +620,7 @@ class DungeonInstanceServiceTest {
         void shouldAllowConsecutiveFloorTransitions() throws SQLException {
             FakeRuntime runtime = new FakeRuntime();
             service = new DungeonInstanceService(
-                    database, instanceRepository, membershipRepository, new PartyService(), null, runtime);
+                    database, instanceRepository, membershipRepository, new PartyService(), floorConfigService, runtime);
 
             UUID player = UUID.randomUUID();
             DungeonInstance floor1 = service.createInstance(List.of(player), 1, "crypt").join();
@@ -635,7 +640,7 @@ class DungeonInstanceServiceTest {
         void shouldRejectConcurrentTransitionAttemptsViaAtomicStateClaim() throws Exception {
             FakeRuntime runtime = new FakeRuntime();
             service = new DungeonInstanceService(
-                    database, instanceRepository, membershipRepository, new PartyService(), null, runtime);
+                    database, instanceRepository, membershipRepository, new PartyService(), floorConfigService, runtime);
 
             UUID player = UUID.randomUUID();
             DungeonInstance active = service.createInstance(List.of(player), 1, "crypt").join();
@@ -660,7 +665,7 @@ class DungeonInstanceServiceTest {
         void shouldNotRevertMetadataWhenArmWorldRemovalFailsAfterTransfer() throws SQLException {
             FakeRuntime runtime = new FakeRuntime();
             service = new DungeonInstanceService(
-                    database, instanceRepository, membershipRepository, new PartyService(), null, runtime);
+                    database, instanceRepository, membershipRepository, new PartyService(), floorConfigService, runtime);
 
             UUID player = UUID.randomUUID();
             DungeonInstance active = service.createInstance(List.of(player), 1, "crypt").join();
@@ -691,7 +696,7 @@ class DungeonInstanceServiceTest {
             FakeRuntime runtime = new FakeRuntime();
             instanceRepository = new FailingActiveStateRepository(database, 1);
             service = new DungeonInstanceService(
-                    database, instanceRepository, membershipRepository, new PartyService(), null, runtime);
+                    database, instanceRepository, membershipRepository, new PartyService(), floorConfigService, runtime);
 
             UUID player = UUID.randomUUID();
             DungeonInstance active = service.createInstance(List.of(player), 1, "crypt").join();
@@ -716,7 +721,7 @@ class DungeonInstanceServiceTest {
             FakeRuntime runtime = new FakeRuntime();
             instanceRepository = new FailingActiveStateRepository(database, 2);
             service = new DungeonInstanceService(
-                    database, instanceRepository, membershipRepository, new PartyService(), null, runtime);
+                    database, instanceRepository, membershipRepository, new PartyService(), floorConfigService, runtime);
 
             UUID player = UUID.randomUUID();
             DungeonInstance floor1 = service.createInstance(List.of(player), 1, "crypt").join();
@@ -871,7 +876,7 @@ class DungeonInstanceServiceTest {
         void shouldEndActiveInstanceEvacuateAndArm() throws SQLException {
             FakeRuntime runtime = new FakeRuntime();
             service = new DungeonInstanceService(
-                    database, instanceRepository, membershipRepository, new PartyService(), null, runtime);
+                    database, instanceRepository, membershipRepository, new PartyService(), floorConfigService, runtime);
 
             UUID playerA = UUID.randomUUID();
             UUID playerB = UUID.randomUUID();
@@ -891,7 +896,7 @@ class DungeonInstanceServiceTest {
         void shouldRetryCleanupWhenAlreadyEnded() throws SQLException {
             FakeRuntime runtime = new FakeRuntime();
             service = new DungeonInstanceService(
-                    database, instanceRepository, membershipRepository, new PartyService(), null, runtime);
+                    database, instanceRepository, membershipRepository, new PartyService(), floorConfigService, runtime);
 
             UUID player = UUID.randomUUID();
             DungeonInstance instance = testInstanceWithState("inst-1", "world-1", DungeonInstanceState.ACTIVE);
@@ -940,7 +945,7 @@ class DungeonInstanceServiceTest {
         void shouldMakeEndedInstanceUnreachableViaContinue() throws SQLException {
             FakeRuntime runtime = new FakeRuntime();
             service = new DungeonInstanceService(
-                    database, instanceRepository, membershipRepository, new PartyService(), null, runtime);
+                    database, instanceRepository, membershipRepository, new PartyService(), floorConfigService, runtime);
 
             UUID player = UUID.randomUUID();
             DungeonInstance instance = service.createInstance(List.of(player), 1, "crypt").join();
@@ -961,7 +966,7 @@ class DungeonInstanceServiceTest {
             FakeRuntime runtime = new FakeRuntime();
             instanceRepository = new FailingActiveStateRepository(database, 2);
             service = new DungeonInstanceService(
-                    database, instanceRepository, membershipRepository, new PartyService(), null, runtime);
+                    database, instanceRepository, membershipRepository, new PartyService(), floorConfigService, runtime);
 
             UUID player = UUID.randomUUID();
             DungeonInstance floor1 = service.createInstance(List.of(player), 1, "crypt").join();
@@ -989,7 +994,7 @@ class DungeonInstanceServiceTest {
             FakeRuntime runtime = new FakeRuntime();
             runtime.evacuationFailure = new RuntimeException("evacuation failed");
             service = new DungeonInstanceService(
-                    database, instanceRepository, membershipRepository, new PartyService(), null, runtime);
+                    database, instanceRepository, membershipRepository, new PartyService(), floorConfigService, runtime);
 
             UUID player = UUID.randomUUID();
             DungeonInstance instance = service.createInstance(List.of(player), 1, "crypt").join();
@@ -1011,7 +1016,7 @@ class DungeonInstanceServiceTest {
             FakeRuntime runtime = new FakeRuntime();
             runtime.armWorldRemovalFailure = new RuntimeException("arm failed");
             service = new DungeonInstanceService(
-                    database, instanceRepository, membershipRepository, new PartyService(), null, runtime);
+                    database, instanceRepository, membershipRepository, new PartyService(), floorConfigService, runtime);
 
             UUID player = UUID.randomUUID();
             DungeonInstance instance = service.createInstance(List.of(player), 1, "crypt").join();
@@ -1034,7 +1039,7 @@ class DungeonInstanceServiceTest {
             membershipRepository = new FailingRosterLookupMembershipRepository(database, 1);
             membershipRepository.initialize();
             service = new DungeonInstanceService(
-                    database, instanceRepository, membershipRepository, new PartyService(), null, runtime);
+                    database, instanceRepository, membershipRepository, new PartyService(), floorConfigService, runtime);
 
             UUID player = UUID.randomUUID();
             DungeonInstance instance = service.createInstance(List.of(player), 1, "crypt").join();
@@ -1059,7 +1064,7 @@ class DungeonInstanceServiceTest {
         void shouldAllowCreatingNewInstanceAfterEnding() throws SQLException {
             FakeRuntime runtime = new FakeRuntime();
             service = new DungeonInstanceService(
-                    database, instanceRepository, membershipRepository, new PartyService(), null, runtime);
+                    database, instanceRepository, membershipRepository, new PartyService(), floorConfigService, runtime);
 
             UUID player = UUID.randomUUID();
             DungeonInstance first = service.createInstance(List.of(player), 1, "crypt").join();
@@ -1085,7 +1090,7 @@ class DungeonInstanceServiceTest {
         void shouldForceEndActiveInstance() throws SQLException {
             FakeRuntime runtime = new FakeRuntime();
             service = new DungeonInstanceService(
-                    database, instanceRepository, membershipRepository, new PartyService(), null, runtime);
+                    database, instanceRepository, membershipRepository, new PartyService(), floorConfigService, runtime);
 
             UUID player = UUID.randomUUID();
             DungeonInstance instance = service.createInstance(List.of(player), 1, "crypt").join();
@@ -1102,7 +1107,7 @@ class DungeonInstanceServiceTest {
         void shouldForceEndCreatingInstance() throws SQLException {
             FakeRuntime runtime = new FakeRuntime();
             service = new DungeonInstanceService(
-                    database, instanceRepository, membershipRepository, new PartyService(), null, runtime);
+                    database, instanceRepository, membershipRepository, new PartyService(), floorConfigService, runtime);
 
             UUID player = UUID.randomUUID();
             DungeonInstance creating = testInstance("inst-1", "world-1");
@@ -1120,7 +1125,7 @@ class DungeonInstanceServiceTest {
         void shouldForceEndLiveTransitioningInstanceAcrossBothWorlds() throws SQLException {
             FakeRuntime runtime = new FakeRuntime();
             service = new DungeonInstanceService(
-                    database, instanceRepository, membershipRepository, new PartyService(), null, runtime);
+                    database, instanceRepository, membershipRepository, new PartyService(), floorConfigService, runtime);
 
             UUID player = UUID.randomUUID();
             DungeonInstance floor1 = service.createInstance(List.of(player), 1, "crypt").join();
@@ -1183,7 +1188,7 @@ class DungeonInstanceServiceTest {
         void shouldRetryCleanupAfterForceEndFailureOnTransitioningInstance() throws SQLException {
             FakeRuntime runtime = new FakeRuntime();
             service = new DungeonInstanceService(
-                    database, instanceRepository, membershipRepository, new PartyService(), null, runtime);
+                    database, instanceRepository, membershipRepository, new PartyService(), floorConfigService, runtime);
 
             UUID player = UUID.randomUUID();
             DungeonInstance floor1 = service.createInstance(List.of(player), 1, "crypt").join();
@@ -1216,7 +1221,7 @@ class DungeonInstanceServiceTest {
         void shouldAllowNewInstanceAfterForceEndingTransitioning() throws SQLException {
             FakeRuntime runtime = new FakeRuntime();
             service = new DungeonInstanceService(
-                    database, instanceRepository, membershipRepository, new PartyService(), null, runtime);
+                    database, instanceRepository, membershipRepository, new PartyService(), floorConfigService, runtime);
 
             UUID player = UUID.randomUUID();
             DungeonInstance floor1 = service.createInstance(List.of(player), 1, "crypt").join();

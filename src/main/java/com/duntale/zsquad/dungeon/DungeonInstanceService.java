@@ -1,8 +1,6 @@
 package com.duntale.zsquad.dungeon;
 
 import com.duntale.dungeongen.config.DungeonConfig;
-import com.duntale.dungeongen.config.LayoutConfig;
-import com.duntale.dungeongen.config.PacingConfig;
 import com.duntale.dungeongen.config.ThemeConfig;
 import com.duntale.dungeongen.config.Vec3i;
 import com.duntale.dungeongen.generator.GenerationOrchestrator;
@@ -57,7 +55,7 @@ import java.util.logging.Level;
  *
  * <h2>Usage:</h2>
  * <pre>{@code
- * DungeonInstanceService service = new DungeonInstanceService(database, instanceRepository, membershipRepository);
+ * DungeonInstanceService service = new DungeonInstanceService(database, instanceRepository, membershipRepository, partyService, floorConfigService);
  * CompletableFuture<DungeonInstance> active = service.createInstance(List.of(playerId), 1, "crypt");
  * }</pre>
  *
@@ -77,7 +75,6 @@ public class DungeonInstanceService {
     private final DungeonInstanceRepository instanceRepository;
     private final DungeonMembershipRepository membershipRepository;
     private final PartyService partyService;
-    @Nullable
     private final FloorConfigService floorConfigService;
     private final RuntimeAdapter runtimeAdapter;
     // Keeps Continue routing on the new floor if post-transfer ACTIVE persistence is temporarily unavailable.
@@ -90,53 +87,20 @@ public class DungeonInstanceService {
     // ============================================
 
     /**
-     * Creates a new dungeon instance service with an internal party service, no floor config
-     * service, and live Hytale runtime hooks.
-     *
-     * @param database             the database provider for transactional operations
-     * @param instanceRepository   the dungeon instance repository
-     * @param membershipRepository the dungeon membership repository
-     */
-    public DungeonInstanceService(
-            @Nonnull DatabaseProvider database,
-            @Nonnull DungeonInstanceRepository instanceRepository,
-            @Nonnull DungeonMembershipRepository membershipRepository
-    ) {
-        this(database, instanceRepository, membershipRepository, new PartyService());
-    }
-
-    /**
-     * Creates a new dungeon instance service backed by the given shared party service.
+     * Creates a new dungeon instance service with live Hytale runtime hooks.
      *
      * @param database             the database provider for transactional operations
      * @param instanceRepository   the dungeon instance repository
      * @param membershipRepository the dungeon membership repository
      * @param partyService         the shared party service used to assemble starting rosters
-     */
-    public DungeonInstanceService(
-            @Nonnull DatabaseProvider database,
-            @Nonnull DungeonInstanceRepository instanceRepository,
-            @Nonnull DungeonMembershipRepository membershipRepository,
-            @Nonnull PartyService partyService
-    ) {
-        this(database, instanceRepository, membershipRepository, partyService, (FloorConfigService) null);
-    }
-
-    /**
-     * Creates a new dungeon instance service with floor config support.
-     *
-     * @param database             the database provider for transactional operations
-     * @param instanceRepository   the dungeon instance repository
-     * @param membershipRepository the dungeon membership repository
-     * @param partyService         the shared party service used to assemble starting rosters
-     * @param floorConfigService   the floor config service for per-floor generation overrides, or null
+     * @param floorConfigService   the floor config service for per-floor generation overrides
      */
     public DungeonInstanceService(
             @Nonnull DatabaseProvider database,
             @Nonnull DungeonInstanceRepository instanceRepository,
             @Nonnull DungeonMembershipRepository membershipRepository,
             @Nonnull PartyService partyService,
-            @Nullable FloorConfigService floorConfigService
+            @Nonnull FloorConfigService floorConfigService
     ) {
         this(database, instanceRepository, membershipRepository, partyService, floorConfigService,
                 new LiveRuntimeAdapter());
@@ -147,14 +111,14 @@ public class DungeonInstanceService {
             @Nonnull DungeonInstanceRepository instanceRepository,
             @Nonnull DungeonMembershipRepository membershipRepository,
             @Nonnull PartyService partyService,
-            @Nullable FloorConfigService floorConfigService,
+            @Nonnull FloorConfigService floorConfigService,
             @Nonnull RuntimeAdapter runtimeAdapter
     ) {
         this.database = Objects.requireNonNull(database, "database");
         this.instanceRepository = Objects.requireNonNull(instanceRepository, "instanceRepository");
         this.membershipRepository = Objects.requireNonNull(membershipRepository, "membershipRepository");
         this.partyService = Objects.requireNonNull(partyService, "partyService");
-        this.floorConfigService = floorConfigService;
+        this.floorConfigService = Objects.requireNonNull(floorConfigService, "floorConfigService");
         this.runtimeAdapter = Objects.requireNonNull(runtimeAdapter, "runtimeAdapter");
     }
 
@@ -1130,34 +1094,15 @@ public class DungeonInstanceService {
             @Nonnull Vec3i origin,
             @Nonnull String theme
     ) {
-        if (floorConfigService != null) {
-            DungeonConfig resolved = floorConfigService.resolveConfigForFloor(floorLevel, theme);
-            return new DungeonConfig(
-                    null,
-                    null,
-                    worldName,
-                    origin,
-                    resolved.layout(),
-                    resolved.theme(),
-                    resolved.pacing(),
-                    true,
-                    floorLevel
-            );
-        }
-        ThemeConfig defaultTheme = ThemeConfig.defaults();
+        DungeonConfig resolved = floorConfigService.resolveConfigForFloor(floorLevel, theme);
         return new DungeonConfig(
                 null,
                 null,
                 worldName,
                 origin,
-                LayoutConfig.defaults(),
-                new ThemeConfig(
-                        theme,
-                        defaultTheme.decayFactor(),
-                        defaultTheme.overgrowthFactor(),
-                        defaultTheme.floodingFactor()
-                ),
-                PacingConfig.defaults(),
+                resolved.layout(),
+                resolved.theme(),
+                resolved.pacing(),
                 true,
                 floorLevel
         );
