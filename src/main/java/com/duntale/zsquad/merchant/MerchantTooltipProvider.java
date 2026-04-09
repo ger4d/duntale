@@ -15,8 +15,9 @@ import javax.annotation.Nullable;
  * the buy price and the player's current gold balance.
  *
  * <p><strong>Sell items</strong> — any item with a known sell price in the
- * {@link MerchantPriceRegistry} — shows the sell value. Since sell price is
- * deterministic per item ID, no metadata injection is needed.
+ * {@link MerchantPriceRegistry} — shows the sell value. Sell price is derived
+ * from the item ID plus any stamped dungeon level metadata, so no extra sell
+ * metadata injection is needed.
  *
  * <p>Registered with DynamicTooltipsLib in {@code ZSquadPlugin}. Requires the
  * optional DynamicTooltipsLib dependency to be loaded at runtime.

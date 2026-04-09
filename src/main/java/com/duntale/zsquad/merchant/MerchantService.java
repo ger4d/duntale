@@ -48,7 +48,6 @@ public class MerchantService {
 
     private static final String COLOR_GOLD = "#FFD700";
     private static final String COLOR_GREEN = "#55FF55";
-    private static final String COLOR_RED = "#FF5555";
     private static final String COLOR_GRAY = "#AAAAAA";
 
     /** Default number of sell-zone slots in the merchant container. */
@@ -255,7 +254,7 @@ public class MerchantService {
         updateBuyItemBalances(container, catalog, newBalance);
 
         // Tag the bought item in the player's inventory with sell-price metadata
-        long sellPrice = priceRegistry.getSellPrice(entry.itemId());
+        long sellPrice = priceRegistry.getSellPrice(entry.itemId(), entry.level());
         tagBoughtItemInInventory(playerRef, entry.itemId(), sellPrice);
     }
 
@@ -359,9 +358,9 @@ public class MerchantService {
     // ── Inventory Tagging ────────────────────────────────────────────
 
     /**
-     * Finds the first item in the player's inventory matching the given item ID
-     * that still has buy-price metadata, strips the merchant display tags, and
-     * replaces them with a sell-price tag.
+        * Finds the first item in the player's carried or equipped containers matching
+        * the given item ID that still has buy-price metadata, strips the merchant
+        * display tags, and replaces them with a sell-price tag.
      *
      * @param playerRef the player reference
      * @param itemId    the item ID to look for
@@ -374,12 +373,21 @@ public class MerchantService {
         if (ref == null || !ref.isValid()) return;
 
         InventoryComponent.Hotbar hotbar = ref.getStore().getComponent(ref, InventoryComponent.Hotbar.getComponentType());
-        if (hotbar != null) {
-            tagFirstMatchInContainer(hotbar.getInventory(), itemId, sellPrice);
-        }
         InventoryComponent.Storage storage = ref.getStore().getComponent(ref, InventoryComponent.Storage.getComponentType());
-        if (storage != null) {
-            tagFirstMatchInContainer(storage.getInventory(), itemId, sellPrice);
+        InventoryComponent.Armor armor = ref.getStore().getComponent(ref, InventoryComponent.Armor.getComponentType());
+        tagFirstMatchInContainers(itemId, sellPrice,
+                hotbar != null ? hotbar.getInventory() : null,
+                storage != null ? storage.getInventory() : null,
+                armor != null ? armor.getInventory() : null);
+    }
+
+    static void tagFirstMatchInContainers(@Nonnull String itemId,
+                                          long sellPrice,
+                                          @Nullable ItemContainer... containers) {
+        for (ItemContainer container : containers) {
+            if (container != null && tagFirstMatchInContainer(container, itemId, sellPrice)) {
+                return;
+            }
         }
     }
 
@@ -387,9 +395,9 @@ public class MerchantService {
      * Scans a container for the first item matching the given item ID with buy-price
      * metadata, and replaces buy/gold metadata with sell-price metadata.
      */
-    private static void tagFirstMatchInContainer(@Nonnull ItemContainer container,
-                                                 @Nonnull String itemId,
-                                                 long sellPrice) {
+    static boolean tagFirstMatchInContainer(@Nonnull ItemContainer container,
+                                            @Nonnull String itemId,
+                                            long sellPrice) {
         for (short i = 0; i < container.getCapacity(); i++) {
             ItemStack stack = container.getItemStack(i);
             if (stack == null || ItemStack.isEmpty(stack)) continue;
@@ -404,8 +412,10 @@ public class MerchantService {
                     .withMetadata(META_GOLD, Codec.LONG, null)
                     .withMetadata(META_SELL_PRICE, Codec.LONG, sellPrice);
             container.setItemStackForSlot(i, updated);
-            return; // Only tag one item per purchase
+            return true; // Only tag one item per purchase
         }
+
+        return false;
     }
 
     /**
@@ -425,12 +435,19 @@ public class MerchantService {
         if (player == null) return;
 
         InventoryComponent.Hotbar hotbar = accessor.getComponent(ref, InventoryComponent.Hotbar.getComponentType());
-        if (hotbar != null) {
-            stripMerchantMeta(hotbar.getInventory());
-        }
         InventoryComponent.Storage storage = accessor.getComponent(ref, InventoryComponent.Storage.getComponentType());
-        if (storage != null) {
-            stripMerchantMeta(storage.getInventory());
+        InventoryComponent.Armor armor = accessor.getComponent(ref, InventoryComponent.Armor.getComponentType());
+        stripMerchantMetaFromContainers(
+                hotbar != null ? hotbar.getInventory() : null,
+                storage != null ? storage.getInventory() : null,
+                armor != null ? armor.getInventory() : null);
+    }
+
+    static void stripMerchantMetaFromContainers(@Nullable ItemContainer... containers) {
+        for (ItemContainer container : containers) {
+            if (container != null) {
+                stripMerchantMeta(container);
+            }
         }
     }
 
@@ -439,7 +456,7 @@ public class MerchantService {
      * from all items in the given container. Leaves {@link #META_SELL_PRICE} intact
      * since it's useful for tooltip display outside the merchant.
      */
-    private static void stripMerchantMeta(@Nonnull ItemContainer container) {
+    static void stripMerchantMeta(@Nonnull ItemContainer container) {
         for (short i = 0; i < container.getCapacity(); i++) {
             ItemStack stack = container.getItemStack(i);
             if (stack == null || ItemStack.isEmpty(stack)) continue;

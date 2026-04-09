@@ -1,6 +1,7 @@
 package com.duntale.zsquad.merchant;
 
 import com.duntale.zsquad.progression.AssetCatalog;
+import com.duntale.zsquad.progression.CombatScaling;
 import com.hypixel.hytale.logger.HytaleLogger;
 
 import javax.annotation.Nonnull;
@@ -15,28 +16,67 @@ import java.util.logging.Level;
 /**
  * Computes and caches buy/sell prices for all weapons and armor.
  *
- * <p>Prices are derived from {@link AssetCatalog}'s weapon/armor base tables
- * using the formula:
+ * <p>Prices are derived from {@link AssetCatalog}'s real combat stats at the
+ * requested dungeon level instead of the old item-level-squared heuristic.
+ * The model intentionally follows the same values players see in tooltip power
+ * and armor DR calculations:
  * <pre>
- * buyPrice  = itemLevel² × qualityCoefficient [× slotMultiplier for armor]
+ * weapon buyPrice = gold(scale(baseDamage × CombatScaling.weaponMult(level)))
+ * armor buyPrice  = gold(scale(avgEffectiveDR + healthBonus))
+ * fallback        = gold(scale(itemLevel × sqrt(quality))) for utility items
  * sellPrice = floor(buyPrice × SELL_RATIO)
  * </pre>
  *
  * <p>Initialise once at plugin startup via {@link #initialize(AssetCatalog)}.
- * All subsequent lookups are O(1) from cache.
+ * Base item-level filtering remains available for merchant catalog selection,
+ * while level-specific price lookups are computed on demand from cached item
+ * stat profiles.
  */
 public class MerchantPriceRegistry {
 
     private static final HytaleLogger LOGGER = HytaleLogger.forEnclosingClass();
 
+    private enum PricingCategory {
+        WEAPON,
+        ARMOR
+    }
+
+    private record PriceProfile(
+            @Nonnull PricingCategory category,
+            int itemLevel,
+            @Nullable String quality,
+            @Nullable String family,
+            @Nullable String slot,
+            float baseDamage,
+            float physResist,
+            float projResist,
+            int healthBonus
+    ) {}
+
     /** Sell price as a fraction of buy price (80% = 20% gold sink). */
     static final double SELL_RATIO = 0.80;
 
-    /** Minimum buy price to avoid zero-cost items at very low levels. */
-    private static final long MIN_BUY_PRICE = 5L;
+    /** Minimum buy price to avoid near-zero gear prices. */
+    private static final long MIN_BUY_PRICE = 25L;
+
+    /** Converts an effective combat score into a gold price. */
+    private static final double SCORE_TO_GOLD_SCALE = 10.0;
+
+    /** Curves stronger items upward without letting tier alone dominate pricing. */
+    private static final double SCORE_TO_GOLD_EXPONENT = 1.4;
+
+    /** Weighs effective DR percentage when scoring armor. */
+    private static final double ARMOR_RESIST_SCORE_WEIGHT = 3.0;
+
+    /** Weighs flat health bonuses when scoring armor. */
+    private static final double ARMOR_HEALTH_SCORE_WEIGHT = 0.9;
+
+    /** Softens quality impact for utility items with missing runtime damage stats. */
+    private static final double QUALITY_FALLBACK_EXPONENT = 0.5;
 
     private final Map<String, Long> buyPriceCache = new ConcurrentHashMap<>();
     private final Map<String, Integer> itemLevelCache = new ConcurrentHashMap<>();
+    private final Map<String, PriceProfile> priceProfiles = new ConcurrentHashMap<>();
 
     /**
      * Populates the price cache from all weapons and armor in the asset catalog.
@@ -47,14 +87,29 @@ public class MerchantPriceRegistry {
         int weaponCount = 0;
         int armorCount = 0;
 
+        buyPriceCache.clear();
+        itemLevelCache.clear();
+        priceProfiles.clear();
+
         // Load all weapons (limit 500 to cover the full catalog)
         for (AssetCatalog.WeaponBaseRow row : assetCatalog.listWeapons("name", true, 500, null)) {
             if (isExcluded(row.quality()) || isNpcItem(row.name())) {
                 continue;
             }
             String assetId = toAssetId(row.name());
-            long price = computeWeaponPrice(row.itemLevel(), row.quality());
-            buyPriceCache.put(assetId, price);
+            PriceProfile profile = new PriceProfile(
+                    PricingCategory.WEAPON,
+                    row.itemLevel(),
+                    row.quality(),
+                    row.family(),
+                    null,
+                    row.baseDamage(),
+                    0f,
+                    0f,
+                    0
+            );
+            priceProfiles.put(assetId, profile);
+            buyPriceCache.put(assetId, computeBuyPrice(profile, defaultPricingLevel(profile)));
             itemLevelCache.put(assetId, row.itemLevel());
             weaponCount++;
         }
@@ -65,8 +120,19 @@ public class MerchantPriceRegistry {
                 continue;
             }
             String assetId = toAssetId(row.name());
-            long price = computeArmorPrice(row.itemLevel(), row.quality(), row.slot());
-            buyPriceCache.put(assetId, price);
+            PriceProfile profile = new PriceProfile(
+                    PricingCategory.ARMOR,
+                    row.itemLevel(),
+                    row.quality(),
+                    null,
+                    row.slot(),
+                    0f,
+                    row.physResist(),
+                    row.projResist(),
+                    row.healthBonus()
+            );
+            priceProfiles.put(assetId, profile);
+            buyPriceCache.put(assetId, computeBuyPrice(profile, defaultPricingLevel(profile)));
             itemLevelCache.put(assetId, row.itemLevel());
             armorCount++;
         }
@@ -79,11 +145,30 @@ public class MerchantPriceRegistry {
      * Returns the buy price for the given item.
      *
      * @param itemId the item asset ID
-     * @return the buy price in gold, or {@code 0} if the item is not in the registry
+     * @return the buy price in gold using the item's base asset level, or {@code 0} if the item is not in the registry
      */
     public long getBuyPrice(@Nonnull String itemId) {
         Long price = buyPriceCache.get(itemId);
         return price != null ? price : 0L;
+    }
+
+    /**
+     * Returns the buy price for the given item at the provided dungeon level.
+     *
+     * <p>Merchant gear is stamped with its own dungeon level, so level-aware
+     * pricing must use that stamped level rather than the asset's built-in tier.
+     * When {@code dungeonLevel <= 0}, the item's base asset level is used.
+     *
+     * @param itemId       the item asset ID
+     * @param dungeonLevel the dungeon level stamped on the item, or {@code 0} to price at the asset's base level
+     * @return the buy price in gold, or {@code 0} if the item is not in the registry
+     */
+    public long getBuyPrice(@Nonnull String itemId, int dungeonLevel) {
+        PriceProfile profile = priceProfiles.get(itemId);
+        if (profile == null) {
+            return 0L;
+        }
+        return computeBuyPrice(profile, resolvePricingLevel(profile, dungeonLevel));
     }
 
     /**
@@ -100,21 +185,16 @@ public class MerchantPriceRegistry {
     /**
      * Returns the sell price adjusted for the item's dungeon level.
      *
-     * <p>Items with a dungeon level receive a multiplier based on a sigmoid scaling
-     * curve: higher dungeon levels yield better sell prices.
+     * <p>Sell price is derived from the same level-aware buy price used by merchants,
+     * which keeps buy and sell values aligned for stamped dungeon gear.
      *
      * @param itemId       the item asset ID
      * @param dungeonLevel the dungeon level from item metadata, or {@code 0} for base price
      * @return the level-adjusted sell price in gold
      */
     public long getSellPrice(@Nonnull String itemId, int dungeonLevel) {
-        long basePrice = getSellPrice(itemId);
-        if (basePrice <= 0 || dungeonLevel <= 0) {
-            return basePrice;
-        }
-        // Linear scaling: 1.0 at L1, 2.0 at L30, 3.0 at L60
-        double levelMult = 1.0 + (dungeonLevel - 1) / 29.5;
-        return Math.max(basePrice, (long) Math.floor(basePrice * levelMult));
+        long buyPrice = getBuyPrice(itemId, dungeonLevel);
+        return buyPrice > 0 ? (long) Math.floor(buyPrice * SELL_RATIO) : 0L;
     }
 
     /**
@@ -124,7 +204,7 @@ public class MerchantPriceRegistry {
      * @return {@code true} if the item is sellable
      */
     public boolean isSellable(@Nonnull String itemId) {
-        return buyPriceCache.containsKey(itemId);
+        return priceProfiles.containsKey(itemId);
     }
 
     /**
@@ -163,7 +243,7 @@ public class MerchantPriceRegistry {
      * @return the total number of items with prices
      */
     public int size() {
-        return buyPriceCache.size();
+        return priceProfiles.size();
     }
 
     /**
@@ -173,20 +253,82 @@ public class MerchantPriceRegistry {
      */
     @Nonnull
     public Set<String> getItemIds() {
-        return Set.copyOf(buyPriceCache.keySet());
+        return Set.copyOf(priceProfiles.keySet());
     }
 
     // ── Price computation ────────────────────────────────────────────
 
-    private long computeWeaponPrice(int itemLevel, @Nullable String quality) {
-        double coeff = qualityCoefficient(quality);
-        return Math.max(MIN_BUY_PRICE, (long) ((double) itemLevel * itemLevel * coeff));
+    private long computeBuyPrice(@Nonnull PriceProfile profile, int pricingLevel) {
+        double score = switch (profile.category()) {
+            case WEAPON -> computeWeaponScore(profile, pricingLevel);
+            case ARMOR -> computeArmorScore(profile, pricingLevel);
+        };
+        double boundedScore = Math.max(1.0, score);
+        long computed = Math.round(Math.pow(boundedScore, SCORE_TO_GOLD_EXPONENT) * SCORE_TO_GOLD_SCALE);
+        return Math.max(MIN_BUY_PRICE, computed);
     }
 
-    private long computeArmorPrice(int itemLevel, @Nullable String quality, @Nullable String slot) {
-        double coeff = qualityCoefficient(quality);
-        double slotMult = slotMultiplier(slot);
-        return Math.max(MIN_BUY_PRICE, (long) ((double) itemLevel * itemLevel * coeff * slotMult));
+    private double computeWeaponScore(@Nonnull PriceProfile profile, int pricingLevel) {
+        if (profile.baseDamage() > 0f) {
+            return profile.baseDamage() * CombatScaling.weaponMult(pricingLevel);
+        }
+
+        return computeFallbackTierScore(profile.itemLevel(), profile.quality())
+                * zeroStatWeaponFamilyMultiplier(profile.family());
+    }
+
+    private double computeArmorScore(@Nonnull PriceProfile profile, int pricingLevel) {
+        double physDr = profile.physResist() > 0f ? CombatScaling.armorDR(profile.physResist(), pricingLevel) : 0.0;
+        double projDr = profile.projResist() > 0f ? CombatScaling.armorDR(profile.projResist(), pricingLevel) : 0.0;
+
+        int resistSources = 0;
+        if (physDr > 0.0) {
+            resistSources++;
+        }
+        if (projDr > 0.0) {
+            resistSources++;
+        }
+
+        double avgResistPercent = resistSources > 0
+                ? ((physDr + projDr) / resistSources) * 100.0
+                : 0.0;
+        double healthScore = Math.max(0, profile.healthBonus()) * ARMOR_HEALTH_SCORE_WEIGHT;
+        double score = avgResistPercent * ARMOR_RESIST_SCORE_WEIGHT + healthScore;
+        if (score > 0.0) {
+            return score;
+        }
+
+        return computeFallbackTierScore(profile.itemLevel(), profile.quality())
+                * armorFallbackSlotMultiplier(profile.slot());
+    }
+
+    private static int defaultPricingLevel(@Nonnull PriceProfile profile) {
+        return resolvePricingLevel(profile, 0);
+    }
+
+    private static int resolvePricingLevel(@Nonnull PriceProfile profile, int requestedLevel) {
+        int baseLevel = profile.itemLevel() > 0 ? profile.itemLevel() : 1;
+        int rawLevel = requestedLevel > 0 ? requestedLevel : baseLevel;
+        return Math.clamp(rawLevel, 1, 60);
+    }
+
+    private static double computeFallbackTierScore(int itemLevel, @Nullable String quality) {
+        int boundedLevel = Math.max(1, itemLevel);
+        double qualityFactor = Math.pow(qualityCoefficient(quality), QUALITY_FALLBACK_EXPONENT);
+        return boundedLevel * qualityFactor;
+    }
+
+    private static double zeroStatWeaponFamilyMultiplier(@Nullable String family) {
+        if (family == null) {
+            return 1.0;
+        }
+        return switch (family) {
+            case "Bow", "Shortbow", "Crossbow", "Handgun", "Rifle" -> 1.20;
+            case "Staff", "Wand", "Spellbook" -> 1.15;
+            case "Shield" -> 1.05;
+            case "Torch", "Fire" -> 0.90;
+            default -> 1.0;
+        };
     }
 
     /**
@@ -209,21 +351,15 @@ public class MerchantPriceRegistry {
         };
     }
 
-    /**
-     * Returns the armor slot multiplier.
-     *
-     * @param slot the slot string (Chest, Legs, Head, Hands), or {@code null} for default
-     * @return the slot multiplier
-     */
-    static double slotMultiplier(@Nullable String slot) {
+    private static double armorFallbackSlotMultiplier(@Nullable String slot) {
         if (slot == null) {
             return 1.0;
         }
         return switch (slot) {
             case "Chest" -> 1.0;
-            case "Legs" -> 0.75;
-            case "Head" -> 0.60;
-            case "Hands" -> 0.50;
+            case "Legs" -> 0.85;
+            case "Head" -> 0.75;
+            case "Hands" -> 0.65;
             default -> 1.0;
         };
     }

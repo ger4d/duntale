@@ -7,11 +7,12 @@ import javax.annotation.Nonnull;
  *
  * <p>Each entry specifies the item asset ID, an optional gear level, and the
  * buy price in gold. Level 0 indicates a consumable or non-leveled item;
- * values 1–60 indicate a dungeon-leveled gear item.
+ * values 1–60 indicate a dungeon-leveled gear item whose price was computed
+ * from that stamped level.
  *
  * @param itemId   the item asset ID (e.g. {@code "Weapon_Axe_Crude"})
  * @param level    the gear level (0 for consumables/non-leveled, 1–60 for gear)
- * @param buyPrice the buy price in gold (pre-computed, includes any offset fee)
+ * @param buyPrice the buy price in gold (pre-computed for the stamped level)
  */
 public record CatalogEntry(@Nonnull String itemId, int level, long buyPrice) {
 

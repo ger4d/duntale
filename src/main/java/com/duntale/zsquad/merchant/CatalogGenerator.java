@@ -43,9 +43,6 @@ public class CatalogGenerator {
     /** Minimum weight to ensure all tiers get at least 1 slot. */
     private static final double WEIGHT_FLOOR = 0.5;
 
-    /** Price premium per gear level above the floor level (5% per level). */
-    private static final double OFFSET_FEE_RATE = 0.05;
-
     /** Minimum gear level that can be stamped on items. */
     private static final int MIN_GEAR_LEVEL = 1;
 
@@ -86,7 +83,7 @@ public class CatalogGenerator {
      * Generates a deterministic merchant catalog for the given floor level.
      *
      * <p>Each gear item receives a random level in {@code [floorLevel - 4, floorLevel + 10]}
-     * and a price that includes an offset fee for levels above the floor.
+        * and its price is computed directly from that stamped level.
      *
      * @param floorLevel the dungeon floor level
      * @param seed       seed for deterministic randomisation
@@ -117,14 +114,8 @@ public class CatalogGenerator {
                         (long) floorLevel - 4 + random.nextInt(15),
                         MIN_GEAR_LEVEL, MAX_GEAR_LEVEL);
 
-                // Base price + offset fee for levels above floor
-                long basePrice = priceRegistry.getBuyPrice(itemId);
-                long offsetFee = 0;
-                if (gearLevel > floorLevel) {
-                    offsetFee = (long) (basePrice * OFFSET_FEE_RATE * (gearLevel - floorLevel));
-                }
-
-                catalog.add(CatalogEntry.gear(itemId, gearLevel, basePrice + offsetFee));
+                long levelPrice = priceRegistry.getBuyPrice(itemId, gearLevel);
+                catalog.add(CatalogEntry.gear(itemId, gearLevel, levelPrice));
             }
         }
 
