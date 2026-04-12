@@ -329,7 +329,7 @@ public class ClickToMoveManager {
         // Build and send camera packet
         ServerCameraSettings settings = new ServerCameraSettings();
         settings.positionLerpSpeed = 0.2F;
-        settings.rotationLerpSpeed = 5.0F;
+        settings.rotationLerpSpeed = 0.2F;
         settings.distance = effectiveDistance;
         settings.displayCursor = true;
         settings.sendMouseMotion = true;

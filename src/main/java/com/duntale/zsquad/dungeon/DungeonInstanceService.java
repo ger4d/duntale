@@ -15,6 +15,7 @@ import com.hypixel.hytale.component.Store;
 import com.hypixel.hytale.logger.HytaleLogger;
 import com.hypixel.hytale.math.vector.Transform;
 import com.hypixel.hytale.protocol.GameMode;
+import com.hypixel.hytale.server.core.modules.time.WorldTimeResource;
 import com.hypixel.hytale.server.core.modules.entity.teleport.Teleport;
 import com.hypixel.hytale.server.core.universe.PlayerRef;
 import com.hypixel.hytale.server.core.universe.Universe;
@@ -30,6 +31,7 @@ import javax.annotation.Nullable;
 import java.nio.file.Path;
 import java.sql.Connection;
 import java.sql.SQLException;
+import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.LinkedHashSet;
@@ -65,7 +67,7 @@ public class DungeonInstanceService {
 
     private static final HytaleLogger LOGGER = HytaleLogger.forEnclosingClass();
     private static final String INSTANCE_WORLD_PREFIX = "dungeon-";
-    private static final int DEFAULT_INSTANCE_ORIGIN_Y = DungeonConfig.withDefaults().origin().y();
+    private static final int DEFAULT_INSTANCE_ORIGIN_Y = 3;
 
     // ============================================
     // Fields
@@ -1413,10 +1415,12 @@ public class DungeonInstanceService {
             worldConfig.setTicking(true);
             worldConfig.setBlockTicking(false);
             worldConfig.setSpawningNPC(false);
-            worldConfig.setSavingPlayers(false);
+            worldConfig.setSavingPlayers(true);
             worldConfig.setDeleteOnRemove(false);
             worldConfig.setDeleteOnUniverseStart(false);
             worldConfig.setGameTimePaused(true);
+            worldConfig.setGameTime(WorldTimeResource.ZERO_YEAR.plus(16L, ChronoUnit.HOURS));
+            worldConfig.setGameplayConfig("Dungeon");
             worldConfig.setGameMode(GameMode.Adventure);
             worldConfig.markChanged();
 

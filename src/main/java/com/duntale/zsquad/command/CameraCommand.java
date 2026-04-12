@@ -77,7 +77,7 @@ public class CameraCommand extends CommandBase {
     private static ServerCameraSettings createBaseOverheadSettings(float distance, boolean camRelative, boolean clickMove) {
         ServerCameraSettings settings = new ServerCameraSettings();
         settings.positionLerpSpeed = 0.2F;
-        settings.rotationLerpSpeed = clickMove ? 5.0F : 0.2F;
+        settings.rotationLerpSpeed = 0.2F;
         settings.distance = distance;
         settings.displayCursor = true;
         settings.sendMouseMotion = true;

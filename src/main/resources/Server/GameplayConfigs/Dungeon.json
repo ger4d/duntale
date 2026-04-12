@@ -1,0 +1,61 @@
+{
+    "Gathering": {
+        "UnbreakableBlock": {
+            "ParticleSystemId": "Block_Break_Dust",
+            "SoundEventId": "SFX_Unbreakable_Block"
+        },
+        "IncorrectTool": {
+            "ParticleSystemId": "Block_Break_Dust",
+            "SoundEventId": "SFX_Unbreakable_Block"
+        }
+    },
+    "World": {
+        "AllowBlockBreaking": false,
+        "AllowBlockGathering": false,
+        "AllowBlockPlacement": false,
+        "DaytimeDurationSeconds": 1728,
+        "NighttimeDurationSeconds": 1152,
+        "TotalMoonPhases": 5,
+        "BlockPlacementFragilityTimer": 0,
+        "Sleep": {
+            "WakeUpHour": 4.79,
+            "AllowedSleepHoursRange": [
+                21,
+                4.79
+            ]
+        }
+    },
+    "Death": {
+        "RespawnController": {
+            "Type": "WorldSpawnPoint"
+        },
+        "ItemsLossMode": "Configured",
+        "ItemsAmountLossPercentage": 0.0,
+        "ItemsDurabilityLossPercentage": 0.0
+    },
+    "Combat": {
+        "OutOfCombatDelaySeconds": 5.0,
+        "DisplayHealthBars": true,
+        "DisplayCombatText": true,
+        "DisableNPCIncomingDamage": false,
+        "DisablePlayerIncomingDamage": false
+    },
+    "Player": {
+        "MovementConfig": "Default",
+        "HitboxCollisionConfig": "SoftCollision"
+    },
+    "ShowItemPickupNotifications": true,
+    "Spawn": {
+        "FirstSpawnParticles": [
+            {
+                "SystemId": "PlayerSpawn_Spawn",
+                "RotationOffset": {
+                    "Yaw": 0
+                },
+                "PositionOffset": {
+                    "Y": -0.9
+                }
+            }
+        ]
+    }
+}
