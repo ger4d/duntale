@@ -86,6 +86,7 @@ import com.hypixel.hytale.server.core.plugin.JavaPlugin;
 import com.hypixel.hytale.server.core.plugin.JavaPluginInit;
 import com.hypixel.hytale.server.core.universe.PlayerRef;
 import com.hypixel.hytale.server.core.universe.Universe;
+import com.hypixel.hytale.server.core.util.EventTitleUtil;
 import com.hypixel.hytale.server.core.universe.world.World;
 import com.hypixel.hytale.server.core.universe.world.events.AllWorldsLoadedEvent;
 import com.hypixel.hytale.server.core.universe.world.storage.EntityStore;
@@ -486,6 +487,7 @@ public class ZSquadPlugin extends JavaPlugin {
         this.progressionService.setLevelUpListener((playerId, newLevel) -> {
             rpgService.grantStatPoints(playerId, RpgService.POINTS_PER_LEVEL);
             updateScoreboard(playerId);
+            sendLevelUpTitle(playerId, newLevel);
             LOGGER.atInfo().log("Player %s reached level %d — granted %d stat points",
                     playerId, newLevel, RpgService.POINTS_PER_LEVEL);
         });
@@ -1222,5 +1224,23 @@ public class ZSquadPlugin extends JavaPlugin {
     @javax.annotation.Nullable
     public ZSquadScoreboard getScoreboard(@Nonnull UUID playerId) {
         return scoreboards.get(playerId);
+    }
+
+    /**
+     * Sends a level-up event title to the player if they are currently online.
+     * Silently skips the notification if the player is offline or unavailable.
+     *
+     * @param playerId the player's UUID
+     * @param newLevel the level the player just reached
+     */
+    private void sendLevelUpTitle(@Nonnull UUID playerId, int newLevel) {
+        PlayerRef playerRef = Universe.get().getPlayer(playerId);
+        if (playerRef == null) {
+            return;
+        }
+        Message primary = Message.raw("Level Up!");
+        Message secondary = Message.raw(
+                "Reached Level " + newLevel + " (+" + RpgService.POINTS_PER_LEVEL + " Stat Points)");
+        EventTitleUtil.showEventTitleToPlayer(playerRef, primary, secondary, false);
     }
 }
