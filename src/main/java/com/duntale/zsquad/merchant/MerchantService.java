@@ -240,7 +240,7 @@ public class MerchantService {
         // Notify player
         playerRef.sendMessage(
                 Message.raw("Bought ").color(COLOR_GRAY)
-                        .insert(Message.raw(entry.itemId()).color(COLOR_GOLD))
+                        .insert(resolveItemNameMessage(entry.itemId()))
                         .insert(Message.raw(" for " + formatGold(price)).color(COLOR_GREEN))
         );
 
@@ -289,7 +289,7 @@ public class MerchantService {
         // Notify player
         playerRef.sendMessage(
                 Message.raw("Sold ").color(COLOR_GRAY)
-                        .insert(Message.raw(itemId).color(COLOR_GOLD))
+                        .insert(resolveItemNameMessage(itemId))
                         .insert(Message.raw(" for " + formatGold(sellPrice)).color(COLOR_GREEN))
         );
 
@@ -470,6 +470,26 @@ public class MerchantService {
             if (hasGold) cleaned = cleaned.withMetadata(META_GOLD, Codec.LONG, null);
             container.setItemStackForSlot(i, cleaned);
         }
+    }
+
+    /**
+     * Resolves a player-facing {@link Message} for the given item ID.
+     *
+     * <p>Uses the item asset's translation key when the asset is resolvable.
+     * Falls back to a prettified form of the raw ID (underscores replaced with
+     * spaces) and logs a warning when the asset cannot be found.
+     *
+     * @param itemId the item asset ID to resolve
+     * @return a {@link Message} representing the item's display name, colored gold
+     */
+    @Nonnull
+    private Message resolveItemNameMessage(@Nonnull String itemId) {
+        Item item = Item.getAssetMap().getAsset(itemId);
+        if (item != null) {
+            return Message.translation(item.getTranslationKey()).color(COLOR_GOLD);
+        }
+        LOGGER.at(Level.WARNING).log("Could not resolve display name for item: %s", itemId);
+        return Message.raw(itemId.replace('_', ' ')).color(COLOR_GOLD);
     }
 
     /**
