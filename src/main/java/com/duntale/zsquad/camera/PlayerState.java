@@ -121,4 +121,13 @@ final class PlayerState {
      * will NOT reflect those pages.</p>
      */
     @Nonnull volatile Page activePage = Page.None;
+
+    /**
+     * Whether the player is currently dead and awaiting respawn.
+     * Prevents stale mouse input from queuing movement during the death screen.
+     *
+     * <p><b>Volatile</b>: written by death/respawn hooks, read by input handlers
+     * and the tick system.</p>
+     */
+    volatile boolean dead = false;
 }

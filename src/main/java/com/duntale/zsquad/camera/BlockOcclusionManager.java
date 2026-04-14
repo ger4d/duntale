@@ -167,6 +167,9 @@ public class BlockOcclusionManager {
     /** Tracks which players have occlusion removal enabled. */
     private final Set<UUID> enabledPlayers = ConcurrentHashMap.newKeySet();
 
+    /** Tracks players temporarily paused during the death screen. */
+    private final Set<UUID> pausedPlayers = ConcurrentHashMap.newKeySet();
+
     private final ScheduledExecutorService scheduler;
     private ScheduledFuture<?> tickFuture;
 
@@ -195,6 +198,7 @@ public class BlockOcclusionManager {
      * @param cameraDistance  camera distance from the player in blocks
      */
     public void enable(@Nonnull UUID uuid, float cameraYaw, float cameraPitch, float cameraDistance) {
+        pausedPlayers.remove(uuid);
         enabledPlayers.add(uuid);
         playerOriginalBlocks.putIfAbsent(uuid, new HashMap<>());
         playerCameraParams.put(uuid, new float[]{cameraYaw, cameraPitch, cameraDistance});
@@ -208,7 +212,24 @@ public class BlockOcclusionManager {
      */
     public void disable(@Nonnull UUID uuid, @Nonnull World world) {
         enabledPlayers.remove(uuid);
+        pausedPlayers.remove(uuid);
         restoreAllBlocks(uuid, world);
+        playerOriginalBlocks.remove(uuid);
+        playerCameraParams.remove(uuid);
+    }
+
+    /**
+     * Disables occlusion removal without block restoration when the player's world
+     * is no longer available.
+     *
+     * <p>This is a disconnect fallback used to drop tracking state and avoid
+     * leaking per-player camera data.</p>
+     *
+     * @param uuid the player's UUID
+     */
+    public void disable(@Nonnull UUID uuid) {
+        enabledPlayers.remove(uuid);
+        pausedPlayers.remove(uuid);
         playerOriginalBlocks.remove(uuid);
         playerCameraParams.remove(uuid);
     }
@@ -221,6 +242,37 @@ public class BlockOcclusionManager {
      */
     public boolean isEnabled(@Nonnull UUID uuid) {
         return enabledPlayers.contains(uuid);
+    }
+
+    /**
+     * Temporarily suspends occlusion removal for a dead player and restores any
+     * cleared blocks until respawn.
+     *
+     * @param uuid the player's UUID
+     * @param world the world containing the cleared blocks
+     */
+    public void pauseForDeath(@Nonnull UUID uuid, @Nonnull World world) {
+        if (!enabledPlayers.remove(uuid)) {
+            return;
+        }
+        restoreAllBlocks(uuid, world);
+        pausedPlayers.add(uuid);
+    }
+
+    /**
+     * Re-enables occlusion removal after the player's death screen finishes.
+     *
+     * @param uuid the player's UUID
+     */
+    public void resumeAfterRespawn(@Nonnull UUID uuid) {
+        if (!pausedPlayers.remove(uuid)) {
+            return;
+        }
+        if (!playerCameraParams.containsKey(uuid)) {
+            return;
+        }
+        playerOriginalBlocks.putIfAbsent(uuid, new HashMap<>());
+        enabledPlayers.add(uuid);
     }
 
     /**
@@ -237,6 +289,7 @@ public class BlockOcclusionManager {
             restoreAllBlocks(uuid, world);
         }
         enabledPlayers.clear();
+        pausedPlayers.clear();
         playerOriginalBlocks.clear();
         playerCameraParams.clear();
     }

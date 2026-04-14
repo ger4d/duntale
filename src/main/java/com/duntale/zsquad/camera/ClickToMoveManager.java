@@ -60,6 +60,7 @@ import com.hypixel.hytale.server.core.io.adapter.PlayerPacketWatcher;
 
 import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -396,6 +397,75 @@ public class ClickToMoveManager {
         });
     }
 
+    /**
+     * Clears transient click-to-move state for a dead player without disabling
+     * the mode entirely, so it can resume on respawn.
+     *
+     * @param uuid the player UUID
+     * @param store the entity store
+     * @param ref the player entity reference
+     */
+    public void onPlayerDeath(@Nonnull UUID uuid,
+                              @Nonnull Store<EntityStore> store,
+                              @Nonnull Ref<EntityStore> ref) {
+        PlayerState state = players.get(uuid);
+        if (state == null) {
+            return;
+        }
+
+        state.dead = true;
+
+        PlayerRef playerRef = store.getComponent(ref, PlayerRef.getComponentType());
+        if (playerRef != null) {
+            MovementHelper.stopMovement(state, store, ref, playerRef);
+        } else {
+            state.targetPosition = null;
+            state.targetEntity = null;
+            state.lastSentAngle = Double.NaN;
+            state.cursorOffsetX = 0.0;
+            state.cursorOffsetZ = 0.0;
+            MovementHelper.stopAnimation(state, store, ref);
+        }
+
+        state.leftButtonHeld = false;
+        state.targetMerchantEntity = null;
+        state.targetInteractBlock = null;
+        state.activePage = Page.None;
+
+        LOGGER.atFine().log("[CTM] Cleared movement/input state for dead player %s", uuid);
+    }
+
+    /**
+     * Re-applies respawn-sensitive click-to-move state after the death screen
+     * completes.
+     *
+     * @param uuid the player UUID
+     * @param store the entity store
+     * @param ref the player entity reference
+     */
+    public void onPlayerRespawn(@Nonnull UUID uuid,
+                                @Nonnull Store<EntityStore> store,
+                                @Nonnull Ref<EntityStore> ref) {
+        PlayerState state = players.get(uuid);
+        if (state == null) {
+            return;
+        }
+
+        state.dead = false;
+        state.activePage = Page.None;
+
+        removeDisablePrimary(store, ref);
+        applyDisablePrimary(store, ref);
+
+        ModelComponent modelComponent = store.getComponent(ref, ModelComponent.getComponentType());
+        Model currentModel = modelComponent != null ? modelComponent.getModel() : null;
+        if (!hasFollowYawRange(currentModel)) {
+            widenModelAngleRange(state, uuid, store, ref);
+        }
+
+        LOGGER.atFine().log("[CTM] Reapplied respawn state for %s", uuid);
+    }
+
     public boolean isEnabled(@Nonnull UUID uuid) {
         return players.containsKey(uuid);
     }
@@ -417,12 +487,28 @@ public class ClickToMoveManager {
     }
 
     /**
+     * Removes the DisablePrimary entity effect, restoring primary interaction.
+     */
+    private static void removeDisablePrimary(@Nonnull Store<EntityStore> store,
+                                             @Nonnull Ref<EntityStore> ref) {
+        int effectIndex = EntityEffect.getAssetMap().getIndex(DISABLE_PRIMARY_EFFECT_KEY);
+        if (effectIndex < 0) {
+            return;
+        }
+
+        EffectControllerComponent ecc = store.getComponent(ref, EffectControllerComponent.getComponentType());
+        if (ecc != null) {
+            ecc.removeEffect(ref, effectIndex, store);
+        }
+    }
+
+    /**
      * Returns {@code true} if the player needs tick processing — either has an
      * active movement target or is holding the button.
      */
     boolean needsProcessing(@Nonnull UUID uuid) {
         PlayerState state = players.get(uuid);
-        return state != null && (state.leftButtonHeld || state.targetPosition != null);
+        return state != null && !state.dead && (state.leftButtonHeld || state.targetPosition != null);
     }
 
     /**
@@ -434,7 +520,7 @@ public class ClickToMoveManager {
                       @Nonnull PlayerRef playerRef,
                       @Nonnull UUID uuid) {
         PlayerState state = players.get(uuid);
-        if (state == null) return;
+        if (state == null || state.dead) return;
 
         TransformComponent transform = store.getComponent(ref, TransformComponent.getComponentType());
         if (transform == null) return;
@@ -631,7 +717,7 @@ public class ClickToMoveManager {
 
         UUID uuid = playerRef.getUuid();
         PlayerState state = players.get(uuid);
-        if (state == null) return;
+        if (state == null || state.dead) return;
 
         if (isPageOpen(state, store, ref, false)) return;
         if (!isLeftButtonHeld(event)) return;
@@ -652,7 +738,7 @@ public class ClickToMoveManager {
 
         UUID uuid = playerRef.getUuid();
         PlayerState state = players.get(uuid);
-        if (state == null) return;
+        if (state == null || state.dead) return;
 
         if (isPageOpen(state, store, ref, true)) return;
         if (event.getMouseButton().mouseButtonType != MouseButtonType.Left) return;
@@ -880,6 +966,25 @@ public class ClickToMoveManager {
     // ============================================
     // Model AngleRange
     // ============================================
+
+    private static boolean hasFollowYawRange(@Nullable Model model) {
+        if (model == null) {
+            return false;
+        }
+
+        CameraSettings camera = model.getCamera();
+        if (camera == null) {
+            return false;
+        }
+
+        CameraAxis yaw = camera.getYaw();
+        if (yaw == null) {
+            return false;
+        }
+
+        return FOLLOW_YAW_RANGE.getAngleRange().equals(yaw.getAngleRange())
+                && Arrays.equals(FOLLOW_YAW_RANGE.getTargetNodes(), yaw.getTargetNodes());
+    }
 
     private void widenModelAngleRange(@Nonnull PlayerState state,
                                        @Nonnull UUID uuid,

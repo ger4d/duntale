@@ -194,7 +194,6 @@ final class MovementHelper {
         );
 
         stopAnimation(state, store, ref);
-
         MovementStatesComponent msc = store.getComponent(ref, MovementStatesComponent.getComponentType());
         if (msc == null) return;
 

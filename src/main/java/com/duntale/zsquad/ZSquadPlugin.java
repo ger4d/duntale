@@ -5,6 +5,7 @@ import com.duntale.zsquad.camera.BlockOcclusionManager;
 import com.duntale.zsquad.camera.ClickToMoveKnockbackSystem;
 import com.duntale.zsquad.camera.ClickToMoveManager;
 import com.duntale.zsquad.camera.ClickToMoveTickSystem;
+import com.duntale.zsquad.camera.PlayerDeathCleanupSystem;
 import com.duntale.zsquad.command.DGiveCommand;
 import com.duntale.zsquad.command.DungeonCommand;
 import com.duntale.zsquad.command.PartyCommand;
@@ -434,6 +435,8 @@ public class ZSquadPlugin extends JavaPlugin {
         this.getEntityStoreRegistry().registerSystem(new GoldPickupSystem(goldService));
         this.getEntityStoreRegistry().registerSystem(new RpgDamageScalingSystem(rpgService));
         this.getEntityStoreRegistry().registerSystem(new PlayerDeathPenaltySystem(goldService));
+        this.getEntityStoreRegistry().registerSystem(
+            new PlayerDeathCleanupSystem(this.clickToMoveManager, this.blockOcclusionManager));
 
         // ── Spawner System ───────────────────────────────────────────
         this.spawnerComponentType = this.getEntityStoreRegistry().registerComponent(SpawnerComponent.class, "SpawnerComponent", SpawnerComponent.CODEC);
@@ -655,6 +658,14 @@ public class ZSquadPlugin extends JavaPlugin {
         partyService.onPlayerDisconnect(uuid);
         rpgService.onPlayerLeave(uuid);
         progressionService.onPlayerLeave(uuid);
+
+        Ref<EntityStore> ref = event.getPlayerRef().getReference();
+        if (ref != null && ref.isValid()) {
+            blockOcclusionManager.disable(uuid, ref.getStore().getExternalData().getWorld());
+        } else {
+            blockOcclusionManager.disable(uuid);
+        }
+
         clickToMoveManager.disable(uuid);
         merchantService.closeMerchant(uuid);
         scoreboards.remove(uuid);
