@@ -18,12 +18,10 @@ import com.hypixel.hytale.logger.HytaleLogger;
 import org.joml.Vector3d;
 import com.hypixel.hytale.math.vector.Rotation3f;
 import com.hypixel.hytale.server.core.asset.type.gameplay.DeathConfig;
-import com.hypixel.hytale.server.core.entity.UUIDComponent;
 import com.hypixel.hytale.server.core.entity.entities.Player;
 import com.hypixel.hytale.server.core.inventory.ItemStack;
 import com.hypixel.hytale.server.core.modules.entity.component.HeadRotation;
 import com.hypixel.hytale.server.core.modules.entity.component.TransformComponent;
-import com.hypixel.hytale.server.core.modules.entity.damage.Damage;
 import com.hypixel.hytale.server.core.modules.entity.damage.DeathComponent;
 import com.hypixel.hytale.server.core.modules.entity.damage.DeathSystems;
 import com.hypixel.hytale.server.core.modules.entity.item.ItemComponent;
@@ -34,7 +32,6 @@ import com.hypixel.hytale.server.npc.entities.NPCEntity;
 import com.hypixel.hytale.server.npc.systems.NPCDamageSystems;
 
 import javax.annotation.Nonnull;
-import javax.annotation.Nullable;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
@@ -136,7 +133,7 @@ public class NpcLootSystem extends DeathSystems.OnDeathSystem {
 
         // ── 2b. Resolve attacker for Luck stat + XP grant ────────
         int luckLevel = 0;
-        UUID attackerUuid = resolveAttacker(component, store);
+        UUID attackerUuid = AttackerResolver.resolve(component, store);
         if (attackerUuid != null) {
             luckLevel = rpgService.getStat(attackerUuid, RpgStat.LUCK);
 
@@ -193,37 +190,5 @@ public class NpcLootSystem extends DeathSystems.OnDeathSystem {
 
         LOGGER.atInfo().log("Dropped %d custom loot item(s) for %s Lv.%d",
                 drops.size(), npcId, npcLevel);
-    }
-
-    /**
-     * Resolves the attacking player's UUID from the death component.
-     *
-     * @param deathComponent the death component
-     * @param store          the entity store
-     * @return the attacker's UUID, or {@code null} if unresolvable
-     */
-    @Nullable
-    private UUID resolveAttacker(@Nonnull DeathComponent deathComponent,
-                                 @Nonnull Store<EntityStore> store) {
-        try {
-            Damage damage = deathComponent.getDeathInfo();
-            if (damage == null) return null;
-
-            Damage.Source source = damage.getSource();
-            if (!(source instanceof Damage.EntitySource entitySource)) return null;
-
-            Ref<EntityStore> attackerRef = entitySource.getRef();
-            if (!attackerRef.isValid()) return null;
-
-            // Only player attackers contribute Luck
-            Player player = store.getComponent(attackerRef, Player.getComponentType());
-            if (player == null) return null;
-
-            UUIDComponent uuidComp = store.getComponent(attackerRef, UUIDComponent.getComponentType());
-            return uuidComp != null ? uuidComp.getUuid() : null;
-        } catch (Exception e) {
-            LOGGER.atWarning().log("Failed to resolve attacker from DeathComponent: %s", e.getMessage());
-            return null;
-        }
     }
 }
