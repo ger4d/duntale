@@ -8,7 +8,6 @@ import org.joml.Vector3d;
 import org.joml.Vector3i;
 import com.hypixel.hytale.protocol.InteractionType;
 import com.hypixel.hytale.server.core.asset.type.blocktype.config.BlockType;
-import com.hypixel.hytale.server.core.entity.Entity;
 import com.hypixel.hytale.server.core.modules.entity.component.BoundingBox;
 import com.hypixel.hytale.server.core.modules.entity.component.TransformComponent;
 import com.hypixel.hytale.server.core.util.TargetUtil;
@@ -46,21 +45,19 @@ final class TargetResolver {
     private TargetResolver() {} // utility class
 
     /**
-     * Extracts and validates the entity reference from a mouse event's target entity.
-     * Returns {@code null} if the target entity is null, invalid, or is the player themselves.
+     * Validates the entity reference reported by a mouse event.
+     * Returns {@code null} if the reference is null, invalid, or is the player themselves.
      *
-     * @param targetEntity the entity reported by the client (may be null)
-     * @param playerRef    the player's own entity reference (to exclude self-targeting)
+     * @param targetEntityRef the entity reference reported by the client (may be null)
+     * @param playerRef       the player's own entity reference (to exclude self-targeting)
      * @return the valid entity reference, or {@code null}
      */
     @Nullable
-    static Ref<EntityStore> resolveTargetEntity(@Nullable Entity targetEntity,
+    static Ref<EntityStore> resolveTargetEntity(@Nullable Ref<EntityStore> targetEntityRef,
                                                 @Nonnull Ref<EntityStore> playerRef) {
-        if (targetEntity == null) return null;
-        Ref<EntityStore> entityRef = targetEntity.getReference();
-        if (entityRef == null || !entityRef.isValid()) return null;
-        if (entityRef.equals(playerRef)) return null;
-        return entityRef;
+        if (targetEntityRef == null || !targetEntityRef.isValid()) return null;
+        if (targetEntityRef.equals(playerRef)) return null;
+        return targetEntityRef;
     }
 
     /**

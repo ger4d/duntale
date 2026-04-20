@@ -70,7 +70,7 @@ final class PlayerState {
     double cursorOffsetZ;
 
     /**
-     * Entity reference reported by {@code getTargetEntity()} from the most recent
+     * Entity reference reported by {@code getTargetEntityRef()} from the most recent
      * mouse event. When set, {@link ClickToMoveManager#tickMovement} walks toward
      * this entity and checks attack range each tick. Cleared when the entity becomes
      * invalid or the player clicks on empty ground.

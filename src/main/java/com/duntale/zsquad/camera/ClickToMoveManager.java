@@ -723,7 +723,7 @@ public class ClickToMoveManager {
         if (!isLeftButtonHeld(event)) return;
 
         Ref<EntityStore> targetEntityRef = TargetResolver.resolveTargetEntity(
-                event.getTargetEntity(), ref);
+            event.getTargetEntityRef(), ref);
         Vector3i targetBlock = event.getTargetBlock();
         updateTarget(state, store, ref, playerRef, targetBlock, targetEntityRef, false);
     }
@@ -752,7 +752,7 @@ public class ClickToMoveManager {
 
         state.leftButtonHeld = true;
         Ref<EntityStore> targetEntityRef = TargetResolver.resolveTargetEntity(
-                event.getTargetEntity(), ref);
+            event.getTargetEntityRef(), ref);
         Vector3i targetBlock = event.getTargetBlock();
 
         // Wall occlusion fallback
