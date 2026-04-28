@@ -3,10 +3,12 @@ package com.duntale.zsquad.dungeon;
 import com.duntale.dungeongen.config.DungeonConfig;
 import com.duntale.dungeongen.config.ThemeConfig;
 import com.duntale.dungeongen.config.Vec3i;
+import com.duntale.dungeongen.config.asset.DungeonThemeConfig;
 import com.duntale.dungeongen.generator.GenerationOrchestrator;
 import com.duntale.dungeongen.generator.GenerationResult;
 import com.duntale.zsquad.ZSquadPlugin;
 import com.duntale.zsquad.db.DatabaseProvider;
+import com.hypixel.hytale.assetstore.AssetRegistry;
 import com.hypixel.hytale.builtin.instances.config.InstanceWorldConfig;
 import com.hypixel.hytale.builtin.instances.removal.InstanceDataResource;
 import com.hypixel.hytale.builtin.instances.removal.WorldEmptyCondition;
@@ -36,7 +38,6 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.LinkedHashSet;
 import java.util.List;
-import java.util.Locale;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
@@ -44,7 +45,9 @@ import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ThreadLocalRandom;
 import java.util.function.Function;
+import java.util.function.Predicate;
 import java.util.function.Supplier;
 import java.util.logging.Level;
 
@@ -58,7 +61,7 @@ import java.util.logging.Level;
  * <h2>Usage:</h2>
  * <pre>{@code
  * DungeonInstanceService service = new DungeonInstanceService(database, instanceRepository, membershipRepository, partyService, floorConfigService);
- * CompletableFuture<DungeonInstance> active = service.createInstance(List.of(playerId), 1, "crypt");
+ * CompletableFuture<DungeonInstance> active = service.createInstance(List.of(playerId), 1);
  * }</pre>
  *
  * @since 1.6.0
@@ -79,6 +82,7 @@ public class DungeonInstanceService {
     private final PartyService partyService;
     private final FloorConfigService floorConfigService;
     private final RuntimeAdapter runtimeAdapter;
+    private final Predicate<String> themeAvailabilityChecker;
     // Keeps Continue routing on the new floor if post-transfer ACTIVE persistence is temporarily unavailable.
     private final ConcurrentHashMap<String, DungeonInstance> runtimeActiveInstanceOverrides = new ConcurrentHashMap<>();
     // Tracks both worlds for live floor transitions so admin force-end can clean them up safely.
@@ -105,7 +109,7 @@ public class DungeonInstanceService {
             @Nonnull FloorConfigService floorConfigService
     ) {
         this(database, instanceRepository, membershipRepository, partyService, floorConfigService,
-                new LiveRuntimeAdapter());
+            new LiveRuntimeAdapter(), DungeonInstanceService::isRuntimeThemeAvailable);
     }
 
     DungeonInstanceService(
@@ -116,12 +120,26 @@ public class DungeonInstanceService {
             @Nonnull FloorConfigService floorConfigService,
             @Nonnull RuntimeAdapter runtimeAdapter
     ) {
+        this(database, instanceRepository, membershipRepository, partyService, floorConfigService,
+            runtimeAdapter, DungeonInstanceService::isRuntimeThemeAvailable);
+        }
+
+        DungeonInstanceService(
+            @Nonnull DatabaseProvider database,
+            @Nonnull DungeonInstanceRepository instanceRepository,
+            @Nonnull DungeonMembershipRepository membershipRepository,
+            @Nonnull PartyService partyService,
+            @Nonnull FloorConfigService floorConfigService,
+            @Nonnull RuntimeAdapter runtimeAdapter,
+            @Nonnull Predicate<String> themeAvailabilityChecker
+        ) {
         this.database = Objects.requireNonNull(database, "database");
         this.instanceRepository = Objects.requireNonNull(instanceRepository, "instanceRepository");
         this.membershipRepository = Objects.requireNonNull(membershipRepository, "membershipRepository");
         this.partyService = Objects.requireNonNull(partyService, "partyService");
         this.floorConfigService = Objects.requireNonNull(floorConfigService, "floorConfigService");
         this.runtimeAdapter = Objects.requireNonNull(runtimeAdapter, "runtimeAdapter");
+        this.themeAvailabilityChecker = Objects.requireNonNull(themeAvailabilityChecker, "themeAvailabilityChecker");
     }
 
     // ============================================
@@ -168,23 +186,20 @@ public class DungeonInstanceService {
      *
      * @param playerIds  the starting roster
      * @param floorLevel the floor number to generate
-     * @param theme      the theme identifier / palette name
      * @return a future that completes with the activated dungeon instance metadata
      */
     @Nonnull
     public CompletableFuture<DungeonInstance> createInstance(
             @Nonnull Collection<UUID> playerIds,
-            int floorLevel,
-            @Nonnull String theme
+            int floorLevel
     ) {
         Objects.requireNonNull(playerIds, "playerIds");
-        Objects.requireNonNull(theme, "theme");
         if (floorLevel < 1) {
             throw new IllegalArgumentException("floorLevel must be at least 1");
         }
 
         Set<UUID> roster = normalizeRoster(playerIds);
-        String normalizedTheme = normalizeTheme(theme);
+        String activeTheme = resolveActiveThemeForFloor(floorLevel);
         Vec3i origin = new Vec3i(0, DEFAULT_INSTANCE_ORIGIN_Y, 0);
         String instanceId = UUID.randomUUID().toString();
         String worldName = INSTANCE_WORLD_PREFIX + instanceId;
@@ -196,7 +211,7 @@ public class DungeonInstanceService {
                 origin,
                 origin,
                 DungeonInstanceState.CREATING,
-                normalizedTheme,
+                activeTheme,
                 null,
                 System.currentTimeMillis()
         );
@@ -206,7 +221,7 @@ public class DungeonInstanceService {
                 instanceId,
                 roster.size(),
                 floorLevel,
-                normalizedTheme
+                activeTheme
         );
 
         try {
@@ -215,7 +230,7 @@ public class DungeonInstanceService {
             return CompletableFuture.failedFuture(e);
         }
 
-        DungeonConfig config = buildGenerationConfig(worldName, floorLevel, origin, normalizedTheme);
+        DungeonConfig config = buildGenerationConfig(worldName, floorLevel, origin, activeTheme);
         return runtimeAdapter.createWorld(worldName, floorLevel, pendingInstance.seed(), origin)
                 .thenCompose(world -> runtimeAdapter.generate(config)
                         .thenCompose(result -> activateInstance(world, pendingInstance, roster, origin, result)))
@@ -419,17 +434,15 @@ public class DungeonInstanceService {
      *
      * @param playerId   the initiating player UUID
      * @param floorLevel the floor number to generate
-     * @param theme      the theme identifier / palette name
      * @return a future that completes with the activated dungeon instance metadata
      */
     @Nonnull
     public CompletableFuture<DungeonInstance> createInstanceForPlayer(
             @Nonnull UUID playerId,
-            int floorLevel,
-            @Nonnull String theme
+            int floorLevel
     ) {
         Objects.requireNonNull(playerId, "playerId");
-        return createInstance(partyService.assembleRoster(playerId), floorLevel, theme);
+        return createInstance(partyService.assembleRoster(playerId), floorLevel);
     }
 
     /**
@@ -480,11 +493,12 @@ public class DungeonInstanceService {
                 nextWorldName
         );
 
-        DungeonConfig config = buildGenerationConfig(nextWorldName, nextFloor, origin, claimed.theme());
+        String nextTheme = resolveActiveThemeForFloor(nextFloor);
+        DungeonConfig config = buildGenerationConfig(nextWorldName, nextFloor, origin, nextTheme);
         return runtimeAdapter.createWorld(nextWorldName, nextFloor, claimed.seed(), origin)
                 .thenCompose(newWorld -> runtimeAdapter.generate(config)
                         .thenCompose(result -> activateTransitionedFloor(
-                                newWorld, claimed, roster, nextFloor, origin, result, oldWorldName, transitionState)))
+                    newWorld, claimed, roster, nextFloor, nextTheme, origin, result, oldWorldName, transitionState)))
                 .exceptionallyCompose(throwable -> handleTransitionFailure(
                         claimed, nextWorldName, transitionState, throwable));
     }
@@ -729,6 +743,7 @@ public class DungeonInstanceService {
             @Nonnull DungeonInstance previousFloor,
             @Nonnull Set<UUID> roster,
             int nextFloor,
+            @Nonnull String nextTheme,
             @Nonnull Vec3i origin,
             @Nonnull GenerationResult result,
             @Nonnull String oldWorldName,
@@ -755,7 +770,7 @@ public class DungeonInstanceService {
                 entrancePosition,
                 exitPosition,
                 DungeonInstanceState.TRANSITIONING,
-                previousFloor.theme(),
+            nextTheme,
                 previousFloor.seed(),
                 previousFloor.createdAt()
         );
@@ -768,7 +783,7 @@ public class DungeonInstanceService {
                 entrancePosition,
                 exitPosition,
                 DungeonInstanceState.ACTIVE,
-                previousFloor.theme(),
+            nextTheme,
                 previousFloor.seed(),
                 previousFloor.createdAt()
         );
@@ -1081,15 +1096,6 @@ public class DungeonInstanceService {
     }
 
     @Nonnull
-    private static String normalizeTheme(@Nonnull String theme) {
-        String trimmed = theme.trim();
-        if (trimmed.isEmpty()) {
-            return ThemeConfig.defaults().palette();
-        }
-        return trimmed.toLowerCase(Locale.ROOT);
-    }
-
-    @Nonnull
     private DungeonConfig buildGenerationConfig(
             @Nonnull String worldName,
             int floorLevel,
@@ -1108,6 +1114,24 @@ public class DungeonInstanceService {
                 true,
                 floorLevel
         );
+    }
+
+    @Nonnull
+    private String resolveActiveThemeForFloor(int floorLevel) {
+        List<String> resolvedThemes = floorConfigService.getThemeVariantsForFloor(floorLevel);
+        List<String> availableThemes = resolvedThemes.stream()
+                .filter(themeAvailabilityChecker)
+                .toList();
+        if (availableThemes.isEmpty()) {
+            return ThemeConfig.defaults().palette();
+        }
+        return availableThemes.get(ThreadLocalRandom.current().nextInt(availableThemes.size()));
+    }
+
+    private static boolean isRuntimeThemeAvailable(@Nonnull String themeId) {
+        Objects.requireNonNull(themeId, "themeId");
+        return AssetRegistry.getAssetStore(DungeonThemeConfig.class) != null
+                && DungeonThemeConfig.get(themeId) != null;
     }
 
     @Nonnull

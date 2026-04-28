@@ -39,7 +39,7 @@ import java.util.concurrent.CompletionException;
  * /dungeon info <instanceId>
  * /dungeon end <instanceId>
  * /dungeon player <uuid>
- * /dungeon start <theme>
+ * /dungeon start
  * /dungeon transition <instanceId>
  * /dungeon floorconfig <floor>
  * /dungeon floorconfig list
@@ -108,8 +108,8 @@ public class DungeonCommand extends CommandBase {
                         .insert(Message.raw(" — look up a player's active instance").color(GRAY))
         );
         context.sendMessage(
-                Message.raw("  start <theme>").color(GOLD)
-                        .insert(Message.raw(" — start a dungeon instance (uses party or solo)").color(GRAY))
+            Message.raw("  start").color(GOLD)
+                .insert(Message.raw(" — start a dungeon instance (uses party or solo; theme comes from floor config)").color(GRAY))
         );
         context.sendMessage(
                 Message.raw("  transition <instanceId>").color(GOLD)
@@ -352,9 +352,6 @@ public class DungeonCommand extends CommandBase {
 
     private class StartSubCommand extends AbstractPlayerCommand {
 
-        private final RequiredArg<String> themeArg =
-                this.withRequiredArg("theme", "Dungeon theme (e.g. crypt, hive, mine)", ArgTypes.STRING);
-
         StartSubCommand() {
             super("start", "Start a dungeon instance");
         }
@@ -368,9 +365,8 @@ public class DungeonCommand extends CommandBase {
                 @Nonnull World world
         ) {
             UUID playerId = playerRef.getUuid();
-            String theme = themeArg.get(context);
 
-            dungeonInstanceService.createInstanceForPlayer(playerId, 1, theme)
+                dungeonInstanceService.createInstanceForPlayer(playerId, 1)
                     .thenAccept(instance -> context.sendMessage(
                             Message.raw("Dungeon instance created: ").color(GREEN)
                                     .insert(Message.raw(truncateId(instance.instanceId())).color(AQUA).monospace(true))

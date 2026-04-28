@@ -59,6 +59,7 @@ import com.duntale.zsquad.dungeon.DungeonMembershipRepository;
 import com.duntale.zsquad.dungeon.FloorConfigRepository;
 import com.duntale.zsquad.dungeon.FloorConfigService;
 import com.duntale.zsquad.dungeon.PartyService;
+import com.duntale.zsquad.dungeon.config.asset.FloorConfigDefaultAsset;
 import com.duntale.zsquad.rpg.RpgDamageScalingSystem;
 import com.duntale.zsquad.rpg.RpgProfile;
 import com.duntale.zsquad.rpg.RpgRepository;
@@ -73,6 +74,7 @@ import com.duntale.zsquad.ui.ZSquadScoreboardData;
 import com.hypixel.hytale.component.ComponentType;
 import com.hypixel.hytale.component.Ref;
 import com.hypixel.hytale.component.Store;
+import com.hypixel.hytale.assetstore.AssetRegistry;
 import com.hypixel.hytale.logger.HytaleLogger;
 import com.hypixel.hytale.math.vector.Transform;
 import com.hypixel.hytale.protocol.packets.interface_.Page;
@@ -347,6 +349,8 @@ public class ZSquadPlugin extends JavaPlugin {
         this.blockOcclusionManager = new BlockOcclusionManager();
 
         LOGGER.atInfo().log("Data directory: %s", getDataDirectory().toAbsolutePath());
+
+        AssetRegistry.register(FloorConfigDefaultAsset.assetStoreBuilder().build());
 
         // ── RPG System ───────────────────────────────────────────────
         this.databaseProvider = new DatabaseProvider();

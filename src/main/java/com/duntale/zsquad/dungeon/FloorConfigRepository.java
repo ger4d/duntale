@@ -19,8 +19,8 @@ import java.util.logging.Level;
  * SQL repository for per-floor generation config overrides.
  *
  * <p>Backs the {@code floor_config_overrides} table. Each row stores a floor level
- * and a sparse JSON map of field overrides that should be applied when generating
- * dungeons at or above that floor level (using rebase inheritance).
+ * and a sparse JSON map of field overrides that rebases floors from that point onward
+ * until the next shipped floor-config asset breakpoint or a later SQL row in the same segment.
  *
  * @since 1.6.0
  */

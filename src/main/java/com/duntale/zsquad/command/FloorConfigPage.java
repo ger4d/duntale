@@ -21,6 +21,7 @@ import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
 import java.sql.SQLException;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.logging.Level;
 
@@ -44,8 +45,14 @@ public class FloorConfigPage extends InteractiveCustomUIPage<FloorConfigPage.Flo
 
     private static final String GREEN = "#55FF55";
     private static final String RED = "#FF5555";
-    private static final String GRAY = "#AAAAAA";
     private static final String SET_INDICATOR = "*";
+    private static final List<String> THEME_VARIANT_ORDER = List.of(
+            "crypt",
+            "arcane",
+            "hive",
+            "temple_dark",
+            "volcanic"
+    );
 
     private final int floorLevel;
     private final FloorConfigService floorConfigService;
@@ -113,13 +120,22 @@ public class FloorConfigPage extends InteractiveCustomUIPage<FloorConfigPage.Flo
 
     private void handleSave(@Nonnull FloorConfigEventData data) {
         Map<String, Object> allValues = buildValuesMap(data);
+        @SuppressWarnings("unchecked")
+        List<String> themeVariants = (List<String>) allValues.get("theme.variants");
+        if (themeVariants.isEmpty()) {
+            playerRef.sendMessage(
+                    Message.raw("At least one theme must stay enabled. Use Reset to reveal inherited defaults.")
+                            .color(RED));
+            updateStatus("Error — see chat");
+            return;
+        }
 
         try {
             floorConfigService.bulkSaveOverrides(floorLevel, allValues);
             playerRef.sendMessage(Message.raw("Floor " + floorLevel + " config saved.").color(GREEN));
             updateStatus("Saved");
             refreshDisplay();
-        } catch (SQLException e) {
+        } catch (SQLException | IllegalArgumentException e) {
             LOGGER.at(Level.SEVERE).log("Failed to save floor %d config: %s", floorLevel, e.getMessage());
             playerRef.sendMessage(Message.raw("Save failed: " + e.getMessage()).color(RED));
             updateStatus("Error — see chat");
@@ -196,6 +212,7 @@ public class FloorConfigPage extends InteractiveCustomUIPage<FloorConfigPage.Flo
             case "layout.flatFloor" -> cmd.set("#FlatFloorCheck #CheckBox.Value", (Boolean) value);
             case "layout.solidFill" -> cmd.set("#SolidFillCheck #CheckBox.Value", (Boolean) value);
             // Theme
+            case "theme.variants" -> setThemeVariantValues(cmd, value);
             case "theme.decayFactor" -> cmd.set("#DecayFactor.Value", toFloat(value));
             case "theme.overgrowthFactor" -> cmd.set("#OvergrowthFactor.Value", toFloat(value));
             case "theme.floodingFactor" -> cmd.set("#FloodingFactor.Value", toFloat(value));
@@ -240,6 +257,7 @@ public class FloorConfigPage extends InteractiveCustomUIPage<FloorConfigPage.Flo
             case "layout.removeCeiling" -> "#RemoveCeilingTag";
             case "layout.flatFloor" -> "#FlatFloorTag";
             case "layout.solidFill" -> "#SolidFillTag";
+            case "theme.variants" -> "#ThemeVariantsTag";
             case "theme.decayFactor" -> "#DecayFactorTag";
             case "theme.overgrowthFactor" -> "#OvergrowthFactorTag";
             case "theme.floodingFactor" -> "#FloodingFactorTag";
@@ -312,6 +330,7 @@ public class FloorConfigPage extends InteractiveCustomUIPage<FloorConfigPage.Flo
         putIfNotNull(map, "layout.removeCeiling", d.removeCeiling);
         putIfNotNull(map, "layout.flatFloor", d.flatFloor);
         putIfNotNull(map, "layout.solidFill", d.solidFill);
+        map.put("theme.variants", collectThemeVariants(d));
         putIfNotNull(map, "theme.decayFactor", d.decayFactor);
         putIfNotNull(map, "theme.overgrowthFactor", d.overgrowthFactor);
         putIfNotNull(map, "theme.floodingFactor", d.floodingFactor);
@@ -337,6 +356,31 @@ public class FloorConfigPage extends InteractiveCustomUIPage<FloorConfigPage.Flo
 
     private static float toFloat(@Nonnull Object value) {
         return ((Number) value).floatValue();
+    }
+
+    private static void setThemeVariantValues(@Nonnull UICommandBuilder cmd, @Nonnull Object value) {
+        List<String> selectedThemes = value instanceof List<?> list
+                ? list.stream().map(Object::toString).toList()
+                : List.of();
+        cmd.set("#ThemeCryptCheck #CheckBox.Value", selectedThemes.contains("crypt"));
+        cmd.set("#ThemeArcaneCheck #CheckBox.Value", selectedThemes.contains("arcane"));
+        cmd.set("#ThemeHiveCheck #CheckBox.Value", selectedThemes.contains("hive"));
+        cmd.set("#ThemeTempleDarkCheck #CheckBox.Value", selectedThemes.contains("temple_dark"));
+        cmd.set("#ThemeVolcanicCheck #CheckBox.Value", selectedThemes.contains("volcanic"));
+    }
+
+    @Nonnull
+    private static List<String> collectThemeVariants(@Nonnull FloorConfigEventData d) {
+        LinkedHashMap<String, Boolean> selected = new LinkedHashMap<>();
+        selected.put("crypt", Boolean.TRUE.equals(d.themeCrypt));
+        selected.put("arcane", Boolean.TRUE.equals(d.themeArcane));
+        selected.put("hive", Boolean.TRUE.equals(d.themeHive));
+        selected.put("temple_dark", Boolean.TRUE.equals(d.themeTempleDark));
+        selected.put("volcanic", Boolean.TRUE.equals(d.themeVolcanic));
+
+        return THEME_VARIANT_ORDER.stream()
+                .filter(themeId -> Boolean.TRUE.equals(selected.get(themeId)))
+                .toList();
     }
 
     // ============================================
@@ -386,6 +430,11 @@ public class FloorConfigPage extends InteractiveCustomUIPage<FloorConfigPage.Flo
                 .append("@FlatFloor", "#FlatFloorCheck #CheckBox.Value")
                 .append("@SolidFill", "#SolidFillCheck #CheckBox.Value")
                 // Theme
+                .append("@ThemeCrypt", "#ThemeCryptCheck #CheckBox.Value")
+                .append("@ThemeArcane", "#ThemeArcaneCheck #CheckBox.Value")
+                .append("@ThemeHive", "#ThemeHiveCheck #CheckBox.Value")
+                .append("@ThemeTempleDark", "#ThemeTempleDarkCheck #CheckBox.Value")
+                .append("@ThemeVolcanic", "#ThemeVolcanicCheck #CheckBox.Value")
                 .append("@DecayFactor", "#DecayFactor.Value")
                 .append("@OvergrowthFactor", "#OvergrowthFactor.Value")
                 .append("@FloodingFactor", "#FloodingFactor.Value")
@@ -449,6 +498,11 @@ public class FloorConfigPage extends InteractiveCustomUIPage<FloorConfigPage.Flo
                 .addField(new KeyedCodec<>("@FlatFloor", Codec.BOOLEAN), (e, v) -> e.flatFloor = v, e -> e.flatFloor)
                 .addField(new KeyedCodec<>("@SolidFill", Codec.BOOLEAN), (e, v) -> e.solidFill = v, e -> e.solidFill)
                 // Theme
+                .addField(new KeyedCodec<>("@ThemeCrypt", Codec.BOOLEAN), (e, v) -> e.themeCrypt = v, e -> e.themeCrypt)
+                .addField(new KeyedCodec<>("@ThemeArcane", Codec.BOOLEAN), (e, v) -> e.themeArcane = v, e -> e.themeArcane)
+                .addField(new KeyedCodec<>("@ThemeHive", Codec.BOOLEAN), (e, v) -> e.themeHive = v, e -> e.themeHive)
+                .addField(new KeyedCodec<>("@ThemeTempleDark", Codec.BOOLEAN), (e, v) -> e.themeTempleDark = v, e -> e.themeTempleDark)
+                .addField(new KeyedCodec<>("@ThemeVolcanic", Codec.BOOLEAN), (e, v) -> e.themeVolcanic = v, e -> e.themeVolcanic)
                 .addField(new KeyedCodec<>("@DecayFactor", Codec.FLOAT), (e, v) -> e.decayFactor = v, e -> e.decayFactor)
                 .addField(new KeyedCodec<>("@OvergrowthFactor", Codec.FLOAT), (e, v) -> e.overgrowthFactor = v, e -> e.overgrowthFactor)
                 .addField(new KeyedCodec<>("@FloodingFactor", Codec.FLOAT), (e, v) -> e.floodingFactor = v, e -> e.floodingFactor)
@@ -490,6 +544,7 @@ public class FloorConfigPage extends InteractiveCustomUIPage<FloorConfigPage.Flo
         Float erosion;
         Boolean removeCeiling, flatFloor, solidFill;
         // Theme
+        Boolean themeCrypt, themeArcane, themeHive, themeTempleDark, themeVolcanic;
         Float decayFactor, overgrowthFactor, floodingFactor;
         // Pacing
         Float breatheRoomFreq, difficultyRamp;

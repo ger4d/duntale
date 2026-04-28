@@ -16,7 +16,7 @@ import java.util.Objects;
  * @param entrancePosition authoritative generated entrance position for the current floor
  * @param exitPosition     authoritative generated exit position for the current floor
  * @param state            current lifecycle state
- * @param theme            dungeon theme identifier
+ * @param theme            active generated-floor theme selected for the current floor
  * @param seed             generation seed, or {@code null} to represent random generation
  * @param createdAt        creation timestamp in epoch milliseconds
  * @since 1.6.0

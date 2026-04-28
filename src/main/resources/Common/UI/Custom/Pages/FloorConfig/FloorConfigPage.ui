@@ -343,6 +343,29 @@ $C.@Container {
         Padding: (Horizontal: 14, Top: 4, Bottom: 12);
 
         Group {
+          LayoutMode: Top;
+          Anchor: (Bottom: 8);
+
+          Group {
+            LayoutMode: Left;
+            Anchor: (Height: 34, Bottom: 4);
+            Label #ThemeVariantsTag { Text: ""; Style: (FontSize: 14, TextColor: #55FF55, VerticalAlignment: Center); Anchor: (Width: 14); }
+            Label { Text: "Variants"; Style: (FontSize: 14, TextColor: #96a9be, VerticalAlignment: Center); Anchor: (Width: 70, Right: 16); }
+            $C.@CheckBoxWithLabel #ThemeCryptCheck { @Text = "Crypt"; @Checked = true; Anchor: (Right: 20); }
+            $C.@CheckBoxWithLabel #ThemeArcaneCheck { @Text = "Arcane"; @Checked = true; Anchor: (Right: 20); }
+            $C.@CheckBoxWithLabel #ThemeHiveCheck { @Text = "Hive"; @Checked = true; }
+          }
+
+          Group {
+            LayoutMode: Left;
+            Anchor: (Height: 34);
+            Group { Anchor: (Width: 100); }
+            $C.@CheckBoxWithLabel #ThemeTempleDarkCheck { @Text = "Temple_Dark"; @Checked = true; Anchor: (Right: 20); }
+            $C.@CheckBoxWithLabel #ThemeVolcanicCheck { @Text = "Volcanic"; @Checked = true; }
+          }
+        }
+
+        Group {
           LayoutMode: Left;
           Anchor: (Height: 44, Bottom: 4);
           Label #DecayFactorTag { Text: ""; Style: (FontSize: 14, TextColor: #55FF55, VerticalAlignment: Center); Anchor: (Width: 14); }

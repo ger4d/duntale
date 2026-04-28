@@ -5,44 +5,77 @@ import com.duntale.dungeongen.config.LayoutConfig;
 import com.duntale.dungeongen.config.PacingConfig;
 import com.duntale.dungeongen.config.ThemeConfig;
 import com.duntale.dungeongen.config.Vec3i;
+import com.duntale.dungeongen.config.asset.DungeonThemeConfig;
 import com.duntale.dungeongen.util.JsonParser;
+import com.duntale.zsquad.dungeon.config.asset.FloorConfigDefaultAsset;
+import com.hypixel.hytale.assetstore.AssetRegistry;
 import com.hypixel.hytale.logger.HytaleLogger;
+import org.bson.BsonArray;
+import org.bson.BsonDocument;
+import org.bson.BsonType;
+import org.bson.BsonValue;
 
 import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
 import java.sql.SQLException;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.LinkedHashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.NavigableMap;
 import java.util.Objects;
 import java.util.Set;
 import java.util.TreeMap;
+import java.util.function.Supplier;
+import java.util.Locale;
 import java.util.logging.Level;
 
 /**
- * Resolves per-floor generation config overrides using a rebase inheritance model.
+ * Resolves per-floor generation config using layered code defaults, shipped asset defaults,
+ * and local SQL overrides.
  *
- * <p>Admins define sparse overrides for specific floor levels. The effective config for floor N
- * is {@link DungeonConfig#withDefaults()} merged with the overrides from the highest defined
- * floor {@code ≤ N} (the "base floor"). If no overrides are defined, all floors use defaults.
+ * <p>The effective config for floor {@code N} is resolved in this order:
  *
- * <p>Theme palette is always instance-chosen (via {@code /dungeon start <theme>}), never from
- * floor config overrides.
+ * <ol>
+ *     <li>code defaults from {@link LayoutConfig#defaults()}, {@link ThemeConfig#defaults()},
+ *     and {@link PacingConfig#defaults()},</li>
+ *     <li>the shipped asset snapshot from the highest configured asset floor {@code ≤ N},</li>
+ *     <li>the local SQL snapshot from the highest configured SQL floor in the current shipped
+ *     asset segment, if one exists.</li>
+ * </ol>
+ *
+ * <p>Local SQL state remains the only mutable layer. A SQL row rebases only within the current
+ * shipped asset segment, so a floor-2 override affects floors 2-4, then floor 5 resets to the
+ * shipped 005 asset baseline. UI save/reset behavior continues to edit and clear SQL rows only,
+ * revealing the inherited asset-backed baseline when no local override exists.
  *
  * @since 1.6.0
  */
 public class FloorConfigService {
 
     private static final HytaleLogger LOGGER = HytaleLogger.forEnclosingClass();
+    private static final List<String> DEFAULT_THEME_VARIANTS = List.of("crypt");
+    private static final Map<String, String> CANONICAL_THEME_IDS_BY_ALIAS = Map.of(
+        "arcane", "arcane",
+        "crypt", "crypt",
+        "hive", "hive",
+        "mine", "mine",
+        "mushroom", "mushroom",
+        "temple_dark", "temple_dark",
+        "volcanic", "volcanic"
+    );
 
     // ============================================
     // Field type registry
     // ============================================
 
     /** The data type of an overridable config field. */
-    public enum FieldType { INT, DOUBLE, BOOLEAN, STRING }
+    public enum FieldType { INT, DOUBLE, BOOLEAN, STRING, STRING_LIST }
 
     private static final Map<String, FieldType> FIELD_TYPES;
 
@@ -90,6 +123,7 @@ public class FloorConfigService {
         // Layout — generation
         map.put("layout.complexity", FieldType.DOUBLE);
         // Theme (palette excluded — comes from instance)
+        map.put("theme.variants", FieldType.STRING_LIST);
         map.put("theme.decayFactor", FieldType.DOUBLE);
         map.put("theme.overgrowthFactor", FieldType.DOUBLE);
         map.put("theme.floodingFactor", FieldType.DOUBLE);
@@ -104,6 +138,7 @@ public class FloorConfigService {
     // ============================================
 
     private final FloorConfigRepository repository;
+    private final Supplier<TreeMap<Integer, Map<String, Object>>> assetDefaultSupplier;
     private volatile TreeMap<Integer, Map<String, Object>> cache = new TreeMap<>();
 
     // ============================================
@@ -116,7 +151,15 @@ public class FloorConfigService {
      * @param repository the floor config repository
      */
     public FloorConfigService(@Nonnull FloorConfigRepository repository) {
+        this(repository, FloorConfigService::loadAssetDefaultsFromRegistry);
+    }
+
+    FloorConfigService(
+            @Nonnull FloorConfigRepository repository,
+            @Nonnull Supplier<TreeMap<Integer, Map<String, Object>>> assetDefaultSupplier
+    ) {
         this.repository = Objects.requireNonNull(repository, "repository");
+        this.assetDefaultSupplier = Objects.requireNonNull(assetDefaultSupplier, "assetDefaultSupplier");
     }
 
     // ============================================
@@ -129,9 +172,10 @@ public class FloorConfigService {
      */
     public void loadOnStartup() {
         try {
+            normalizeStoredOverrides();
             refreshCache();
             LOGGER.at(Level.INFO).log("Floor config loaded: %d override floor(s) defined", cache.size());
-        } catch (SQLException e) {
+        } catch (SQLException | IllegalArgumentException e) {
             LOGGER.at(Level.SEVERE).log("Failed to load floor config overrides: %s", e.getMessage());
         }
     }
@@ -158,11 +202,28 @@ public class FloorConfigService {
     @Nonnull
     public DungeonConfig resolveConfigForFloor(int floorLevel, @Nonnull String theme) {
         Objects.requireNonNull(theme, "theme");
-        Map<String, Object> overrides = resolveBaseOverrides(floorLevel);
+        Map<String, Object> overrides = resolveEffectiveOverrides(floorLevel);
         LayoutConfig layout = applyLayoutOverrides(LayoutConfig.defaults(), overrides);
         ThemeConfig themeConfig = applyThemeOverrides(ThemeConfig.defaults(), theme, overrides);
         PacingConfig pacing = applyPacingOverrides(PacingConfig.defaults(), overrides);
         return new DungeonConfig(null, null, "default", Vec3i.ZERO, layout, themeConfig, pacing, false, floorLevel);
+    }
+
+    /**
+     * Returns the fully resolved theme variant list for a floor.
+     *
+     * @param floorLevel the floor level to resolve
+     * @return the normalized list of allowed theme IDs for that floor
+     */
+    @Nonnull
+    @SuppressWarnings("unchecked")
+    public List<String> getThemeVariantsForFloor(int floorLevel) {
+        Map<String, Object> overrides = resolveEffectiveOverrides(floorLevel);
+        Object resolved = overrides.get("theme.variants");
+        if (resolved == null) {
+            return DEFAULT_THEME_VARIANTS;
+        }
+        return (List<String>) convertToFieldType("theme.variants", resolved);
     }
 
     // ============================================
@@ -182,7 +243,7 @@ public class FloorConfigService {
         validateField(fieldPath);
         Objects.requireNonNull(value, "value");
         Map<String, Object> overrides = loadOverridesForFloor(floorLevel);
-        overrides.put(fieldPath, value);
+        overrides.put(fieldPath, convertToFieldType(fieldPath, value));
         repository.save(floorLevel, toJson(overrides));
         refreshCache();
     }
@@ -266,6 +327,7 @@ public class FloorConfigService {
         LayoutConfig defaultLayout = LayoutConfig.defaults();
         ThemeConfig defaultTheme = ThemeConfig.defaults();
         PacingConfig defaultPacing = PacingConfig.defaults();
+        Map<String, Object> inheritedOverrides = resolveInheritedOverrides(floorLevel);
 
         Map<String, Object> newOverrides = new LinkedHashMap<>();
 
@@ -276,7 +338,9 @@ public class FloorConfigService {
                 continue;
             }
 
-            Object inheritedValue = getDefaultValue(path, defaultLayout, defaultTheme, defaultPacing);
+            Object inheritedValue = inheritedOverrides.containsKey(path)
+                    ? convertToFieldType(path, inheritedOverrides.get(path))
+                    : getDefaultValue(path, defaultLayout, defaultTheme, defaultPacing);
 
             if (!valuesEqual(path, uiValue, inheritedValue)) {
                 newOverrides.put(path, convertToFieldType(path, uiValue));
@@ -313,6 +377,9 @@ public class FloorConfigService {
                     && Float.compare(na.floatValue(), nb.floatValue()) == 0;
             case BOOLEAN -> a.equals(b);
             case STRING -> a.toString().equals(b.toString());
+            case STRING_LIST -> Objects.equals(
+                convertToFieldType(fieldPath, a),
+                convertToFieldType(fieldPath, b));
         };
     }
 
@@ -329,9 +396,9 @@ public class FloorConfigService {
      */
     @Nonnull
     public EffectiveConfig getEffectiveConfig(int floorLevel) {
-        Map<String, Object> baseOverrides = resolveBaseOverrides(floorLevel);
+        Map<String, Object> baseOverrides = resolveEffectiveOverrides(floorLevel);
         Map<String, Object> exactOverrides = cache.get(floorLevel);
-        Integer baseFloor = cache.floorKey(floorLevel);
+        Integer baseFloor = resolveDisplayBaseFloor(floorLevel);
 
         LayoutConfig defaultLayout = LayoutConfig.defaults();
         ThemeConfig defaultTheme = ThemeConfig.defaults();
@@ -406,6 +473,7 @@ public class FloorConfigService {
                         "Invalid boolean for " + fieldPath + ": " + rawValue + " (expected true/false)");
             }
             case STRING -> rawValue;
+            case STRING_LIST -> convertToFieldType(fieldPath, rawValue);
         };
     }
 
@@ -461,12 +529,43 @@ public class FloorConfigService {
     // ============================================
 
     @Nonnull
-    private Map<String, Object> resolveBaseOverrides(int floorLevel) {
-        Integer baseFloor = cache.floorKey(floorLevel);
-        if (baseFloor == null) {
-            return Map.of();
+    private Map<String, Object> resolveEffectiveOverrides(int floorLevel) {
+        LinkedHashMap<String, Object> resolved = new LinkedHashMap<>(resolveInheritedOverrides(floorLevel));
+
+        return resolved.isEmpty() ? Map.of() : Map.copyOf(resolved);
+    }
+
+    @Nonnull
+    private Map<String, Object> resolveInheritedOverrides(int floorLevel) {
+        TreeMap<Integer, Map<String, Object>> assetDefaults = resolveAssetDefaults();
+        LinkedHashMap<String, Object> resolved = new LinkedHashMap<>();
+
+        Integer assetFloor = assetDefaults.floorKey(floorLevel);
+        if (assetFloor != null) {
+            resolved.putAll(assetDefaults.get(assetFloor));
         }
-        return Map.copyOf(cache.get(baseFloor));
+
+        Integer sqlFloor = resolveSegmentSqlFloor(assetFloor, floorLevel, true);
+        if (sqlFloor != null) {
+            resolved.putAll(cache.get(sqlFloor));
+        }
+
+        return resolved.isEmpty() ? Map.of() : Map.copyOf(resolved);
+    }
+
+    @Nullable
+    private Integer resolveInheritedSqlFloor(int floorLevel) {
+        return resolveSegmentSqlFloor(resolveAssetDefaults().floorKey(floorLevel), floorLevel, false);
+    }
+
+    @Nullable
+    private Integer resolveSegmentSqlFloor(@Nullable Integer assetFloor, int floorLevel, boolean includeExactFloor) {
+        NavigableMap<Integer, Map<String, Object>> scopedSql = cache;
+        if (assetFloor != null) {
+            scopedSql = scopedSql.tailMap(assetFloor, true);
+        }
+        scopedSql = includeExactFloor ? scopedSql.headMap(floorLevel, true) : scopedSql.headMap(floorLevel, false);
+        return scopedSql.isEmpty() ? null : scopedSql.lastKey();
     }
 
     @Nonnull
@@ -474,7 +573,9 @@ public class FloorConfigService {
         return repository.load(floorLevel)
                 .map(json -> {
                     Map<String, Object> parsed = JsonParser.parseObject(json);
-                    return parsed != null ? new HashMap<>(parsed) : new HashMap<String, Object>();
+                    return parsed != null
+                            ? new HashMap<>(normalizeOverrides(parsed, "SQL floor " + floorLevel))
+                            : new HashMap<String, Object>();
                 })
                 .orElseGet(HashMap::new);
     }
@@ -485,10 +586,48 @@ public class FloorConfigService {
         for (Map.Entry<Integer, String> entry : raw.entrySet()) {
             Map<String, Object> parsed = JsonParser.parseObject(entry.getValue());
             if (parsed != null) {
-                newCache.put(entry.getKey(), parsed);
+                newCache.put(entry.getKey(), normalizeOverrides(parsed, "SQL floor " + entry.getKey()));
             }
         }
         this.cache = newCache;
+    }
+
+    private void normalizeStoredOverrides() throws SQLException {
+        TreeMap<Integer, String> raw = repository.loadAll();
+        for (Map.Entry<Integer, String> entry : raw.entrySet()) {
+            Map<String, Object> parsed = JsonParser.parseObject(entry.getValue());
+            if (parsed == null) {
+                continue;
+            }
+            String normalizedJson = toJson(normalizeOverrides(parsed, "SQL floor " + entry.getKey()));
+            if (!normalizedJson.equals(entry.getValue())) {
+                repository.save(entry.getKey(), normalizedJson);
+            }
+        }
+    }
+
+    @Nullable
+    private Integer resolveDisplayBaseFloor(int floorLevel) {
+        Integer assetFloor = resolveAssetDefaults().floorKey(floorLevel);
+        Integer sqlFloor = resolveSegmentSqlFloor(assetFloor, floorLevel, true);
+        if (sqlFloor != null) {
+            return sqlFloor;
+        }
+        return assetFloor;
+    }
+
+    @Nonnull
+    private TreeMap<Integer, Map<String, Object>> resolveAssetDefaults() {
+        TreeMap<Integer, Map<String, Object>> assetDefaults = assetDefaultSupplier.get();
+        if (assetDefaults == null || assetDefaults.isEmpty()) {
+            return new TreeMap<>();
+        }
+
+        TreeMap<Integer, Map<String, Object>> normalized = new TreeMap<>();
+        for (Map.Entry<Integer, Map<String, Object>> entry : assetDefaults.entrySet()) {
+            normalized.put(entry.getKey(), normalizeOverrides(entry.getValue(), "asset floor " + entry.getKey()));
+        }
+        return normalized;
     }
 
     private static void validateField(@Nonnull String fieldPath) {
@@ -507,6 +646,137 @@ public class FloorConfigService {
             case DOUBLE -> JsonParser.toDouble(value);
             case BOOLEAN -> JsonParser.toBoolean(value);
             case STRING -> JsonParser.toStringOrNull(value);
+            case STRING_LIST -> normalizeStringListField(fieldPath, value);
+        };
+    }
+
+    @Nonnull
+    private static Map<String, Object> normalizeOverrides(
+            @Nonnull Map<String, Object> raw,
+            @Nonnull String sourceLabel
+    ) {
+        LinkedHashMap<String, Object> normalized = new LinkedHashMap<>();
+        for (Map.Entry<String, Object> entry : raw.entrySet()) {
+            String path = entry.getKey();
+            validateField(path);
+            Object value = entry.getValue();
+            if (value == null) {
+                continue;
+            }
+            try {
+                normalized.put(path, convertToFieldType(path, value));
+            } catch (IllegalArgumentException e) {
+                throw new IllegalArgumentException("Invalid value for " + path + " in " + sourceLabel + ": "
+                        + e.getMessage(), e);
+            }
+        }
+        return Map.copyOf(normalized);
+    }
+
+    @Nonnull
+    private static Object normalizeStringListField(@Nonnull String fieldPath, @Nonnull Object value) {
+        if (!"theme.variants".equals(fieldPath)) {
+            throw new IllegalArgumentException("Unsupported list field: " + fieldPath);
+        }
+        return normalizeThemeVariants(value);
+    }
+
+    @Nonnull
+    private static List<String> normalizeThemeVariants(@Nonnull Object value) {
+        Collection<?> items;
+        if (value instanceof Collection<?> collection) {
+            items = collection;
+        } else if (value instanceof Object[] array) {
+            items = Arrays.asList(array);
+        } else if (value instanceof String stringValue) {
+            items = Arrays.stream(stringValue.split(","))
+                    .map(String::trim)
+                    .filter(part -> !part.isEmpty())
+                    .toList();
+        } else {
+            throw new IllegalArgumentException("expected a string list");
+        }
+
+        ArrayList<String> normalized = new ArrayList<>();
+        LinkedHashSet<String> seen = new LinkedHashSet<>();
+        for (Object item : items) {
+            if (item == null) {
+                continue;
+            }
+            String themeId = canonicalizeThemeId(item.toString());
+            if (themeId.isEmpty()) {
+                continue;
+            }
+            if (seen.add(themeId)) {
+                normalized.add(themeId);
+            }
+        }
+        return List.copyOf(normalized);
+    }
+
+    @Nonnull
+    private static String canonicalizeThemeId(@Nonnull String themeId) {
+        String trimmedThemeId = themeId.trim();
+        if (trimmedThemeId.isBlank()) {
+            throw new IllegalArgumentException("theme ID cannot be blank");
+        }
+        String canonicalThemeId = CANONICAL_THEME_IDS_BY_ALIAS.get(trimmedThemeId.toLowerCase(Locale.ROOT));
+        if (canonicalThemeId != null) {
+            return canonicalThemeId;
+        }
+        if (AssetRegistry.getAssetStore(DungeonThemeConfig.class) != null
+                && DungeonThemeConfig.get(trimmedThemeId) != null) {
+            return trimmedThemeId;
+        }
+        throw new IllegalArgumentException("unknown theme ID: " + themeId);
+    }
+
+    @Nonnull
+    private static TreeMap<Integer, Map<String, Object>> loadAssetDefaultsFromRegistry() {
+        TreeMap<Integer, Map<String, Object>> resolved = new TreeMap<>();
+        for (FloorConfigDefaultAsset asset : FloorConfigDefaultAsset.getAll()) {
+            int floorLevel = asset.getFloorLevel();
+            Map<String, Object> overrides = normalizeOverrides(
+                    bsonDocumentToMap(asset.getOverridesDocument()),
+                    "asset floor " + asset.getId());
+            if (resolved.putIfAbsent(floorLevel, overrides) != null) {
+                throw new IllegalArgumentException("Duplicate floor config default asset floor: " + floorLevel);
+            }
+        }
+        return resolved;
+    }
+
+    @Nonnull
+    private static Map<String, Object> bsonDocumentToMap(@Nonnull BsonDocument document) {
+        LinkedHashMap<String, Object> values = new LinkedHashMap<>();
+        for (Map.Entry<String, BsonValue> entry : document.entrySet()) {
+            values.put(entry.getKey(), bsonValueToObject(entry.getValue()));
+        }
+        return values;
+    }
+
+    @Nonnull
+    private static List<Object> bsonArrayToList(@Nonnull BsonArray array) {
+        ArrayList<Object> values = new ArrayList<>(array.size());
+        for (BsonValue value : array) {
+            values.add(bsonValueToObject(value));
+        }
+        return List.copyOf(values);
+    }
+
+    @Nullable
+    private static Object bsonValueToObject(@Nonnull BsonValue value) {
+        BsonType type = value.getBsonType();
+        return switch (type) {
+            case ARRAY -> bsonArrayToList(value.asArray());
+            case BOOLEAN -> value.asBoolean().getValue();
+            case DOCUMENT -> bsonDocumentToMap(value.asDocument());
+            case DOUBLE -> value.asDouble().getValue();
+            case INT32 -> value.asInt32().getValue();
+            case INT64 -> value.asInt64().getValue();
+            case NULL -> null;
+            case STRING -> value.asString().getValue();
+            default -> value.toString();
         };
     }
 
@@ -628,6 +898,7 @@ public class FloorConfigService {
             // Layout — generation
             case "layout.complexity" -> layout.complexity();
             // Theme
+            case "theme.variants" -> DEFAULT_THEME_VARIANTS;
             case "theme.decayFactor" -> theme.decayFactor();
             case "theme.overgrowthFactor" -> theme.overgrowthFactor();
             case "theme.floodingFactor" -> theme.floodingFactor();
@@ -664,6 +935,17 @@ public class FloorConfigService {
     private static void appendJsonValue(@Nonnull StringBuilder sb, @Nullable Object value) {
         if (value == null) {
             sb.append("null");
+        } else if (value instanceof Collection<?> collection) {
+            sb.append('[');
+            boolean first = true;
+            for (Object item : collection) {
+                if (!first) {
+                    sb.append(", ");
+                }
+                first = false;
+                appendJsonValue(sb, item);
+            }
+            sb.append(']');
         } else if (value instanceof String s) {
             sb.append('"').append(escapeJsonString(s)).append('"');
         } else if (value instanceof Boolean || value instanceof Number) {

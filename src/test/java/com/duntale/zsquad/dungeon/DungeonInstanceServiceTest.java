@@ -21,6 +21,7 @@ import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
+import java.util.TreeMap;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
@@ -65,7 +66,7 @@ class DungeonInstanceServiceTest {
 
         FloorConfigRepository floorConfigRepository = new FloorConfigRepository(database);
         floorConfigRepository.initialize();
-        floorConfigService = new FloorConfigService(floorConfigRepository);
+        floorConfigService = new FloorConfigService(floorConfigRepository, TreeMap::new);
 
         service = new DungeonInstanceService(database, instanceRepository, membershipRepository, new PartyService(), floorConfigService);
     }
@@ -249,7 +250,7 @@ class DungeonInstanceServiceTest {
             );
 
             UUID player = UUID.randomUUID();
-            CompletableFuture<DungeonInstance> future = service.createInstance(List.of(player), 1, "Crypt");
+            CompletableFuture<DungeonInstance> future = service.createInstance(List.of(player), 1);
 
             List<DungeonInstance> pendingInstances = instanceRepository.findAll();
             assertEquals(1, pendingInstances.size());
@@ -305,7 +306,7 @@ class DungeonInstanceServiceTest {
             assertTrue(partyService.createParty(owner));
             assertEquals(PartyService.InviteResult.SUCCESS, partyService.invitePlayer(owner, member));
 
-            DungeonInstance active = service.createInstanceForPlayer(owner, 1, "crypt").join();
+            DungeonInstance active = service.createInstanceForPlayer(owner, 1).join();
 
             assertEquals(Set.of(owner, member), membershipRepository.findPlayerIdsByInstance(active.instanceId()));
             assertEquals(Set.of(owner, member), Set.copyOf(runtime.teleportedPlayers));
@@ -330,7 +331,7 @@ class DungeonInstanceServiceTest {
             );
 
             UUID player = UUID.randomUUID();
-            CompletableFuture<DungeonInstance> future = service.createInstance(List.of(player), 1, "crypt");
+            CompletableFuture<DungeonInstance> future = service.createInstance(List.of(player), 1);
 
             CompletionException exception = assertThrows(CompletionException.class, future::join);
             assertEquals("assembly failed", exception.getCause().getMessage());
@@ -352,9 +353,53 @@ class DungeonInstanceServiceTest {
                     retryRuntime
             );
 
-            DungeonInstance retried = retryService.createInstance(List.of(player), 1, "crypt").join();
+            DungeonInstance retried = retryService.createInstance(List.of(player), 1).join();
             assertEquals(DungeonInstanceState.ACTIVE, retried.state());
             assertEquals(Set.of(player), membershipRepository.findPlayerIdsByInstance(retried.instanceId()));
+        }
+
+        @Test
+        @DisplayName("Should pick the active floor theme from resolved theme variants on creation")
+        void shouldPickTheActiveFloorThemeFromResolvedThemeVariantsOnCreation() throws SQLException {
+            FakeRuntime runtime = new FakeRuntime();
+            floorConfigService.setOverride(1, "theme.variants", List.of("arcane", "hive"));
+            service = new DungeonInstanceService(
+                    database,
+                    instanceRepository,
+                    membershipRepository,
+                    new PartyService(),
+                    floorConfigService,
+                    runtime,
+                    theme -> Set.of("arcane", "hive").contains(theme)
+            );
+
+            UUID player = UUID.randomUUID();
+            DungeonInstance active = service.createInstance(List.of(player), 1).join();
+
+            assertTrue(Set.of("arcane", "hive").contains(active.theme()));
+            assertEquals(active.theme(), runtime.generatedConfig.theme().palette());
+        }
+
+        @Test
+        @DisplayName("Should fall back to crypt when resolved themes are unavailable")
+        void shouldFallBackToCryptWhenResolvedThemesAreUnavailable() throws SQLException {
+            FakeRuntime runtime = new FakeRuntime();
+            floorConfigService.setOverride(1, "theme.variants", List.of("arcane", "hive"));
+            service = new DungeonInstanceService(
+                    database,
+                    instanceRepository,
+                    membershipRepository,
+                    new PartyService(),
+                    floorConfigService,
+                    runtime,
+                    theme -> false
+            );
+
+            UUID player = UUID.randomUUID();
+            DungeonInstance active = service.createInstance(List.of(player), 1).join();
+
+            assertEquals("crypt", active.theme());
+            assertEquals("crypt", runtime.generatedConfig.theme().palette());
         }
     }
 
@@ -474,7 +519,7 @@ class DungeonInstanceServiceTest {
                     database, instanceRepository, membershipRepository, new PartyService(), floorConfigService, runtime);
 
             UUID player = UUID.randomUUID();
-            DungeonInstance active = service.createInstance(List.of(player), 1, "crypt").join();
+            DungeonInstance active = service.createInstance(List.of(player), 1).join();
             assertEquals(DungeonInstanceState.ACTIVE, active.state());
             assertEquals(1, active.floorLevel());
 
@@ -501,7 +546,7 @@ class DungeonInstanceServiceTest {
                     database, instanceRepository, membershipRepository, new PartyService(), floorConfigService, runtime);
 
             UUID player = UUID.randomUUID();
-            DungeonInstance active = service.createInstance(List.of(player), 1, "crypt").join();
+            DungeonInstance active = service.createInstance(List.of(player), 1).join();
             String oldWorldName = active.worldName();
 
             service.transitionFloor(active.instanceId()).join();
@@ -525,7 +570,7 @@ class DungeonInstanceServiceTest {
             assertTrue(partyService.createParty(playerA));
             assertEquals(PartyService.InviteResult.SUCCESS, partyService.invitePlayer(playerA, playerB));
 
-            DungeonInstance active = service.createInstanceForPlayer(playerA, 1, "crypt").join();
+            DungeonInstance active = service.createInstanceForPlayer(playerA, 1).join();
             runtime.teleportedPlayers.clear();
 
             service.transitionFloor(active.instanceId()).join();
@@ -571,7 +616,7 @@ class DungeonInstanceServiceTest {
                     database, instanceRepository, membershipRepository, new PartyService(), floorConfigService, runtime);
 
             UUID player = UUID.randomUUID();
-            DungeonInstance active = service.createInstance(List.of(player), 1, "crypt").join();
+            DungeonInstance active = service.createInstance(List.of(player), 1).join();
             String oldWorldName = active.worldName();
 
             runtime.nextGenerationResult = generationResult(
@@ -601,7 +646,7 @@ class DungeonInstanceServiceTest {
                     database, instanceRepository, membershipRepository, new PartyService(), floorConfigService, runtime);
 
             UUID player = UUID.randomUUID();
-            DungeonInstance active = service.createInstance(List.of(player), 1, "crypt").join();
+            DungeonInstance active = service.createInstance(List.of(player), 1).join();
 
             runtime.deferTeleport();
             CompletableFuture<DungeonInstance> future = service.transitionFloor(active.instanceId());
@@ -626,7 +671,7 @@ class DungeonInstanceServiceTest {
                     database, instanceRepository, membershipRepository, new PartyService(), floorConfigService, runtime);
 
             UUID player = UUID.randomUUID();
-            DungeonInstance floor1 = service.createInstance(List.of(player), 1, "crypt").join();
+            DungeonInstance floor1 = service.createInstance(List.of(player), 1).join();
 
             DungeonInstance floor2 = service.transitionFloor(floor1.instanceId()).join();
             assertEquals(2, floor2.floorLevel());
@@ -646,7 +691,7 @@ class DungeonInstanceServiceTest {
                     database, instanceRepository, membershipRepository, new PartyService(), floorConfigService, runtime);
 
             UUID player = UUID.randomUUID();
-            DungeonInstance active = service.createInstance(List.of(player), 1, "crypt").join();
+            DungeonInstance active = service.createInstance(List.of(player), 1).join();
 
             // Defer teleport only after the initial createInstance(...) join above.
             // Doing this earlier also stalls floor-1 activation and makes the test hang.
@@ -671,7 +716,7 @@ class DungeonInstanceServiceTest {
                     database, instanceRepository, membershipRepository, new PartyService(), floorConfigService, runtime);
 
             UUID player = UUID.randomUUID();
-            DungeonInstance active = service.createInstance(List.of(player), 1, "crypt").join();
+            DungeonInstance active = service.createInstance(List.of(player), 1).join();
             String oldWorldName = active.worldName();
 
             runtime.armWorldRemovalFailure = new IllegalStateException("World not found");
@@ -702,7 +747,7 @@ class DungeonInstanceServiceTest {
                     database, instanceRepository, membershipRepository, new PartyService(), floorConfigService, runtime);
 
             UUID player = UUID.randomUUID();
-            DungeonInstance active = service.createInstance(List.of(player), 1, "crypt").join();
+            DungeonInstance active = service.createInstance(List.of(player), 1).join();
 
             DungeonInstance transitioned = service.transitionFloor(active.instanceId()).join();
 
@@ -727,7 +772,7 @@ class DungeonInstanceServiceTest {
                     database, instanceRepository, membershipRepository, new PartyService(), floorConfigService, runtime);
 
             UUID player = UUID.randomUUID();
-            DungeonInstance floor1 = service.createInstance(List.of(player), 1, "crypt").join();
+            DungeonInstance floor1 = service.createInstance(List.of(player), 1).join();
 
             CompletionException ex = assertThrows(CompletionException.class,
                     () -> service.transitionFloor(floor1.instanceId()).join());
@@ -748,6 +793,31 @@ class DungeonInstanceServiceTest {
             DungeonInstance floor3 = service.transitionFloor(floor1.instanceId()).join();
             assertEquals(DungeonInstanceState.ACTIVE, floor3.state());
             assertEquals(3, floor3.floorLevel());
+        }
+
+        @Test
+        @DisplayName("Should pick the next floor theme from resolved variants during transition")
+        void shouldPickTheNextFloorThemeFromResolvedVariantsDuringTransition() throws SQLException {
+            FakeRuntime runtime = new FakeRuntime();
+            floorConfigService.setOverride(1, "theme.variants", List.of("crypt"));
+            floorConfigService.setOverride(2, "theme.variants", List.of("arcane", "hive"));
+            service = new DungeonInstanceService(
+                    database,
+                    instanceRepository,
+                    membershipRepository,
+                    new PartyService(),
+                    floorConfigService,
+                    runtime,
+                    theme -> Set.of("crypt", "arcane", "hive").contains(theme)
+            );
+
+            UUID player = UUID.randomUUID();
+            DungeonInstance floor1 = service.createInstance(List.of(player), 1).join();
+            DungeonInstance floor2 = service.transitionFloor(floor1.instanceId()).join();
+
+            assertEquals("crypt", floor1.theme());
+            assertTrue(Set.of("arcane", "hive").contains(floor2.theme()));
+            assertEquals(floor2.theme(), runtime.generatedConfig.theme().palette());
         }
     }
 
@@ -883,7 +953,7 @@ class DungeonInstanceServiceTest {
 
             UUID playerA = UUID.randomUUID();
             UUID playerB = UUID.randomUUID();
-            DungeonInstance instance = service.createInstance(List.of(playerA, playerB), 1, "crypt").join();
+            DungeonInstance instance = service.createInstance(List.of(playerA, playerB), 1).join();
 
             service.endInstance(instance.instanceId()).join();
 
@@ -951,7 +1021,7 @@ class DungeonInstanceServiceTest {
                     database, instanceRepository, membershipRepository, new PartyService(), floorConfigService, runtime);
 
             UUID player = UUID.randomUUID();
-            DungeonInstance instance = service.createInstance(List.of(player), 1, "crypt").join();
+            DungeonInstance instance = service.createInstance(List.of(player), 1).join();
 
             DungeonInstanceService.ContinueRoute routeBefore = service.resolveContinueRoute(player);
             assertTrue(routeBefore.routesToInstance());
@@ -972,7 +1042,7 @@ class DungeonInstanceServiceTest {
                     database, instanceRepository, membershipRepository, new PartyService(), floorConfigService, runtime);
 
             UUID player = UUID.randomUUID();
-            DungeonInstance floor1 = service.createInstance(List.of(player), 1, "crypt").join();
+            DungeonInstance floor1 = service.createInstance(List.of(player), 1).join();
 
             // Force a post-transfer persistence failure to create a runtime override
             assertThrows(CompletionException.class,
@@ -1000,7 +1070,7 @@ class DungeonInstanceServiceTest {
                     database, instanceRepository, membershipRepository, new PartyService(), floorConfigService, runtime);
 
             UUID player = UUID.randomUUID();
-            DungeonInstance instance = service.createInstance(List.of(player), 1, "crypt").join();
+            DungeonInstance instance = service.createInstance(List.of(player), 1).join();
 
             CompletionException ex = assertThrows(
                     CompletionException.class,
@@ -1022,7 +1092,7 @@ class DungeonInstanceServiceTest {
                     database, instanceRepository, membershipRepository, new PartyService(), floorConfigService, runtime);
 
             UUID player = UUID.randomUUID();
-            DungeonInstance instance = service.createInstance(List.of(player), 1, "crypt").join();
+            DungeonInstance instance = service.createInstance(List.of(player), 1).join();
 
             CompletionException ex = assertThrows(
                     CompletionException.class,
@@ -1045,7 +1115,7 @@ class DungeonInstanceServiceTest {
                     database, instanceRepository, membershipRepository, new PartyService(), floorConfigService, runtime);
 
             UUID player = UUID.randomUUID();
-            DungeonInstance instance = service.createInstance(List.of(player), 1, "crypt").join();
+            DungeonInstance instance = service.createInstance(List.of(player), 1).join();
 
             assertThrows(SQLException.class, () -> service.endInstance(instance.instanceId()));
 
@@ -1070,12 +1140,12 @@ class DungeonInstanceServiceTest {
                     database, instanceRepository, membershipRepository, new PartyService(), floorConfigService, runtime);
 
             UUID player = UUID.randomUUID();
-            DungeonInstance first = service.createInstance(List.of(player), 1, "crypt").join();
+            DungeonInstance first = service.createInstance(List.of(player), 1).join();
 
             service.endInstance(first.instanceId()).join();
 
             // Player should now be free to start a new instance
-            DungeonInstance second = service.createInstance(List.of(player), 1, "crypt").join();
+            DungeonInstance second = service.createInstance(List.of(player), 1).join();
             assertEquals(DungeonInstanceState.ACTIVE, second.state());
         }
     }
@@ -1096,7 +1166,7 @@ class DungeonInstanceServiceTest {
                     database, instanceRepository, membershipRepository, new PartyService(), floorConfigService, runtime);
 
             UUID player = UUID.randomUUID();
-            DungeonInstance instance = service.createInstance(List.of(player), 1, "crypt").join();
+            DungeonInstance instance = service.createInstance(List.of(player), 1).join();
 
             service.forceEndInstance(instance.instanceId()).join();
 
@@ -1131,7 +1201,7 @@ class DungeonInstanceServiceTest {
                     database, instanceRepository, membershipRepository, new PartyService(), floorConfigService, runtime);
 
             UUID player = UUID.randomUUID();
-            DungeonInstance floor1 = service.createInstance(List.of(player), 1, "crypt").join();
+            DungeonInstance floor1 = service.createInstance(List.of(player), 1).join();
             String oldWorldName = floor1.worldName();
 
             runtime.deferTeleport();
@@ -1194,7 +1264,7 @@ class DungeonInstanceServiceTest {
                     database, instanceRepository, membershipRepository, new PartyService(), floorConfigService, runtime);
 
             UUID player = UUID.randomUUID();
-            DungeonInstance floor1 = service.createInstance(List.of(player), 1, "crypt").join();
+            DungeonInstance floor1 = service.createInstance(List.of(player), 1).join();
             String oldWorldName = floor1.worldName();
 
             runtime.deferTeleport();
@@ -1227,7 +1297,7 @@ class DungeonInstanceServiceTest {
                     database, instanceRepository, membershipRepository, new PartyService(), floorConfigService, runtime);
 
             UUID player = UUID.randomUUID();
-            DungeonInstance floor1 = service.createInstance(List.of(player), 1, "crypt").join();
+            DungeonInstance floor1 = service.createInstance(List.of(player), 1).join();
 
             runtime.deferTeleport();
             CompletableFuture<DungeonInstance> transition = service.transitionFloor(floor1.instanceId());
@@ -1236,7 +1306,7 @@ class DungeonInstanceServiceTest {
             runtime.completeTeleport();
             assertThrows(CompletionException.class, transition::join);
 
-            DungeonInstance second = service.createInstance(List.of(player), 1, "crypt").join();
+            DungeonInstance second = service.createInstance(List.of(player), 1).join();
             assertEquals(DungeonInstanceState.ACTIVE, second.state());
         }
     }
