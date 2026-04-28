@@ -9,7 +9,7 @@
         }
     ],
     "Main": "com.duntale.zsquad.ZSquadPlugin",
-    "ServerVersion": "2026.04.17-c2d518cc9",
+    "ServerVersion": "2026.04.23-3f4475f43",
     "Dependencies": {
         "com.duntale:DungeonGen": ">=1.0.0-SNAPSHOT"
     },
