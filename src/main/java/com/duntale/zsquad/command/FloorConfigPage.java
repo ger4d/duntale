@@ -29,8 +29,9 @@ import java.util.logging.Level;
  *
  * <p>Displays all overridable config fields with their effective values for the specified
  * floor level. Fields explicitly overridden on this floor are marked with a green "●"
- * indicator. The player can edit values and click "Save" to persist only the fields that
- * differ from the inherited base (nearest lower-defined floor or defaults).
+ * indicator. The player can edit values and click "Save" to persist the current visible
+ * config as sparse overrides for that floor. Only fields that differ from defaults are
+ * stored.
  *
  * <p>Opened via {@code /dungeon floorconfig <floor>}.
  *

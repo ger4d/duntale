@@ -14,6 +14,7 @@ import org.junit.jupiter.api.io.TempDir;
 
 import java.nio.file.Path;
 import java.sql.SQLException;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -50,6 +51,14 @@ class FloorConfigServiceTest {
     @AfterEach
     void tearDown() {
         database.close();
+    }
+
+    private static Map<String, Object> toAllValues(FloorConfigService.EffectiveConfig effective) {
+        Map<String, Object> values = new LinkedHashMap<>();
+        for (Map.Entry<String, FloorConfigService.FieldStatus> entry : effective.fields().entrySet()) {
+            values.put(entry.getKey(), entry.getValue().value());
+        }
+        return values;
     }
 
     // ============================================
@@ -261,6 +270,59 @@ class FloorConfigServiceTest {
         void shouldRejectUnknownFieldForClear() {
             assertThrows(IllegalArgumentException.class,
                     () -> service.clearOverride(1, "layout.nonexistent"));
+        }
+    }
+
+    // ============================================
+    // Bulk save
+    // ============================================
+
+    @Nested
+    @DisplayName("bulk save")
+    class BulkSave {
+
+        @Test
+        @DisplayName("Should preserve inherited non-default values when defining a new floor snapshot")
+        void shouldPreserveInheritedNonDefaultValuesWhenDefiningNewFloorSnapshot() throws SQLException {
+            service.setOverride(1, "layout.removeCeiling", true);
+            service.setOverride(1, "layout.solidFill", false);
+
+            Map<String, Object> allValues = toAllValues(service.getEffectiveConfig(15));
+            allValues.put("layout.maxRooms", 30);
+
+            service.bulkSaveOverrides(15, allValues);
+
+            DungeonConfig config = service.resolveConfigForFloor(15, "crypt");
+            assertEquals(30, config.layout().maxRooms());
+            assertTrue(config.layout().removeCeiling());
+            assertFalse(config.layout().solidFill());
+
+            FloorConfigService.EffectiveConfig effective = service.getEffectiveConfig(15);
+            assertTrue(effective.fields().get("layout.removeCeiling").explicit());
+            assertTrue(effective.fields().get("layout.solidFill").explicit());
+        }
+
+        @Test
+        @DisplayName("Should preserve values that match a lower floor when re-saving an existing floor")
+        void shouldPreserveValuesThatMatchALowerFloorWhenResavingAnExistingFloor() throws SQLException {
+            service.setOverride(1, "layout.removeCeiling", true);
+            service.setOverride(1, "layout.solidFill", false);
+            service.setOverride(10, "layout.maxRooms", 35);
+
+            Map<String, Object> allValues = toAllValues(service.getEffectiveConfig(10));
+            allValues.put("layout.removeCeiling", true);
+            allValues.put("layout.solidFill", false);
+
+            service.bulkSaveOverrides(10, allValues);
+
+            DungeonConfig config = service.resolveConfigForFloor(10, "crypt");
+            assertEquals(35, config.layout().maxRooms());
+            assertTrue(config.layout().removeCeiling());
+            assertFalse(config.layout().solidFill());
+
+            FloorConfigService.EffectiveConfig effective = service.getEffectiveConfig(10);
+            assertTrue(effective.fields().get("layout.removeCeiling").explicit());
+            assertTrue(effective.fields().get("layout.solidFill").explicit());
         }
     }
 

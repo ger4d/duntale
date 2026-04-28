@@ -248,9 +248,11 @@ public class FloorConfigService {
     /**
      * Replaces all overrides for a floor level based on the provided full field values.
      *
-     * <p>Compares each value against the inherited base (nearest lower-defined floor
-     * or defaults) and only persists fields that differ. Clears the floor row if no
-     * overrides remain after comparison.
+        * <p>Compares each value against defaults and only persists fields that differ.
+        * This keeps the save path aligned with the rebase resolution model, where each
+        * defined floor stores a sparse snapshot applied directly over defaults. Saving a
+        * floor therefore materializes any visible inherited non-default values as
+        * explicit overrides for that floor.
      *
      * <p>Float-precision comparison is used for {@link FieldType#DOUBLE} fields to
      * avoid false positives caused by {@code float → double} round-trip loss from
@@ -261,8 +263,6 @@ public class FloorConfigService {
      * @throws SQLException if persistence fails
      */
     public void bulkSaveOverrides(int floorLevel, @Nonnull Map<String, Object> allValues) throws SQLException {
-        Map<String, Object> parentOverrides = getParentOverrides(floorLevel);
-
         LayoutConfig defaultLayout = LayoutConfig.defaults();
         ThemeConfig defaultTheme = ThemeConfig.defaults();
         PacingConfig defaultPacing = PacingConfig.defaults();
@@ -276,12 +276,7 @@ public class FloorConfigService {
                 continue;
             }
 
-            Object inheritedValue;
-            if (parentOverrides.containsKey(path)) {
-                inheritedValue = convertToFieldType(path, parentOverrides.get(path));
-            } else {
-                inheritedValue = getDefaultValue(path, defaultLayout, defaultTheme, defaultPacing);
-            }
+            Object inheritedValue = getDefaultValue(path, defaultLayout, defaultTheme, defaultPacing);
 
             if (!valuesEqual(path, uiValue, inheritedValue)) {
                 newOverrides.put(path, convertToFieldType(path, uiValue));
