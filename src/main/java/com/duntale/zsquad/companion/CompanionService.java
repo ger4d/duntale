@@ -49,10 +49,10 @@ public class CompanionService {
     private static final double SPAWN_OFFSET_RANGE = 1.5;
     private static final String LEVEL_SCALE_MODIFIER_KEY = "ZSquad_LevelScale";
 
-    public static final String DEFAULT_COMPANION_ROLE = "Companion_Skeleton_Soldier";
+    public static final String DEFAULT_COMPANION_ROLE = CompanionSpawner.WOLF_BLACK_ROLE;
 
     private final Map<UUID, ActiveCompanion> activeCompanions = new ConcurrentHashMap<>();
-    private final Map<UUID, String> companionPreferences = new ConcurrentHashMap<>();
+    private final Map<UUID, CompanionPreference> companionPreferences = new ConcurrentHashMap<>();
     private final CompanionSpawner companionSpawner;
     private final ProgressionService progressionService;
     private final ComponentType<EntityStore, CompanionComponent> companionComponentType;
@@ -115,7 +115,28 @@ public class CompanionService {
             @Nonnull UUID playerId,
             @Nonnull String roleName
     ) {
-        return summon(store, playerRef, playerId, roleName, null);
+        return summon(store, playerRef, playerId, roleName, null, null);
+    }
+
+    /**
+     * Spawns a companion NPC for the given player with an explicit display name.
+     *
+     * @param store the entity store (must be on WorldThread)
+     * @param playerRef the player's entity reference
+     * @param playerId the player's UUID
+     * @param roleName the NPC role name to spawn
+     * @param displayName the optional companion nameplate override
+     * @return the active companion data, or {@code null} if spawning failed or player already has one
+     */
+    @Nullable
+    public ActiveCompanion summon(
+            @Nonnull Store<EntityStore> store,
+            @Nonnull Ref<EntityStore> playerRef,
+            @Nonnull UUID playerId,
+            @Nonnull String roleName,
+            @Nullable String displayName
+    ) {
+        return summon(store, playerRef, playerId, roleName, displayName, null);
     }
 
     /**
@@ -143,6 +164,37 @@ public class CompanionService {
             @Nonnull UUID playerId,
             @Nonnull String roleName,
             @Nullable Vector3d spawnOrigin
+    ) {
+        return summon(store, playerRef, playerId, roleName, null, spawnOrigin);
+    }
+
+    /**
+     * Spawns a companion NPC for the given player at an explicit spawn origin.
+     *
+     * <p>When {@code spawnOrigin} is non-null it is used as the base position for
+     * companion placement (with the usual random XZ offset). When it is {@code null}
+     * the player's current {@link TransformComponent} position is used instead.
+     *
+     * <p>Providing an authoritative origin avoids relying on the player's runtime
+     * transform, which may not yet reflect the intended position after a cross-world
+     * teleport (e.g. the dungeon entrance coordinate from instance metadata).
+     *
+     * @param store the entity store (must be on WorldThread)
+     * @param playerRef the player's entity reference
+     * @param playerId the player's UUID
+     * @param roleName the NPC role name to spawn
+     * @param displayName the optional companion nameplate override
+     * @param spawnOrigin explicit spawn base position, or {@code null} to use the player's transform
+     * @return the active companion data, or {@code null} if spawning failed or player already has one
+     */
+    @Nullable
+    public ActiveCompanion summon(
+        @Nonnull Store<EntityStore> store,
+        @Nonnull Ref<EntityStore> playerRef,
+        @Nonnull UUID playerId,
+        @Nonnull String roleName,
+        @Nullable String displayName,
+        @Nullable Vector3d spawnOrigin
     ) {
         // Auto-clean stale entries
         cleanIfInvalid(playerId);
@@ -182,7 +234,13 @@ public class CompanionService {
         );
 
         // Spawn the companion with level scaling
-        Pair<Ref<EntityStore>, NPCEntity> spawnResult = companionSpawner.spawn(store, roleName, spawnPos, level);
+        Pair<Ref<EntityStore>, NPCEntity> spawnResult = companionSpawner.spawn(
+            store,
+            roleName,
+            displayName,
+            spawnPos,
+            level
+        );
         if (spawnResult == null) {
             LOGGER.atWarning().log("Failed to spawn companion NPC: %s at level %d", roleName, level);
             return null;
@@ -227,7 +285,33 @@ public class CompanionService {
      * @param roleName the NPC role name to persist
      */
     public void persistPreference(@Nonnull UUID playerId, @Nonnull String roleName) {
-        savePreference(playerId, roleName);
+        savePreference(playerId, new CompanionPreference(roleName, null));
+    }
+
+    /**
+     * Saves the player's companion preference (cache + DB).
+     *
+     * @param playerId the player's UUID
+     * @param roleName the NPC role name to persist
+     * @param displayName the optional companion display name to persist
+     */
+    public boolean persistPreference(
+            @Nonnull UUID playerId,
+            @Nonnull String roleName,
+            @Nullable String displayName
+    ) {
+        return savePreference(playerId, new CompanionPreference(roleName, displayName));
+    }
+
+    /**
+     * Returns whether the player has any stored companion preference row.
+     *
+     * @param playerId the player's UUID
+     * @return {@code true} when a stored preference exists
+     * @throws SQLException if the database lookup fails
+     */
+    public boolean hasStoredPreference(@Nonnull UUID playerId) throws SQLException {
+        return companionRepository.hasPreference(playerId);
     }
 
     /**
@@ -268,8 +352,8 @@ public class CompanionService {
         cleanIfInvalid(playerId);
         if (hasCompanion(playerId)) return;
 
-        String roleName = loadPreference(playerId);
-        summon(store, playerRef, playerId, roleName, spawnOrigin);
+        CompanionPreference preference = loadPreference(playerId);
+        summon(store, playerRef, playerId, preference.roleName(), preference.displayName(), spawnOrigin);
     }
 
     /**
@@ -461,20 +545,22 @@ public class CompanionService {
      * @return the stored role name, or {@link #DEFAULT_COMPANION_ROLE} if none exists or on DB error
      */
     @Nonnull
-    private String loadPreference(@Nonnull UUID playerId) {
-        String cached = companionPreferences.get(playerId);
+    private CompanionPreference loadPreference(@Nonnull UUID playerId) {
+        CompanionPreference cached = companionPreferences.get(playerId);
         if (cached != null) {
             return cached;
         }
 
         try {
-            String dbValue = companionRepository.getPreference(playerId);
-            String roleName = dbValue != null ? dbValue : DEFAULT_COMPANION_ROLE;
-            companionPreferences.put(playerId, roleName);
-            return roleName;
+            CompanionPreference dbValue = companionRepository.getProfile(playerId);
+            if (dbValue != null) {
+                companionPreferences.put(playerId, dbValue);
+                return dbValue;
+            }
+            return new CompanionPreference(DEFAULT_COMPANION_ROLE, null);
         } catch (SQLException e) {
             LOGGER.atWarning().log("Failed to load companion preference for %s: %s", playerId, e.getMessage());
-            return DEFAULT_COMPANION_ROLE;
+            return new CompanionPreference(DEFAULT_COMPANION_ROLE, null);
         }
     }
 
@@ -482,12 +568,18 @@ public class CompanionService {
      * Stores the companion role preference for the player.
      * Updates the in-memory cache and writes to the database synchronously.
      */
-    private void savePreference(@Nonnull UUID playerId, @Nonnull String roleName) {
-        companionPreferences.put(playerId, roleName);
+    private boolean savePreference(@Nonnull UUID playerId, @Nonnull CompanionPreference preference) {
+        companionPreferences.put(playerId, preference);
         try {
-            companionRepository.setPreference(playerId, roleName);
+            companionRepository.setPreference(
+                    playerId,
+                    preference.roleName(),
+                    preference.displayName()
+            );
+            return true;
         } catch (SQLException e) {
             LOGGER.atWarning().log("Failed to save companion preference for %s: %s", playerId, e.getMessage());
+            return false;
         }
     }
 

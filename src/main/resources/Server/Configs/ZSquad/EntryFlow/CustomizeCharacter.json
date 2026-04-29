@@ -1,0 +1,22 @@
+{
+  "DefaultCompanionRole": "Companion_Wolf_Black",
+  "SetupSlots": [
+    {
+      "X": 4.0,
+      "Y": 67.0,
+      "Z": 192.0,
+      "PlayerYaw": 0.0,
+      "CameraYaw": -180
+    }
+  ],
+  "Camera": {
+    "Distance": 8.5,
+    "Pitch": -0.12,
+    "HeightOffset": 5
+  },
+  "CompanionOffset": {
+    "X": 1.25,
+    "Y": 0.0,
+    "Z": 0.75
+  }
+}

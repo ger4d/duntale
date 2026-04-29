@@ -1,0 +1,22 @@
+{
+  "$Comment": "Companion Wolf used by the onboarding flow and normal companion spawning.",
+  "Type": "Variant",
+  "Reference": "Template_Companion",
+  "Modify": {
+    "Appearance": "Wolf_Black",
+    "MaxHealth": 75,
+    "MaxSpeed": 7,
+    "IsMemory": true,
+    "MemoriesCategory": "Other",
+    "MemoriesNameOverride": "Companion_Wolf_Black",
+    "NameTranslationKey": { "Compute": "NameTranslationKey" },
+    "Weapons": [],
+    "OffHandItems": []
+  },
+  "Parameters": {
+    "NameTranslationKey": {
+      "Value": "server.npcRoles.Companion_Wolf_Black.name",
+      "Description": "Translation key for the companion Wolf."
+    }
+  }
+}

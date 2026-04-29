@@ -6,6 +6,7 @@ import com.duntale.zsquad.camera.ClickToMoveKnockbackSystem;
 import com.duntale.zsquad.camera.ClickToMoveManager;
 import com.duntale.zsquad.camera.ClickToMoveTickSystem;
 import com.duntale.zsquad.camera.PlayerDeathCleanupSystem;
+import com.duntale.zsquad.config.asset.CustomizeCharacterConfigAsset;
 import com.duntale.zsquad.command.DGiveCommand;
 import com.duntale.zsquad.command.DungeonCommand;
 import com.duntale.zsquad.command.PartyCommand;
@@ -147,6 +148,8 @@ public class ZSquadPlugin extends JavaPlugin {
     private ComponentType<EntityStore, CompanionComponent> companionComponentType;
     private CompanionRepository companionRepository;
     private CompanionService companionService;
+    private CustomizeCharacterService customizeCharacterService;
+    private PlayerEntryService playerEntryService;
 
     // Dungeon instance flow
     private PartyService partyService;
@@ -156,7 +159,7 @@ public class ZSquadPlugin extends JavaPlugin {
 
     // HUD scoreboards per player
     private final Map<UUID, ZSquadScoreboard> scoreboards = new ConcurrentHashMap<>();
-    private final Set<UUID> entryMenuPending = ConcurrentHashMap.newKeySet();
+    private final Map<UUID, PlayerEntryService.EntryDestination> pendingEntryDestinations = new ConcurrentHashMap<>();
 
     // Dungeon generation
     private GenerationOrchestrator dungeonOrchestrator;
@@ -351,6 +354,7 @@ public class ZSquadPlugin extends JavaPlugin {
         LOGGER.atInfo().log("Data directory: %s", getDataDirectory().toAbsolutePath());
 
         AssetRegistry.register(FloorConfigDefaultAsset.assetStoreBuilder().build());
+        AssetRegistry.register(CustomizeCharacterConfigAsset.assetStoreBuilder().build());
 
         // ── RPG System ───────────────────────────────────────────────
         this.databaseProvider = new DatabaseProvider();
@@ -462,6 +466,13 @@ public class ZSquadPlugin extends JavaPlugin {
         this.companionService = new CompanionService(
                 companionSpawner, progressionService,
                 companionComponentType, companionRepository);
+        this.customizeCharacterService = new CustomizeCharacterService(
+            clickToMoveManager,
+            companionService,
+            companionSpawner,
+            progressionService
+        );
+        this.playerEntryService = new PlayerEntryService(companionService, dungeonInstanceService);
         this.getEntityStoreRegistry().registerSystem(new CompanionRespawnSystem(companionService));
 
         // -- Dungeon Generation ----------------------------------------
@@ -589,16 +600,19 @@ public class ZSquadPlugin extends JavaPlugin {
         World sharedWorld = resolveSharedWorld();
         String currentWorldName = event.getWorld() != null ? event.getWorld().getName() : null;
         String sharedWorldName = sharedWorld != null ? sharedWorld.getName() : null;
-        DungeonJoinRouting.JoinRoutingDecision joinRouting =
-                DungeonJoinRouting.resolve(currentWorldName, sharedWorldName);
+        PlayerEntryService.EntryDecision entryDecision =
+                playerEntryService.resolve(uuid, currentWorldName, sharedWorldName);
 
         if (sharedWorld != null
-                && joinRouting.targetWorldName() != null
-                && joinRouting.targetWorldName().equalsIgnoreCase(sharedWorld.getName())) {
+                && entryDecision.targetWorldName() != null
+                && entryDecision.targetWorldName().equalsIgnoreCase(sharedWorld.getName())) {
             event.setWorld(sharedWorld);
         }
-        if (joinRouting.openEntryMenu()) {
-            entryMenuPending.add(uuid);
+
+        if (entryDecision.destination() == PlayerEntryService.EntryDestination.VILLAGE) {
+            pendingEntryDestinations.remove(uuid);
+        } else {
+            pendingEntryDestinations.put(uuid, entryDecision.destination());
         }
 
         LOGGER.atFine().log("Pre-loaded RPG profile + ensured progression for %s", uuid);
@@ -627,24 +641,53 @@ public class ZSquadPlugin extends JavaPlugin {
             Player.setGameMode(ref, world.getWorldConfig().getGameMode(), store);
         }
 
+        PlayerEntryService.EntryDestination destination = pendingEntryDestinations.remove(uuid);
+        if (destination == PlayerEntryService.EntryDestination.CUSTOMIZE_CHARACTER && isSharedWorld(world)) {
+            customizeCharacterService.start(ref, store, playerRef);
+            if (player.getPageManager().getCustomPage() == null) {
+                player.getPageManager().openCustomPage(ref, store, new CustomizeCharacterPage(playerRef));
+            }
+            return;
+        }
+
         // Auto-spawn companion using stored preference.
         // In dungeon worlds, use the authoritative entrance position from instance
         // metadata instead of the player's TransformComponent. This avoids spawning
         // the companion at a stale or incorrect Y-level after a cross-world teleport.
+        Transform sharedWorldSpawn = null;
+        if (dungeonInstance == null && isSharedWorld(world)) {
+            sharedWorldSpawn = resolveSpawnTransform(world, ref, store);
+            store.addComponent(
+                ref,
+                Teleport.getComponentType(),
+                Teleport.createForPlayer(world, sharedWorldSpawn)
+            );
+        }
+
         Vector3d companionSpawnOrigin = dungeonInstance != null
                 ? new Vector3d(
                         dungeonInstance.entrancePosition().x() + 0.5,
                         dungeonInstance.entrancePosition().y(),
                         dungeonInstance.entrancePosition().z() + 0.5
                 )
+            : sharedWorldSpawn != null
+            ? new Vector3d(
+                sharedWorldSpawn.getPosition().x,
+                sharedWorldSpawn.getPosition().y,
+                sharedWorldSpawn.getPosition().z
+            )
                 : null;
         companionService.spawn(store, ref, uuid, companionSpawnOrigin);
 
-        if (isSharedWorld(world) || dungeonInstance != null) {
+        if (dungeonInstance != null) {
             clickToMoveManager.enableWithCamera(uuid, store, ref, playerRef);
+        } else if (isSharedWorld(world)) {
+            clickToMoveManager.disable(uuid);
         }
 
-        if (entryMenuPending.remove(uuid) && isSharedWorld(world) && player.getPageManager().getCustomPage() == null) {
+        if (destination == PlayerEntryService.EntryDestination.DUNGEON_ENTRY
+                && isSharedWorld(world)
+                && player.getPageManager().getCustomPage() == null) {
             player.getPageManager().openCustomPage(ref, store, new DungeonEntryPage(playerRef));
         }
     }
@@ -654,6 +697,8 @@ public class ZSquadPlugin extends JavaPlugin {
         if (playerRef == null) return;
 
         UUID uuid = playerRef.getUuid();
+        pendingEntryDestinations.remove(uuid);
+        customizeCharacterService.cleanup(uuid, event.getWorld().getEntityStore().getStore());
         companionService.dismiss(uuid);
     }
 
@@ -673,8 +718,36 @@ public class ZSquadPlugin extends JavaPlugin {
         clickToMoveManager.disable(uuid);
         merchantService.closeMerchant(uuid);
         scoreboards.remove(uuid);
-        entryMenuPending.remove(uuid);
+        pendingEntryDestinations.remove(uuid);
+        customizeCharacterService.cleanup(uuid);
         LOGGER.atFine().log("Evicted RPG + progression data for %s", uuid);
+    }
+
+    void handleCustomizeCharacterConfirm(
+            @Nonnull Ref<EntityStore> ref,
+            @Nonnull Store<EntityStore> store,
+            @Nonnull PlayerRef playerRef,
+            @Nullable String roleName,
+            @Nullable String companionName
+    ) {
+        if (customizeCharacterService == null) {
+            playerRef.sendMessage(Message.raw("Character setup is currently unavailable.").color("#FF5555"));
+            return;
+        }
+
+        customizeCharacterService.complete(ref, store, playerRef, roleName, companionName);
+    }
+
+    void handleCustomizeCharacterPreviewName(
+            @Nonnull PlayerRef playerRef,
+            @Nonnull Store<EntityStore> store,
+            @Nullable String companionName
+    ) {
+        if (customizeCharacterService == null) {
+            return;
+        }
+
+        customizeCharacterService.updatePreviewName(playerRef.getUuid(), store, companionName);
     }
 
     void handleEntryContinue(
@@ -757,17 +830,13 @@ public class ZSquadPlugin extends JavaPlugin {
         }
 
         closeCustomPage(ref, store);
+        clickToMoveManager.disable(playerRef.getUuid());
 
         World currentWorld = store.getExternalData().getWorld();
-        if (isSameWorld(currentWorld, sharedWorld)) {
-            playerRef.sendMessage(statusMessage);
-            return;
-        }
-
         store.addComponent(
                 ref,
                 Teleport.getComponentType(),
-                Teleport.createForPlayer(sharedWorld, resolveSpawnTransform(sharedWorld, playerRef))
+                Teleport.createForPlayer(sharedWorld, resolveSpawnTransform(sharedWorld, ref, store))
         );
         playerRef.sendMessage(statusMessage);
     }
@@ -803,8 +872,12 @@ public class ZSquadPlugin extends JavaPlugin {
     }
 
     @Nonnull
-    private static Transform resolveSpawnTransform(@Nonnull World world, @Nonnull PlayerRef playerRef) {
-        return world.getWorldConfig().getSpawnProvider().getSpawnPoint(world, playerRef.getUuid());
+    private static Transform resolveSpawnTransform(
+            @Nonnull World world,
+            @Nonnull Ref<EntityStore> ref,
+            @Nonnull Store<EntityStore> store
+    ) {
+        return world.getWorldConfig().getSpawnProvider().getSpawnPoint(ref, store);
     }
 
     @Nonnull

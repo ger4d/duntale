@@ -37,6 +37,7 @@ public class CompanionSpawner {
     private static final HytaleLogger LOGGER = HytaleLogger.forEnclosingClass();
     private static final String LEVEL_SCALE_MODIFIER_KEY = "ZSquad_LevelScale";
     private static final String COMPANION_ROLE_PREFIX = "Companion_";
+    public static final String WOLF_BLACK_ROLE = "Companion_Wolf_Black";
 
     private final ComponentType<EntityStore, CombatScalingComponent> combatScalingType;
 
@@ -53,7 +54,7 @@ public class CompanionSpawner {
      * Spawns a companion NPC at the given position with level-scaled stats.
      *
      * @param store    the entity store
-     * @param roleName the NPC role name (e.g. "Companion_Skeleton_Soldier")
+    * @param roleName the NPC role name (e.g. "Companion_Wolf_Black")
      * @param position the spawn position
      * @param level    the companion's level (derived from player level)
      * @return the spawned entity pair, or {@code null} if spawning failed
@@ -64,6 +65,27 @@ public class CompanionSpawner {
             @Nonnull String roleName,
             @Nonnull Vector3d position,
             int level
+    ) {
+        return spawn(store, roleName, null, position, level);
+    }
+
+    /**
+     * Spawns a companion NPC at the given position with level-scaled stats.
+     *
+     * @param store the entity store
+    * @param roleName the NPC role name (e.g. "Companion_Wolf_Black")
+     * @param displayNameOverride optional player-chosen nameplate override
+     * @param position the spawn position
+     * @param level the companion's level (derived from player level)
+     * @return the spawned entity pair, or {@code null} if spawning failed
+     */
+    @Nullable
+    public Pair<Ref<EntityStore>, NPCEntity> spawn(
+        @Nonnull Store<EntityStore> store,
+        @Nonnull String roleName,
+        @Nullable String displayNameOverride,
+        @Nonnull Vector3d position,
+        int level
     ) {
         NPCPlugin npcPlugin = NPCPlugin.get();
         if (npcPlugin == null) {
@@ -79,7 +101,7 @@ public class CompanionSpawner {
 
         return npcPlugin.spawnEntity(store, roleIndex, position, null, null,
                 (npcEntity, holder, s) -> {
-                    applyPreAdd(holder, roleName, level);
+                    applyPreAdd(holder, roleName, displayNameOverride, level);
                 },
                 (npcEntity, ref, s) -> {
                     applyPostSpawn(npcEntity, ref, s, level);
@@ -89,17 +111,45 @@ public class CompanionSpawner {
     private void applyPreAdd(
             @Nonnull Holder<EntityStore> holder,
             @Nonnull String roleName,
+            @Nullable String displayNameOverride,
             int level
     ) {
-        // Display name: strip "Companion_" prefix, replace "_" with space
+        holder.putComponent(
+                Nameplate.getComponentType(),
+                new Nameplate(buildNameplateText(roleName, displayNameOverride, level))
+        );
+    }
+
+    @Nonnull
+    public static String buildNameplateText(
+            @Nonnull String roleName,
+            @Nullable String displayNameOverride,
+            int level
+    ) {
+        return "[Lv." + level + "] " + resolveDisplayName(roleName, displayNameOverride);
+    }
+
+    @Nonnull
+    public static String resolveDisplayName(
+            @Nonnull String roleName,
+            @Nullable String displayNameOverride
+    ) {
+        if (displayNameOverride != null) {
+            String trimmed = displayNameOverride.trim();
+            if (!trimmed.isEmpty()) {
+                return trimmed;
+            }
+        }
+
+        if (WOLF_BLACK_ROLE.equals(roleName)) {
+            return "Wolf";
+        }
+
         String displayName = roleName;
         if (displayName.startsWith(COMPANION_ROLE_PREFIX)) {
             displayName = displayName.substring(COMPANION_ROLE_PREFIX.length());
         }
-        displayName = displayName.replace('_', ' ');
-
-        String nameplate = "[Lv." + level + "] " + displayName;
-        holder.putComponent(Nameplate.getComponentType(), new Nameplate(nameplate));
+        return displayName.replace('_', ' ');
     }
 
     private void applyPostSpawn(
