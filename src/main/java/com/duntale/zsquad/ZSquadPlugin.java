@@ -72,6 +72,8 @@ import com.duntale.zsquad.spawner.SpawnerFactory;
 import com.duntale.zsquad.spawner.SpawnerTickSystem;
 import com.duntale.zsquad.ui.ZSquadScoreboard;
 import com.duntale.zsquad.ui.ZSquadScoreboardData;
+import com.duntale.zsquad.volume.DungeonInstancePortalTriggerService;
+import com.hypixel.hytale.builtin.triggervolumes.event.TriggerVolumeEvent;
 import com.hypixel.hytale.component.ComponentType;
 import com.hypixel.hytale.component.Ref;
 import com.hypixel.hytale.component.Store;
@@ -107,12 +109,18 @@ import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 public class ZSquadPlugin extends JavaPlugin {
 
     private static final HytaleLogger LOGGER = HytaleLogger.forEnclosingClass();
+    private static final String DUNGEON_INSTANCE_PORTAL_VOLUME_ID = "dungeon_instance_portal";
+    private static final int DUNGEON_START_FLOOR = 1;
+    private static final String COLOR_GREEN = "#55FF55";
+    private static final String COLOR_RED = "#FF5555";
+    private static final String COLOR_AQUA = "#55FFFF";
     private static ZSquadPlugin instance;
 
     private ClickToMoveManager clickToMoveManager;
@@ -155,7 +163,9 @@ public class ZSquadPlugin extends JavaPlugin {
     private PartyService partyService;
     private FloorConfigService floorConfigService;
     private DungeonInstanceService dungeonInstanceService;
+    private DungeonInstancePortalTriggerService dungeonInstancePortalTriggerService;
     private final AtomicBoolean dungeonStartupRecoveryLoaded = new AtomicBoolean();
+    private final AtomicBoolean dungeonPortalTriggerRegistered = new AtomicBoolean();
 
     // HUD scoreboards per player
     private final Map<UUID, ZSquadScoreboard> scoreboards = new ConcurrentHashMap<>();
@@ -409,6 +419,8 @@ public class ZSquadPlugin extends JavaPlugin {
                 partyService,
                 floorConfigService
         );
+        this.dungeonInstancePortalTriggerService =
+            new DungeonInstancePortalTriggerService(DUNGEON_INSTANCE_PORTAL_VOLUME_ID);
         this.clickToMoveManager.setRpgService(rpgService);
 
         // ── Progression System (runtime asset scan — no DB) ──────────
@@ -546,6 +558,7 @@ public class ZSquadPlugin extends JavaPlugin {
             CompletableFuture<Void> universeReady = universe.getUniverseReady();
             if (universeReady != null && universeReady.isDone()) {
                 loadDungeonInstancesAfterWorldsLoaded();
+                registerDungeonInstancePortalTrigger();
             }
         }
 
@@ -583,6 +596,7 @@ public class ZSquadPlugin extends JavaPlugin {
 
     private void onAllWorldsLoaded(@Nonnull AllWorldsLoadedEvent ignored) {
         loadDungeonInstancesAfterWorldsLoaded();
+        registerDungeonInstancePortalTrigger();
     }
 
     private void loadDungeonInstancesAfterWorldsLoaded() {
@@ -590,6 +604,67 @@ public class ZSquadPlugin extends JavaPlugin {
             return;
         }
         dungeonInstanceService.loadOnStartup();
+    }
+
+    private void registerDungeonInstancePortalTrigger() {
+        World sharedWorld = resolveSharedWorld();
+        if (sharedWorld == null) {
+            LOGGER.atWarning().log("Unable to register dungeon portal trigger because no shared world is configured");
+            return;
+        }
+
+        if (!dungeonPortalTriggerRegistered.compareAndSet(false, true)) {
+            return;
+        }
+
+        this.getEventRegistry().register(
+                TriggerVolumeEvent.class,
+                sharedWorld.getName(),
+                this::onDungeonInstancePortalTrigger
+        );
+        LOGGER.atInfo().log(
+                "Registered dungeon portal trigger %s for world %s",
+                DUNGEON_INSTANCE_PORTAL_VOLUME_ID,
+                sharedWorld.getName()
+        );
+    }
+
+    private void onDungeonInstancePortalTrigger(@Nonnull TriggerVolumeEvent event) {
+        if (!dungeonInstancePortalTriggerService.matches(event)) {
+            return;
+        }
+
+        Ref<EntityStore> ref = event.getEntityRef();
+        if (!ref.isValid()) {
+            return;
+        }
+
+        Store<EntityStore> store = ref.getStore();
+        Player player = store.getComponent(ref, Player.getComponentType());
+        if (player == null || player.getPageManager().getCustomPage() != null) {
+            return;
+        }
+
+        PlayerRef playerRef = (PlayerRef) store.getComponent(ref, PlayerRef.getComponentType());
+        if (playerRef == null) {
+            return;
+        }
+
+        DungeonInstance activeInstance;
+        try {
+            activeInstance = dungeonInstanceService.getActiveInstance(playerRef.getUuid());
+        } catch (SQLException e) {
+            LOGGER.atWarning()
+                    .withCause(e)
+                    .log("Failed to resolve dungeon portal state for player %s", playerRef.getUuid());
+            playerRef.sendMessage(Message.raw("Unable to open the dungeon portal right now.").color(COLOR_RED));
+            return;
+        }
+
+        DungeonInstancePortalPage.PortalMode mode = activeInstance == null
+                ? DungeonInstancePortalPage.PortalMode.NO_INSTANCE
+                : DungeonInstancePortalPage.PortalMode.EXISTING_INSTANCE;
+        player.getPageManager().openCustomPage(ref, store, new DungeonInstancePortalPage(playerRef, mode, activeInstance));
     }
 
     private void onPlayerConnect(@Nonnull PlayerConnectEvent event) {
@@ -813,6 +888,126 @@ public class ZSquadPlugin extends JavaPlugin {
             @Nonnull PlayerRef playerRef
     ) {
         routeToSharedWorld(ref, store, playerRef, Message.raw("Entering village.").color("#55FF55"));
+    }
+
+    void handlePortalEnter(
+            @Nonnull Ref<EntityStore> ref,
+            @Nonnull Store<EntityStore> store,
+            @Nonnull PlayerRef playerRef
+    ) {
+        closeCustomPage(ref, store);
+        startDungeonInstanceForPortal(playerRef);
+    }
+
+    void handlePortalContinue(
+            @Nonnull Ref<EntityStore> ref,
+            @Nonnull Store<EntityStore> store,
+            @Nonnull PlayerRef playerRef
+    ) {
+        handleEntryContinue(ref, store, playerRef);
+    }
+
+    void handlePortalNewDungeon(
+            @Nonnull Ref<EntityStore> ref,
+            @Nonnull Store<EntityStore> store,
+            @Nonnull PlayerRef playerRef
+    ) {
+        closeCustomPage(ref, store);
+
+        UUID playerId = playerRef.getUuid();
+        DungeonInstance activeInstance;
+        try {
+            activeInstance = dungeonInstanceService.getActiveInstance(playerId);
+        } catch (SQLException e) {
+            LOGGER.atWarning()
+                    .withCause(e)
+                    .log("Failed to resolve current dungeon before starting a new portal run for player %s", playerId);
+            playerRef.sendMessage(Message.raw("Unable to resolve your current dungeon run right now.").color(COLOR_RED));
+            return;
+        }
+
+        if (activeInstance == null) {
+            startDungeonInstanceForPortal(playerRef);
+            return;
+        }
+
+        try {
+            dungeonInstanceService.forceEndInstance(activeInstance.instanceId())
+                    .thenRun(() -> startDungeonInstanceForPortal(playerRef))
+                    .exceptionally(throwable -> {
+                        playerRef.sendMessage(
+                                Message.raw("Force-end failed: " + describeFailure(throwable)).color(COLOR_RED)
+                        );
+                        return null;
+                    });
+        } catch (SQLException | IllegalArgumentException | IllegalStateException e) {
+            playerRef.sendMessage(Message.raw("Force-end failed: " + describeFailure(e)).color(COLOR_RED));
+        }
+    }
+
+    void handlePortalCancel(@Nonnull Ref<EntityStore> ref, @Nonnull Store<EntityStore> store) {
+        closeCustomPage(ref, store);
+    }
+
+    private void startDungeonInstanceForPortal(@Nonnull PlayerRef playerRef) {
+        UUID playerId = playerRef.getUuid();
+        dungeonInstanceService.createInstanceForPlayer(playerId, DUNGEON_START_FLOOR)
+                .thenAccept(instance -> sendDungeonInstanceCreated(playerRef, instance))
+                .exceptionally(throwable -> {
+                    sendDungeonInstanceStartFailure(playerRef, throwable);
+                    return null;
+                });
+    }
+
+    private void sendDungeonInstanceCreated(@Nonnull PlayerRef playerRef, @Nonnull DungeonInstance instance) {
+        playerRef.sendMessage(
+                Message.raw("Dungeon instance created: ").color(COLOR_GREEN)
+                        .insert(Message.raw(truncateId(instance.instanceId())).color(COLOR_AQUA).monospace(true))
+        );
+    }
+
+    private void sendDungeonInstanceStartFailure(@Nonnull PlayerRef playerRef, @Nonnull Throwable throwable) {
+        Throwable cause = unwrapCompletionException(throwable);
+        if (cause instanceof DungeonInstanceService.RosterValidationException rosterValidationException) {
+            StringBuilder names = new StringBuilder();
+            Universe universe = Universe.get();
+            for (UUID blockedPlayerId : rosterValidationException.getBlockedPlayers()) {
+                if (!names.isEmpty()) {
+                    names.append(", ");
+                }
+                PlayerRef blockedPlayerRef = universe != null ? universe.getPlayer(blockedPlayerId) : null;
+                names.append(blockedPlayerRef != null ? blockedPlayerRef.getUsername() : blockedPlayerId.toString());
+            }
+            playerRef.sendMessage(
+                    Message.raw("Cannot start: players already in a dungeon: ").color(COLOR_RED)
+                            .insert(Message.raw(names.toString()).color(COLOR_AQUA))
+            );
+            return;
+        }
+
+        playerRef.sendMessage(
+                Message.raw("Failed to create instance: " + describeFailure(throwable)).color(COLOR_RED)
+        );
+    }
+
+    @Nonnull
+    private static String describeFailure(@Nonnull Throwable throwable) {
+        Throwable cause = unwrapCompletionException(throwable);
+        return cause.getMessage() != null ? cause.getMessage() : cause.toString();
+    }
+
+    @Nonnull
+    private static Throwable unwrapCompletionException(@Nonnull Throwable throwable) {
+        Throwable current = throwable;
+        while (current instanceof CompletionException && current.getCause() != null) {
+            current = current.getCause();
+        }
+        return current;
+    }
+
+    @Nonnull
+    private static String truncateId(@Nonnull String id) {
+        return id.length() > 8 ? id.substring(0, 8) : id;
     }
 
     private void routeToSharedWorld(

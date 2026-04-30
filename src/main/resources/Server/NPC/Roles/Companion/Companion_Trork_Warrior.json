@@ -1,0 +1,20 @@
+{
+  "$Comment": "Companion Trork Warrior — melee companion that follows the player and attacks hostile NPCs.",
+  "Type": "Variant",
+  "Reference": "Template_Companion",
+  "Modify": {
+    "Appearance": "Trork_Warrior",
+    "MaxHealth": 80,
+    "MaxSpeed": 8,
+    "IsMemory": true,
+    "MemoriesCategory": "Other",
+    "MemoriesNameOverride": "Companion_Trork_Warrior",
+    "NameTranslationKey": { "Compute": "NameTranslationKey" }
+  },
+  "Parameters": {
+    "NameTranslationKey": {
+      "Value": "server.npcRoles.Companion_Trork_Warrior.name",
+      "Description": "Translation key for the companion Trork Warrior."
+    }
+  }
+}

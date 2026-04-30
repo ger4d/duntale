@@ -1,0 +1,7 @@
+{
+  "StatModifiers": {
+    "Health": 5
+  },
+  "Duration": 5,
+  "OverlapBehavior": "Extend"
+}

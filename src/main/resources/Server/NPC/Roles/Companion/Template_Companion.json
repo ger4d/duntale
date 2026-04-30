@@ -1,0 +1,491 @@
+{
+  "$Comment": "Base template for companion NPCs — follows flock leader (player), attacks hostile targets, flees and heals when low.",
+  "Type": "Abstract",
+  "DefaultPlayerAttitude": "Revered",
+  "DefaultNPCAttitude": "Hostile",
+
+  "KnockbackScale": 0.5,
+  "ApplyAvoidance": false,
+  "ApplySeparation": true,
+  "SeparationDistance": 1.5,
+  "SeparationWeight": 1,
+  "FlockCanLead": false,
+  "FlockInfluenceRange": 8,
+  "StartState": "Idle",
+  "HotbarItems": { "Compute": "Weapons" },
+  "HotbarSize": 3,
+  "OffHandItems": { "Compute": "OffHandItems" },
+  "DefaultOffHandSlot": 0,
+  "OffHandSlots": 2,
+  "Parameters": {
+    "Appearance": {
+      "Value": "Trork",
+      "Description": "The NPC's model."
+    },
+    "AttitudeGroup": {
+      "Value": "Companion",
+      "Description": "Attitude group — friendly to players, hostile to enemies."
+    },
+    "MaxHealth": {
+      "Value": 100,
+      "Description": "Max health for the companion NPC."
+    },
+    "MaxSpeed": {
+      "Value": 7,
+      "Description": "Walk speed."
+    },
+    "ViewRange": {
+      "Value": 20,
+      "Description": "View distance in blocks."
+    },
+    "ViewSector": {
+      "Value": 300,
+      "Description": "View cone in degrees."
+    },
+    "HearingRange": {
+      "Value": 12,
+      "Description": "Hearing distance in blocks."
+    },
+    "AlertedRange": {
+      "Value": 25,
+      "Description": "Detection range once alerted."
+    },
+    "MasterDistance": {
+      "Value": 8,
+      "Description": "Max desired distance from flock leader (player) before seeking back."
+    },
+    "AbandonFightDistance": {
+      "Value": 20,
+      "Description": "Distance from player at which companion abandons combat and returns."
+    },
+    "DropList": {
+      "Value": "Empty",
+      "Description": "Drop list — companions drop nothing."
+    },
+    "IsMemory": {
+      "Value": true,
+      "Description": "Companion is a memory NPC."
+    },
+    "MemoriesCategory": {
+      "Value": "Other",
+      "Description": "Memory category."
+    },
+    "MemoriesNameOverride": {
+      "Value": "",
+      "Description": "Override display name."
+    },
+    "NameTranslationKey": {
+      "Value": "server.npcRoles.Template.name",
+      "Description": "Translation key for NPC name."
+    },
+    "Weapons": {
+      "Description": "Parameter Weapons",
+      "TypeHint": "String",
+      "Value": [ "Weapon_Longsword_Adamantite" ]
+    },
+    "DefaultHotbarSlot": {
+      "Description": "Parameter DefaultHotbarSlot",
+      "Value": 0
+    },
+    "OffHandItems": {
+      "Description": "Paramater OffHandItems",
+      "TypeHint": "String",
+      "Value": [ "Furniture_Ancient_Torch" ]
+    }
+  },
+  "Appearance": { "Compute": "Appearance" },
+  "AttitudeGroup": { "Compute": "AttitudeGroup" },
+  "MaxHealth": { "Compute": "MaxHealth" },
+  "DropList": { "Compute": "DropList" },
+  "IsMemory": { "Compute": "IsMemory" },
+  "MemoriesCategory": { "Compute": "MemoriesCategory" },
+  "MemoriesNameOverride": { "Compute": "MemoriesNameOverride" },
+  "NameTranslationKey": { "Compute": "NameTranslationKey" },
+  "InteractionVars": {
+    "Melee_Damage": {
+      "Interactions": [
+        {
+          "Parent": "NPC_Attack_Melee_Damage",
+          "DamageCalculator": {
+            "Type": "Absolute",
+            "BaseDamage": {
+              "Physical": 15
+            },
+            "RandomPercentageModifier": 0.1
+          }
+        }
+      ]
+    }
+  },
+  "CollisionDistance": 1,
+  "CollisionForceFalloff": 0.15,
+  "CollisionRadius": 0.1,
+  "MotionControllerList": [
+    {
+      "Type": "Walk",
+      "MaxWalkSpeed": { "Compute": "MaxSpeed" },
+      "Gravity": 10,
+      "MaxFallSpeed": 15,
+      "MaxRotationSpeed": 360,
+      "Acceleration": 15
+    }
+  ],
+  "Instructions": [
+    {
+      "$Comment": "Always-on block: continuously update leash position to flock leader (player).",
+      "Continue": true,
+      "Instructions": [
+        {
+          "Continue": true,
+          "Sensor": {
+            "Type": "And",
+            "Sensors": [
+              {
+                "Type": "FlockLeader"
+              },
+              {
+                "Type": "Self",
+                "Filters": [
+                  {
+                    "Type": "Flock",
+                    "FlockStatus": "Follower",
+                    "Size": [ 2, 2 ]
+                  }
+                ]
+              }
+            ]
+          },
+          "Actions": [
+            {
+              "Type": "Timeout",
+              "Delay": [ 0.5, 2 ],
+              "Action": {
+                "Type": "SetLeashPosition",
+                "ToTarget": true
+              }
+            }
+          ]
+        },
+        {
+          "$Comment": "Distance teleport: warp to player when >= 40 blocks away.",
+          "Continue": true,
+          "Sensor": {
+            "Type": "And",
+            "Sensors": [
+              {
+                "Type": "FlockLeader"
+              },
+              {
+                "Type": "Leash",
+                "Range": 40
+              }
+            ]
+          },
+          "BodyMotion": {
+            "Type": "Teleport",
+            "OffsetRange": [1.5, 2.5],
+            "OffsetSector": 360,
+            "Orientation": "TowardsTarget"
+          }
+        }
+      ]
+    },
+    {
+      "$Comment": "State-specific behavior.",
+      "Instructions": [
+        {
+          "$Comment": "=== STATE: Idle === Follow player, scan for hostiles.",
+          "Sensor": {
+            "Type": "State",
+            "State": "Idle"
+          },
+          "Instructions": [
+            {
+              "$Comment": "Low health from environment/traps → Recovery even while idle. (health is 0.0-1.0)",
+              "Sensor": {
+                "Type": "Eval",
+                "Expression": "health<0.10"
+              },
+              "Actions": [
+                {
+                  "Type": "State",
+                  "State": "Recovery"
+                }
+              ]
+            },
+            {
+              "$Comment": "Detect hostiles — lock on and transition to Attack, but only if close enough to player to sustain combat.",
+              "Sensor": {
+                "Type": "And",
+                "Sensors": [
+                  {
+                    "Type": "Mob",
+                    "Enabled": true,
+                    "AutoUnlockTarget": true,
+                    "LockOnTarget": true,
+                    "Range": 14,
+                    "Prioritiser": {
+                      "Type": "Attitude",
+                      "AttitudesByPriority": ["Hostile"]
+                    }
+                  },
+                  {
+                    "Type": "Not",
+                    "Sensor": {
+                      "Type": "Leash",
+                      "Range": { "Compute": "AbandonFightDistance" }
+                    }
+                  }
+                ]
+              },
+              "Actions": [
+                {
+                  "Type": "State",
+                  "State": "Attack"
+                }
+              ]
+            },
+            {
+              "$Comment": "Movement priorities: blocked → wander, leash exceeded → seek player, default → wander.",
+              "Continue": true,
+              "Sensor": {
+                "Type": "Any"
+              },
+              "Instructions": [
+                {
+                  "Sensor": {
+                    "Type": "Eval",
+                    "Expression": "blocked"
+                  },
+                  "BodyMotion": {
+                    "Type": "Timer",
+                    "Time": [ 2, 3 ],
+                    "Motion": {
+                      "Type": "Wander",
+                      "MaxHeadingChange": 45,
+                      "RelativeSpeed": 0.6
+                    }
+                  }
+                },
+                {
+                  "$Comment": "Too far from player — seek back.",
+                  "Sensor": {
+                    "Type": "Leash",
+                    "Range": { "Compute": "MasterDistance" }
+                  },
+                  "BodyMotion": {
+                    "Type": "Seek",
+                    "SlowDownDistance": 5,
+                    "StopDistance": 2,
+                    "RelativeSpeed": 1,
+                    "AbortDistance": 100
+                  }
+                },
+                {
+                  "$Comment": "Near player — idle wander.",
+                  "Sensor": {
+                    "Type": "Any"
+                  },
+                  "BodyMotion": {
+                    "Type": "Sequence",
+                    "Looped": true,
+                    "Motions": [
+                      {
+                        "Type": "Timer",
+                        "Time": [ 3, 5 ],
+                        "Motion": {
+                          "Type": "WanderInCircle",
+                          "Radius": 6,
+                          "MaxHeadingChange": 60,
+                          "RelativeSpeed": 0.5
+                        }
+                      },
+                      {
+                        "Type": "Timer",
+                        "Time": [ 1, 3 ],
+                        "Motion": {
+                          "Type": "Nothing"
+                        }
+                      }
+                    ]
+                  }
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "$Comment": "=== STATE: Attack === Fight locked target. Return to player if too far. Recover if low HP.",
+          "Sensor": {
+            "Type": "State",
+            "State": "Attack"
+          },
+          "Instructions": [
+            {
+              "$Comment": "Critical: low health → enter Recovery. (health is 0.0-1.0)",
+              "Sensor": {
+                "Type": "Eval",
+                "Expression": "health<0.10"
+              },
+              "Actions": [
+                {
+                  "Type": "ReleaseTarget"
+                },
+                {
+                  "Type": "State",
+                  "State": "Recovery"
+                }
+              ]
+            },
+            {
+              "$Comment": "Player too far — abandon fight and return.",
+              "Sensor": {
+                "Type": "Leash",
+                "Range": { "Compute": "AbandonFightDistance" }
+              },
+              "Actions": [
+                {
+                  "Type": "ReleaseTarget"
+                },
+                {
+                  "Type": "State",
+                  "State": "Idle"
+                }
+              ]
+            },
+            {
+              "$Comment": "Continuously acquire targets in range.",
+              "Continue": true,
+              "Sensor": {
+                "Type": "Mob",
+                "Enabled": true,
+                "AutoUnlockTarget": true,
+                "LockOnTarget": true,
+                "Range": 14,
+                "Prioritiser": {
+                  "Type": "Attitude",
+                  "AttitudesByPriority": ["Hostile"]
+                }
+              }
+            },
+            {
+              "$Comment": "Melee attack when close to target.",
+              "Sensor": {
+                "Type": "Target",
+                "Range": 2.5,
+                "Filters": [
+                  {
+                    "Type": "LineOfSight"
+                  }
+                ]
+              },
+              "HeadMotion": {
+                "Type": "Aim",
+                "RelativeTurnSpeed": 1.5
+              },
+              "Actions": [
+                {
+                  "Type": "Attack",
+                  "Attack": "Root_NPC_Attack_Melee",
+                  "AttackPauseRange": [ 1.5, 2.0 ],
+                  "AttackType": "Primary"
+                }
+              ]
+            },
+            {
+              "$Comment": "Chase locked target.",
+              "Sensor": {
+                "Type": "Target"
+              },
+              "BodyMotion": {
+                "Type": "Seek",
+                "SlowDownDistance": 2.5,
+                "StopDistance": 1.0,
+                "RelativeSpeed": 0.8
+              },
+              "HeadMotion": {
+                "Type": "Aim"
+              }
+            },
+            {
+              "$Comment": "No target — return to Idle.",
+              "Sensor": {
+                "Type": "Any"
+              },
+              "Actions": [
+                {
+                  "Type": "State",
+                  "State": "Idle"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "$Comment": "=== STATE: Recovery === Flee, heal, return to player. Re-enter Idle when healthy.",
+          "Sensor": {
+            "Type": "State",
+            "State": "Recovery"
+          },
+          "Instructions": [
+            {
+              "$Comment": "Health restored — back to Idle. (health is 0.0-1.0)",
+              "Sensor": {
+                "Type": "Eval",
+                "Expression": "health>=0.8"
+              },
+              "Actions": [
+                {
+                  "Type": "State",
+                  "State": "Idle"
+                }
+              ]
+            },
+            {
+              "$Comment": "Apply healing effect continuously while recovering.",
+              "Continue": true,
+              "Sensor": {
+                "Type": "Any"
+              },
+              "ActionsBlocking": true,
+              "Actions": [
+                {
+                  "Type": "ApplyEntityEffect",
+                  "UseTarget": false,
+                  "EntityEffect": "Companion_Recovery_Heal"
+                },
+                {
+                  "Type": "Timeout",
+                  "Delay": [ 2, 2 ]
+                }
+              ]
+            },
+            {
+              "$Comment": "Movement: seek back toward player for safety.",
+              "Sensor": {
+                "Type": "Leash",
+                "Range": 3
+              },
+              "BodyMotion": {
+                "Type": "Seek",
+                "SlowDownDistance": 5,
+                "StopDistance": 2,
+                "RelativeSpeed": 1,
+                "AbortDistance": 100
+              }
+            },
+            {
+              "$Comment": "Near player — stand still and heal.",
+              "Sensor": {
+                "Type": "Any"
+              },
+              "BodyMotion": {
+                "Type": "Nothing"
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

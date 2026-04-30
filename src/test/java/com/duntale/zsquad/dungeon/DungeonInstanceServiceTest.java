@@ -256,7 +256,7 @@ class DungeonInstanceServiceTest {
             assertEquals(1, pendingInstances.size());
             DungeonInstance pending = pendingInstances.get(0);
             assertEquals(DungeonInstanceState.CREATING, pending.state());
-            assertEquals(3.0D, pending.floorY());
+            assertEquals(20.0D, pending.floorY());
             assertEquals("crypt", pending.theme());
             assertFalse(future.isDone());
 
@@ -266,8 +266,8 @@ class DungeonInstanceServiceTest {
             runtime.completeGeneration(successGenerationResult());
             DungeonInstance ready = instanceRepository.findById(pending.instanceId()).orElseThrow();
             assertEquals(DungeonInstanceState.CREATING, ready.state());
-            assertEquals(new Vec3i(5, 4, 7), ready.entrancePosition());
-            assertEquals(new Vec3i(30, 4, 31), ready.exitPosition());
+            assertEquals(new Vec3i(5, 21, 7), ready.entrancePosition());
+            assertEquals(new Vec3i(30, 21, 31), ready.exitPosition());
             assertFalse(future.isDone());
 
             runtime.completeTeleport();
@@ -283,7 +283,7 @@ class DungeonInstanceServiceTest {
             assertTrue(runtime.cleanedWorlds.isEmpty());
             assertNotNull(runtime.generatedConfig);
             assertTrue(runtime.generatedConfig.assemble());
-            assertEquals(new Vec3i(0, 3, 0), runtime.generatedConfig.origin());
+            assertEquals(new Vec3i(0, 20, 0), runtime.generatedConfig.origin());
             assertEquals("crypt", runtime.generatedConfig.theme().palette());
         }
 
@@ -528,14 +528,14 @@ class DungeonInstanceServiceTest {
             assertEquals(active.instanceId(), transitioned.instanceId());
             assertEquals(DungeonInstanceState.ACTIVE, transitioned.state());
             assertEquals(2, transitioned.floorLevel());
-            assertEquals(new Vec3i(5, 4, 7), transitioned.entrancePosition());
-            assertEquals(new Vec3i(30, 4, 31), transitioned.exitPosition());
+            assertEquals(new Vec3i(5, 21, 7), transitioned.entrancePosition());
+            assertEquals(new Vec3i(30, 21, 31), transitioned.exitPosition());
             assertTrue(transitioned.worldName().contains("-f2"));
 
             DungeonInstance persisted = instanceRepository.findById(active.instanceId()).orElseThrow();
             assertEquals(transitioned, persisted);
             assertEquals(Set.of(player), membershipRepository.findPlayerIdsByInstance(active.instanceId()));
-            assertEquals(new Vec3i(0, 3, 0), runtime.generatedConfig.origin());
+            assertEquals(new Vec3i(0, 20, 0), runtime.generatedConfig.origin());
         }
 
         @Test

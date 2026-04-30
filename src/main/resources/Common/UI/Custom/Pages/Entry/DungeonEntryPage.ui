@@ -17,13 +17,13 @@ $C.@Container {
 
     Label {
       Anchor: (Height: 22, Bottom: 4);
-      Text: "Continue resumes your active dungeon run if one exists.";
+      Text: "A saved dungeon floor is ready to continue.";
       Style: (FontSize: 15, TextColor: #ffffff, Alignment: Center);
     }
 
     Label {
       Anchor: (Height: 18, Bottom: 14);
-      Text: "If not, you will stay in the shared village world.";
+      Text: "Resume it now, or return to the village.";
       Style: (FontSize: 13, TextColor: #96a9be, Alignment: Center);
     }
 
@@ -46,7 +46,7 @@ $C.@Container {
 
       Label {
         Anchor: (Height: 18, Bottom: 10);
-        Text: "Resume your current dungeon floor through the instance service.";
+        Text: "Resume your current dungeon floor.";
         Style: (FontSize: 12, TextColor: #96a9be, Alignment: Center);
       }
 
@@ -69,7 +69,7 @@ $C.@Container {
 
       Label {
         Anchor: (Height: 18, Bottom: 10);
-        Text: "Enter the shared world and use click-to-move there automatically.";
+        Text: "Return to the village.";
         Style: (FontSize: 12, TextColor: #96a9be, Alignment: Center);
       }
 

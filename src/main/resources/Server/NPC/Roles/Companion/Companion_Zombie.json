@@ -1,0 +1,20 @@
+{
+  "$Comment": "Companion Zombie — undead companion that follows the player and attacks hostile NPCs.",
+  "Type": "Variant",
+  "Reference": "Template_Companion",
+  "Modify": {
+    "Appearance": "Zombie",
+    "MaxHealth": 70,
+    "MaxSpeed": 7,
+    "IsMemory": true,
+    "MemoriesCategory": "Other",
+    "MemoriesNameOverride": "Companion_Zombie",
+    "NameTranslationKey": { "Compute": "NameTranslationKey" }
+  },
+  "Parameters": {
+    "NameTranslationKey": {
+      "Value": "server.npcRoles.Companion_Zombie.name",
+      "Description": "Translation key for the companion Zombie."
+    }
+  }
+}

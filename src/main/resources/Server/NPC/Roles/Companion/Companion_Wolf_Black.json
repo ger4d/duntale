@@ -1,5 +1,5 @@
 {
-  "$Comment": "Companion Wolf used by the onboarding flow and normal companion spawning.",
+  "$Comment": "Companion Wolf Black used by the onboarding flow and normal companion spawning.",
   "Type": "Variant",
   "Reference": "Template_Companion",
   "Modify": {

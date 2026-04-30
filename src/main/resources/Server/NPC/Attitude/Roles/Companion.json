@@ -1,0 +1,19 @@
+{
+  "$Comment": "Companion attitude - friendly to players. Hostile to aggressive intelligent NPCs, undead, and void. Ignores passive creatures and fellow companions.",
+  "Groups": {
+    "Hostile": [
+      "Trork",
+      "Outlander",
+      "Goblin",
+      "Scarak",
+      "Undead",
+      "Void",
+      "Birds",
+      "Skeleton"
+    ],
+    "Ignore": [
+      "Passive",
+      "Merchant"
+    ]
+  }
+}

@@ -1,0 +1,15 @@
+{
+  "IncludeGroups": [
+    "Trork",
+    "Goblin",
+    "Skeleton",
+    "Void",
+    "Zombie",
+    "Vermin",
+    "Predators",
+    "PredatorsBig"
+  ],
+  "ExcludeGroups": [
+    "Companion"
+  ]
+}

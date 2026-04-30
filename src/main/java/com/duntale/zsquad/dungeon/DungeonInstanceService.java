@@ -70,7 +70,8 @@ public class DungeonInstanceService {
 
     private static final HytaleLogger LOGGER = HytaleLogger.forEnclosingClass();
     private static final String INSTANCE_WORLD_PREFIX = "dungeon-";
-    private static final int DEFAULT_INSTANCE_ORIGIN_Y = 3;
+    // Hytale filler cleanup scans 15 blocks below non-unit block hitboxes.
+    private static final int DEFAULT_INSTANCE_ORIGIN_Y = 20;
 
     // ============================================
     // Fields
