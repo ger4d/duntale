@@ -1311,6 +1311,100 @@ class DungeonInstanceServiceTest {
         }
     }
 
+        // ============================================
+        // restartInstanceAtFloor
+        // ============================================
+
+        @Nested
+        @DisplayName("restartInstanceAtFloor")
+        class RestartInstanceAtFloorFlow {
+
+        @Test
+        @DisplayName("Should force-end current instance and create a new active instance at target floor")
+        void shouldForceEndAndCreateNewInstanceAtTargetFloor() throws SQLException {
+            FakeRuntime runtime = new FakeRuntime();
+            service = new DungeonInstanceService(
+                database, instanceRepository, membershipRepository, new PartyService(), floorConfigService, runtime);
+
+            UUID playerA = UUID.randomUUID();
+            UUID playerB = UUID.randomUUID();
+            DungeonInstance original = service.createInstance(List.of(playerA, playerB), 3).join();
+            runtime.teleportedPlayers.clear();
+
+            DungeonInstance restarted = service.restartInstanceAtFloor(original.instanceId(), 2).join();
+
+            assertEquals(DungeonInstanceState.ENDED,
+                instanceRepository.findById(original.instanceId()).orElseThrow().state());
+            assertEquals(DungeonInstanceState.ACTIVE, restarted.state());
+            assertEquals(2, restarted.floorLevel());
+            assertFalse(original.instanceId().equals(restarted.instanceId()));
+            assertEquals(Set.of(playerA, playerB), membershipRepository.findPlayerIdsByInstance(restarted.instanceId()));
+            assertEquals(Set.of(playerA, playerB), Set.copyOf(runtime.evacuatedPlayers));
+            assertEquals(Set.of(playerA, playerB), Set.copyOf(runtime.teleportedPlayers));
+            assertEquals(List.of(original.worldName()), runtime.armedWorlds);
+        }
+
+        @Test
+        @DisplayName("Should preserve captured roster instead of current party membership")
+        void shouldPreserveCapturedRoster() throws SQLException {
+            FakeRuntime runtime = new FakeRuntime();
+            PartyService partyService = new PartyService();
+            service = new DungeonInstanceService(
+                database, instanceRepository, membershipRepository, partyService, floorConfigService, runtime);
+
+            UUID owner = UUID.randomUUID();
+            UUID originalMember = UUID.randomUUID();
+            UUID newPartyMember = UUID.randomUUID();
+            assertTrue(partyService.createParty(owner));
+            assertEquals(PartyService.InviteResult.SUCCESS, partyService.invitePlayer(owner, originalMember));
+            DungeonInstance original = service.createInstanceForPlayer(owner, 3).join();
+            assertTrue(partyService.leaveParty(originalMember));
+            assertEquals(PartyService.InviteResult.SUCCESS, partyService.invitePlayer(owner, newPartyMember));
+
+            DungeonInstance restarted = service.restartInstanceAtFloor(original.instanceId(), 2).join();
+
+            assertEquals(Set.of(owner, originalMember), membershipRepository.findPlayerIdsByInstance(restarted.instanceId()));
+            assertFalse(membershipRepository.findPlayerIdsByInstance(restarted.instanceId()).contains(newPartyMember));
+        }
+
+        @Test
+        @DisplayName("Should reject invalid target floor")
+        void shouldRejectInvalidTargetFloor() throws SQLException {
+            FakeRuntime runtime = new FakeRuntime();
+            service = new DungeonInstanceService(
+                    database, instanceRepository, membershipRepository, new PartyService(), floorConfigService, runtime);
+
+            UUID player = UUID.randomUUID();
+            DungeonInstance original = service.createInstance(List.of(player), 2).join();
+
+            assertThrows(IllegalArgumentException.class,
+                () -> service.restartInstanceAtFloor(original.instanceId(), 0));
+        }
+
+        @Test
+        @DisplayName("Should leave old instance ended when new instance creation fails")
+        void shouldLeaveOldInstanceEndedWhenCreationFails() throws SQLException {
+            FakeRuntime runtime = new FakeRuntime();
+            service = new DungeonInstanceService(
+                database, instanceRepository, membershipRepository, new PartyService(), floorConfigService, runtime);
+
+            UUID player = UUID.randomUUID();
+            DungeonInstance original = service.createInstance(List.of(player), 3).join();
+            runtime.nextGenerationResult = generationResult(
+                new Vec3i(5, 1, 7),
+                new Vec3i(30, 1, 31),
+                "restart generation failed"
+            );
+
+            CompletionException ex = assertThrows(CompletionException.class,
+                () -> service.restartInstanceAtFloor(original.instanceId(), 2).join());
+
+            assertEquals("restart generation failed", ex.getCause().getMessage());
+            assertEquals(DungeonInstanceState.ENDED,
+                instanceRepository.findById(original.instanceId()).orElseThrow().state());
+        }
+        }
+
     // ============================================
     // query helpers
     // ============================================

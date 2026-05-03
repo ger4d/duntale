@@ -374,6 +374,23 @@ public class ClickToMoveManager {
     }
 
     /**
+     * Disables click-to-move and restores the built-in camera/input mode.
+     *
+     * @param uuid the player UUID
+     * @param store the entity store
+     * @param ref the player entity reference
+     * @param playerRef the player ref used to send the camera reset packet
+     */
+    public void disableWithCameraReset(@Nonnull UUID uuid,
+                                       @Nonnull Store<EntityStore> store,
+                                       @Nonnull Ref<EntityStore> ref,
+                                       @Nonnull PlayerRef playerRef) {
+        disable(uuid, store, ref);
+        removeDisablePrimary(store, ref);
+        playerRef.getPacketHandler().writeNoCache(new SetServerCamera(ClientCameraView.Custom, false, null));
+    }
+
+    /**
      * Disables click-to-move using only the UUID (schedules on world thread).
      */
     public void disable(@Nonnull UUID uuid) {

@@ -447,6 +447,39 @@ public class DungeonInstanceService {
     }
 
     /**
+     * Force-ends the current instance and creates a new instance for the captured roster.
+     *
+     * <p>The roster is loaded before the old instance is ended, so this restart does not depend
+     * on the initiating player's current party membership. The old instance remains ended if the
+     * subsequent creation fails.
+     *
+     * @param instanceId the instance to restart from
+     * @param floorLevel the target floor level for the new instance
+     * @return a future that completes with the new active instance
+     * @throws SQLException if roster lookup or force-end preparation fails
+     * @throws IllegalArgumentException if {@code floorLevel < 1} or the instance does not exist
+     * @throws IllegalStateException if the instance cannot be force-ended or has an empty roster
+     */
+    @Nonnull
+    public CompletableFuture<DungeonInstance> restartInstanceAtFloor(
+            @Nonnull String instanceId,
+            int floorLevel
+    ) throws SQLException {
+        Objects.requireNonNull(instanceId, "instanceId");
+        if (floorLevel < 1) {
+            throw new IllegalArgumentException("floorLevel must be at least 1");
+        }
+
+        Set<UUID> roster = getRoster(instanceId);
+        if (roster.isEmpty()) {
+            throw new IllegalStateException("Cannot restart instance " + instanceId + ": roster is empty");
+        }
+
+        return forceEndInstance(instanceId)
+                .thenCompose(unused -> createInstance(roster, floorLevel));
+    }
+
+    /**
      * Transitions a live dungeon instance from the current floor to floor {@code N + 1}.
      *
      * <p>The service marks the instance {@code TRANSITIONING}, creates a new world for the next

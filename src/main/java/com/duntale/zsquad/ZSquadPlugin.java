@@ -30,7 +30,6 @@ import com.duntale.zsquad.economy.GoldCommand;
 import com.duntale.zsquad.economy.GoldPickupSystem;
 import com.duntale.zsquad.economy.GoldRepository;
 import com.duntale.zsquad.economy.GoldService;
-import com.duntale.zsquad.economy.PlayerDeathPenaltySystem;
 import com.duntale.zsquad.loot.LootEntry;
 import com.duntale.zsquad.loot.LootEntry.GearType;
 import com.duntale.zsquad.loot.LootTable;
@@ -61,6 +60,10 @@ import com.duntale.zsquad.dungeon.FloorConfigRepository;
 import com.duntale.zsquad.dungeon.FloorConfigService;
 import com.duntale.zsquad.dungeon.PartyService;
 import com.duntale.zsquad.dungeon.config.asset.FloorConfigDefaultAsset;
+import com.duntale.zsquad.death.DungeonDeathContext;
+import com.duntale.zsquad.death.DungeonDeathPage;
+import com.duntale.zsquad.death.DungeonDeathScreenSystem;
+import com.duntale.zsquad.death.DungeonRespawnService;
 import com.duntale.zsquad.rpg.RpgDamageScalingSystem;
 import com.duntale.zsquad.rpg.RpgProfile;
 import com.duntale.zsquad.rpg.RpgRepository;
@@ -87,6 +90,8 @@ import com.hypixel.hytale.server.core.event.events.player.PlayerConnectEvent;
 import com.hypixel.hytale.server.core.event.events.player.PlayerDisconnectEvent;
 import com.hypixel.hytale.server.core.event.events.player.PlayerReadyEvent;
 import com.hypixel.hytale.server.core.event.events.player.RemovedPlayerFromWorldEvent;
+import com.hypixel.hytale.server.core.modules.entity.damage.DeathComponent;
+import com.hypixel.hytale.server.core.modules.entity.teleport.PendingTeleport;
 import com.hypixel.hytale.server.core.modules.entity.teleport.Teleport;
 import com.hypixel.hytale.server.core.plugin.JavaPlugin;
 import com.hypixel.hytale.server.core.plugin.JavaPluginInit;
@@ -106,18 +111,21 @@ import java.nio.file.Path;
 import java.sql.SQLException;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.function.BiConsumer;
 
 public class ZSquadPlugin extends JavaPlugin {
 
     private static final HytaleLogger LOGGER = HytaleLogger.forEnclosingClass();
     private static final String DUNGEON_INSTANCE_PORTAL_VOLUME_ID = "dungeon_instance_portal";
     private static final int DUNGEON_START_FLOOR = 1;
+    private static final int RESPAWN_SETTLE_MAX_ATTEMPTS = 50;
+    private static final long RESPAWN_SETTLE_RETRY_DELAY_MS = 100L;
     private static final String COLOR_GREEN = "#55FF55";
     private static final String COLOR_RED = "#FF5555";
     private static final String COLOR_AQUA = "#55FFFF";
@@ -163,6 +171,7 @@ public class ZSquadPlugin extends JavaPlugin {
     private PartyService partyService;
     private FloorConfigService floorConfigService;
     private DungeonInstanceService dungeonInstanceService;
+    private DungeonRespawnService dungeonRespawnService;
     private DungeonInstancePortalTriggerService dungeonInstancePortalTriggerService;
     private final AtomicBoolean dungeonStartupRecoveryLoaded = new AtomicBoolean();
     private final AtomicBoolean dungeonPortalTriggerRegistered = new AtomicBoolean();
@@ -419,6 +428,7 @@ public class ZSquadPlugin extends JavaPlugin {
                 partyService,
                 floorConfigService
         );
+        this.dungeonRespawnService = new DungeonRespawnService(dungeonInstanceService, goldService);
         this.dungeonInstancePortalTriggerService =
             new DungeonInstancePortalTriggerService(DUNGEON_INSTANCE_PORTAL_VOLUME_ID);
         this.clickToMoveManager.setRpgService(rpgService);
@@ -454,7 +464,7 @@ public class ZSquadPlugin extends JavaPlugin {
         this.getEntityStoreRegistry().registerSystem(new NpcLootSystem(lootTableRegistry, rpgService, progressionService));
         this.getEntityStoreRegistry().registerSystem(new GoldPickupSystem(goldService));
         this.getEntityStoreRegistry().registerSystem(new RpgDamageScalingSystem(rpgService));
-        this.getEntityStoreRegistry().registerSystem(new PlayerDeathPenaltySystem(goldService));
+        this.getEntityStoreRegistry().registerSystem(new DungeonDeathScreenSystem(dungeonRespawnService));
         this.getEntityStoreRegistry().registerSystem(
             new PlayerDeathCleanupSystem(this.clickToMoveManager, this.blockOcclusionManager));
 
@@ -757,7 +767,7 @@ public class ZSquadPlugin extends JavaPlugin {
         if (dungeonInstance != null) {
             clickToMoveManager.enableWithCamera(uuid, store, ref, playerRef);
         } else if (isSharedWorld(world)) {
-            clickToMoveManager.disable(uuid);
+            restoreBuiltInControls(ref, store, playerRef);
         }
 
         if (destination == PlayerEntryService.EntryDestination.DUNGEON_ENTRY
@@ -949,6 +959,171 @@ public class ZSquadPlugin extends JavaPlugin {
         closeCustomPage(ref, store);
     }
 
+    /**
+     * Handles the paid current-floor respawn action from the dungeon death page.
+     *
+     * @param ref the player's current entity reference
+     * @param store the player's current entity store
+     * @param playerRef the dead player's player reference
+     */
+    public void handleDungeonRespawnCurrent(
+            @Nonnull Ref<EntityStore> ref,
+            @Nonnull Store<EntityStore> store,
+            @Nonnull PlayerRef playerRef
+    ) {
+        DungeonDeathContext context = resolveLiveDungeonDeathContext(ref, store, playerRef);
+        if (context == null || !ensureDungeonDeathComponent(ref, store, playerRef)) {
+            return;
+        }
+
+        UUID playerId = playerRef.getUuid();
+        long cost = context.currentFloorCost();
+        if (!dungeonRespawnService.chargeGold(playerId, cost)) {
+            sendInsufficientGold(playerRef, cost, context.balance());
+            reopenDungeonDeathPage(ref, store, playerRef);
+            return;
+        }
+
+        DeathComponent.respawn(store, ref)
+                .thenCompose(unused -> runOnPlayerWorld(playerRef, (currentRef, currentStore) -> {
+                    closeCustomPage(currentRef, currentStore);
+                    playerRef.sendMessage(
+                            Message.raw("Respawned on Floor " + context.instance().floorLevel() + " for ")
+                                    .color(COLOR_GREEN)
+                                    .insert(Message.raw(formatGold(cost)).color("#FFD700").bold(true))
+                                    .insert(Message.raw(" gold. Balance: "
+                                            + formatGold(goldService.getBalance(playerId))).color(COLOR_GREEN))
+                    );
+                }))
+                .exceptionally(throwable -> {
+                    dungeonRespawnService.refundGold(playerId, cost);
+                    playerRef.sendMessage(
+                            Message.raw("Respawn failed: " + describeFailure(throwable)).color(COLOR_RED)
+                    );
+                    runOnPlayerWorld(playerRef, (currentRef, currentStore) ->
+                            reopenDungeonDeathPage(currentRef, currentStore, playerRef));
+                    return null;
+                });
+    }
+
+    /**
+     * Handles the paid lower-floor restart action from the dungeon death page.
+     *
+     * @param ref the player's current entity reference
+     * @param store the player's current entity store
+     * @param playerRef the dead player's player reference
+     */
+    public void handleDungeonRespawnLowerFloor(
+            @Nonnull Ref<EntityStore> ref,
+            @Nonnull Store<EntityStore> store,
+            @Nonnull PlayerRef playerRef
+    ) {
+        DungeonDeathContext context = resolveLiveDungeonDeathContext(ref, store, playerRef);
+        if (context == null || !ensureDungeonDeathComponent(ref, store, playerRef)) {
+            return;
+        }
+        if (!context.lowerFloorAvailable()) {
+            playerRef.sendMessage(Message.raw("There is no lower dungeon floor to restart on.").color(COLOR_RED));
+            reopenDungeonDeathPage(ref, store, playerRef);
+            return;
+        }
+
+        UUID playerId = playerRef.getUuid();
+        long cost = context.lowerFloorCost();
+        int targetFloor = context.instance().floorLevel() - 1;
+        if (!dungeonRespawnService.chargeGold(playerId, cost)) {
+            sendInsufficientGold(playerRef, cost, context.balance());
+            reopenDungeonDeathPage(ref, store, playerRef);
+            return;
+        }
+
+        DeathComponent.respawn(store, ref)
+                .thenCompose(unused -> restartDungeonInstanceAtFloor(context.instance().instanceId(), targetFloor))
+                .thenCompose(newInstance -> runOnPlayerWorld(playerRef, (currentRef, currentStore) -> {
+                    closeCustomPage(currentRef, currentStore);
+                    playerRef.sendMessage(
+                            Message.raw("Restarting on Floor " + newInstance.floorLevel() + " for ")
+                                    .color(COLOR_GREEN)
+                                    .insert(Message.raw(formatGold(cost)).color("#FFD700").bold(true))
+                                    .insert(Message.raw(" gold. Balance: "
+                                            + formatGold(goldService.getBalance(playerId))).color(COLOR_GREEN))
+                    );
+                }))
+                .exceptionally(throwable -> {
+                    dungeonRespawnService.refundGold(playerId, cost);
+                    playerRef.sendMessage(
+                            Message.raw("Lower-floor restart failed: " + describeFailure(throwable)).color(COLOR_RED)
+                    );
+                    runOnPlayerWorld(playerRef, (currentRef, currentStore) -> {
+                        if (currentStore.getComponent(currentRef, DeathComponent.getComponentType()) != null) {
+                            reopenDungeonDeathPage(currentRef, currentStore, playerRef);
+                        } else {
+                            closeCustomPage(currentRef, currentStore);
+                        }
+                    });
+                    return null;
+                });
+    }
+
+    /**
+     * Handles the free village retreat action from the dungeon death page.
+     *
+        * <p>The village option ends the active dungeon through the same force-end lifecycle as
+        * {@code /dungeon end} after the player's respawn teleport has settled.
+     *
+     * @param ref the player's current entity reference
+     * @param store the player's current entity store
+     * @param playerRef the dead player's player reference
+     */
+    public void handleDungeonReturnVillage(
+            @Nonnull Ref<EntityStore> ref,
+            @Nonnull Store<EntityStore> store,
+            @Nonnull PlayerRef playerRef
+    ) {
+        if (!ensureDungeonDeathComponent(ref, store, playerRef)) {
+            routeToSharedWorld(ref, store, playerRef, Message.raw("Entering village.").color(COLOR_GREEN));
+            return;
+        }
+
+        DungeonDeathContext context = resolveDungeonDeathContext(ref, store, playerRef);
+        if (context == null) {
+            DeathComponent.respawn(store, ref)
+                    .thenCompose(unused -> waitForRespawnTeleportToSettle(playerRef))
+                    .thenCompose(unused -> runOnPlayerWorld(playerRef, (currentRef, currentStore) ->
+                            routeToSharedWorld(
+                                    currentRef,
+                                    currentStore,
+                                    playerRef,
+                                    Message.raw("Entering village.").color(COLOR_GREEN)
+                            )))
+                    .exceptionally(throwable -> {
+                        playerRef.sendMessage(
+                                Message.raw("Village return failed: " + describeFailure(throwable)).color(COLOR_RED)
+                        );
+                        runOnPlayerWorld(playerRef, (currentRef, currentStore) ->
+                                reopenDungeonDeathPage(currentRef, currentStore, playerRef));
+                        return null;
+                    });
+            return;
+        }
+
+        DeathComponent.respawn(store, ref)
+                .thenCompose(unused -> waitForRespawnTeleportToSettle(playerRef))
+                .thenCompose(unused -> runOnPlayerWorld(playerRef, (currentRef, currentStore) ->
+                        restoreBuiltInControls(currentRef, currentStore, playerRef)))
+                .thenCompose(unused -> forceEndDungeonInstance(context.instance().instanceId()))
+                .thenCompose(unused -> runOnPlayerWorld(playerRef, (currentRef, currentStore) ->
+                        playerRef.sendMessage(Message.raw("Dungeon ended. Entering village.").color(COLOR_GREEN))))
+                .exceptionally(throwable -> {
+                    playerRef.sendMessage(
+                            Message.raw("Dungeon end failed: " + describeFailure(throwable)).color(COLOR_RED)
+                    );
+                    runOnPlayerWorld(playerRef, (currentRef, currentStore) ->
+                            reopenDungeonDeathPage(currentRef, currentStore, playerRef));
+                    return null;
+                });
+    }
+
     private void startDungeonInstanceForPortal(@Nonnull PlayerRef playerRef) {
         UUID playerId = playerRef.getUuid();
         dungeonInstanceService.createInstanceForPlayer(playerId, DUNGEON_START_FLOOR)
@@ -1010,6 +1185,11 @@ public class ZSquadPlugin extends JavaPlugin {
         return id.length() > 8 ? id.substring(0, 8) : id;
     }
 
+    @Nonnull
+    private static String formatGold(long amount) {
+        return Long.toString(amount);
+    }
+
     private void routeToSharedWorld(
             @Nonnull Ref<EntityStore> ref,
             @Nonnull Store<EntityStore> store,
@@ -1025,15 +1205,214 @@ public class ZSquadPlugin extends JavaPlugin {
         }
 
         closeCustomPage(ref, store);
-        clickToMoveManager.disable(playerRef.getUuid());
+        restoreBuiltInControls(ref, store, playerRef);
 
-        World currentWorld = store.getExternalData().getWorld();
         store.addComponent(
                 ref,
                 Teleport.getComponentType(),
                 Teleport.createForPlayer(sharedWorld, resolveSpawnTransform(sharedWorld, ref, store))
         );
         playerRef.sendMessage(statusMessage);
+    }
+
+    private void restoreBuiltInControls(
+            @Nonnull Ref<EntityStore> ref,
+            @Nonnull Store<EntityStore> store,
+            @Nonnull PlayerRef playerRef
+    ) {
+        UUID playerId = playerRef.getUuid();
+        clickToMoveManager.disableWithCameraReset(playerId, store, ref, playerRef);
+        World world = store.getExternalData().getWorld();
+        if (world != null) {
+            blockOcclusionManager.disable(playerId, world);
+        } else {
+            blockOcclusionManager.disable(playerId);
+        }
+    }
+
+    @Nullable
+    private DungeonDeathContext resolveLiveDungeonDeathContext(
+            @Nonnull Ref<EntityStore> ref,
+            @Nonnull Store<EntityStore> store,
+            @Nonnull PlayerRef playerRef
+    ) {
+        World currentWorld = store.getExternalData().getWorld();
+        DeathComponent deathComponent = store.getComponent(ref, DeathComponent.getComponentType());
+        DungeonDeathContext context = dungeonRespawnService.resolveContext(
+                playerRef.getUuid(),
+                currentWorld != null ? currentWorld.getName() : null,
+                deathComponent != null ? deathComponent.getDeathMessage() : null
+        ).orElse(null);
+        if (context == null) {
+            playerRef.sendMessage(
+                    Message.raw("Your dungeon death state is no longer available. Returning to village.")
+                            .color(COLOR_RED)
+            );
+            handleDungeonReturnVillage(ref, store, playerRef);
+        }
+        return context;
+    }
+
+    private boolean ensureDungeonDeathComponent(
+            @Nonnull Ref<EntityStore> ref,
+            @Nonnull Store<EntityStore> store,
+            @Nonnull PlayerRef playerRef
+    ) {
+        if (store.getComponent(ref, DeathComponent.getComponentType()) != null) {
+            return true;
+        }
+        closeCustomPage(ref, store);
+        playerRef.sendMessage(Message.raw("You have already respawned.").color(COLOR_RED));
+        return false;
+    }
+
+    private void reopenDungeonDeathPage(
+            @Nonnull Ref<EntityStore> ref,
+            @Nonnull Store<EntityStore> store,
+            @Nonnull PlayerRef playerRef
+    ) {
+        World currentWorld = store.getExternalData().getWorld();
+        DeathComponent deathComponent = store.getComponent(ref, DeathComponent.getComponentType());
+        if (deathComponent == null) {
+            closeCustomPage(ref, store);
+            return;
+        }
+
+        dungeonRespawnService.resolveContext(
+                playerRef.getUuid(),
+                currentWorld != null ? currentWorld.getName() : null,
+                deathComponent.getDeathMessage()
+        ).ifPresent(context -> {
+            Player player = store.getComponent(ref, Player.getComponentType());
+            if (player != null) {
+                player.getPageManager().openCustomPage(ref, store, new DungeonDeathPage(playerRef, context));
+            }
+        });
+    }
+
+    @Nullable
+    private DungeonDeathContext resolveDungeonDeathContext(
+            @Nonnull Ref<EntityStore> ref,
+            @Nonnull Store<EntityStore> store,
+            @Nonnull PlayerRef playerRef
+    ) {
+        World currentWorld = store.getExternalData().getWorld();
+        DeathComponent deathComponent = store.getComponent(ref, DeathComponent.getComponentType());
+        return dungeonRespawnService.resolveContext(
+                playerRef.getUuid(),
+                currentWorld != null ? currentWorld.getName() : null,
+                deathComponent != null ? deathComponent.getDeathMessage() : null
+        ).orElse(null);
+    }
+
+    @Nonnull
+    private CompletableFuture<DungeonInstance> restartDungeonInstanceAtFloor(
+            @Nonnull String instanceId,
+            int floorLevel
+    ) {
+        try {
+            return dungeonRespawnService.restartInstanceAtFloor(instanceId, floorLevel);
+        } catch (SQLException | IllegalArgumentException | IllegalStateException e) {
+            return CompletableFuture.failedFuture(e);
+        }
+    }
+
+    @Nonnull
+    private CompletableFuture<Void> forceEndDungeonInstance(@Nonnull String instanceId) {
+        try {
+            return dungeonInstanceService.forceEndInstance(instanceId);
+        } catch (SQLException | IllegalArgumentException | IllegalStateException e) {
+            return CompletableFuture.failedFuture(e);
+        }
+    }
+
+    @Nonnull
+    private CompletableFuture<Void> waitForRespawnTeleportToSettle(@Nonnull PlayerRef playerRef) {
+        return waitForRespawnTeleportToSettle(playerRef, 0);
+    }
+
+    @Nonnull
+    private CompletableFuture<Void> waitForRespawnTeleportToSettle(
+            @Nonnull PlayerRef playerRef,
+            int attempt
+    ) {
+        return isRespawnTeleportSettled(playerRef).thenCompose(settled -> {
+            if (settled) {
+                return CompletableFuture.completedFuture(null);
+            }
+            if (attempt >= RESPAWN_SETTLE_MAX_ATTEMPTS) {
+                return CompletableFuture.failedFuture(new IllegalStateException("Respawn teleport did not settle"));
+            }
+            return delayRespawnSettleCheck()
+                    .thenCompose(unused -> waitForRespawnTeleportToSettle(playerRef, attempt + 1));
+        });
+    }
+
+    @Nonnull
+    private CompletableFuture<Void> delayRespawnSettleCheck() {
+        return CompletableFuture.runAsync(
+                () -> {
+                },
+                CompletableFuture.delayedExecutor(RESPAWN_SETTLE_RETRY_DELAY_MS, TimeUnit.MILLISECONDS)
+        );
+    }
+
+    @Nonnull
+    private CompletableFuture<Boolean> isRespawnTeleportSettled(@Nonnull PlayerRef playerRef) {
+        Ref<EntityStore> currentRef = playerRef.getReference();
+        if (currentRef == null || !currentRef.isValid()) {
+            return CompletableFuture.completedFuture(true);
+        }
+        Store<EntityStore> currentStore = currentRef.getStore();
+        World currentWorld = currentStore.getExternalData().getWorld();
+        if (currentWorld == null) {
+            return CompletableFuture.completedFuture(isRespawnTeleportSettled(currentRef, currentStore));
+        }
+        return CompletableFuture.supplyAsync(() -> {
+            if (!currentRef.isValid()) {
+                return true;
+            }
+            return isRespawnTeleportSettled(currentRef, currentStore);
+        }, currentWorld);
+    }
+
+    private boolean isRespawnTeleportSettled(
+            @Nonnull Ref<EntityStore> ref,
+            @Nonnull Store<EntityStore> store
+    ) {
+        return store.getComponent(ref, DeathComponent.getComponentType()) == null
+                && store.getComponent(ref, Teleport.getComponentType()) == null
+                && store.getComponent(ref, PendingTeleport.getComponentType()) == null;
+    }
+
+    @Nonnull
+    private CompletableFuture<Void> runOnPlayerWorld(
+            @Nonnull PlayerRef playerRef,
+            @Nonnull BiConsumer<Ref<EntityStore>, Store<EntityStore>> action
+    ) {
+        Ref<EntityStore> currentRef = playerRef.getReference();
+        if (currentRef == null || !currentRef.isValid()) {
+            return CompletableFuture.completedFuture(null);
+        }
+        Store<EntityStore> currentStore = currentRef.getStore();
+        World currentWorld = currentStore.getExternalData().getWorld();
+        if (currentWorld == null) {
+            action.accept(currentRef, currentStore);
+            return CompletableFuture.completedFuture(null);
+        }
+        return CompletableFuture.runAsync(() -> {
+            if (currentRef.isValid()) {
+                action.accept(currentRef, currentStore);
+            }
+        }, currentWorld);
+    }
+
+    private void sendInsufficientGold(@Nonnull PlayerRef playerRef, long cost, long balance) {
+        playerRef.sendMessage(
+                Message.raw("Not enough gold. Need ").color(COLOR_RED)
+                        .insert(Message.raw(formatGold(cost)).color("#FFD700").bold(true))
+                        .insert(Message.raw(", have " + formatGold(balance) + ".").color(COLOR_RED))
+        );
     }
 
     @Nullable
