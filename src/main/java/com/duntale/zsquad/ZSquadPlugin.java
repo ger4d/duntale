@@ -784,7 +784,7 @@ public class ZSquadPlugin extends JavaPlugin {
         UUID uuid = playerRef.getUuid();
         pendingEntryDestinations.remove(uuid);
         customizeCharacterService.cleanup(uuid, event.getWorld().getEntityStore().getStore());
-        companionService.dismiss(uuid);
+        companionService.dismissFromWorld(event.getWorld().getEntityStore().getStore(), uuid);
     }
 
     private void onPlayerDisconnect(@Nonnull PlayerDisconnectEvent event) {

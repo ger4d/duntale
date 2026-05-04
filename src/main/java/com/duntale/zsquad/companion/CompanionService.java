@@ -3,11 +3,14 @@ package com.duntale.zsquad.companion;
 import com.duntale.zsquad.progression.CombatScaling;
 import com.duntale.zsquad.progression.CombatScalingComponent;
 import com.duntale.zsquad.progression.ProgressionService;
+import com.hypixel.hytale.component.ArchetypeChunk;
+import com.hypixel.hytale.component.CommandBuffer;
 import com.hypixel.hytale.component.ComponentType;
 import com.hypixel.hytale.component.NonSerialized;
 import com.hypixel.hytale.component.Ref;
 import com.hypixel.hytale.component.RemoveReason;
 import com.hypixel.hytale.component.Store;
+import com.hypixel.hytale.component.query.Query;
 import com.hypixel.hytale.logger.HytaleLogger;
 import org.joml.Vector3d;
 import com.hypixel.hytale.server.core.modules.entity.component.TransformComponent;
@@ -31,7 +34,9 @@ import java.sql.SQLException;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.ThreadLocalRandom;
+import java.util.function.BiConsumer;
 
 /**
  * Manages player companion NPCs — spawning, dismissing, and tracking active companions.
@@ -52,6 +57,7 @@ public class CompanionService {
     public static final String DEFAULT_COMPANION_ROLE = CompanionSpawner.WOLF_BLACK_ROLE;
 
     private final Map<UUID, ActiveCompanion> activeCompanions = new ConcurrentHashMap<>();
+    private final Map<UUID, ActiveCompanion> pendingDismissals = new ConcurrentHashMap<>();
     private final Map<UUID, CompanionPreference> companionPreferences = new ConcurrentHashMap<>();
     private final CompanionSpawner companionSpawner;
     private final ProgressionService progressionService;
@@ -197,7 +203,9 @@ public class CompanionService {
         @Nullable Vector3d spawnOrigin
     ) {
         // Auto-clean stale entries
+        prepareForSpawn(store, playerId);
         cleanIfInvalid(playerId);
+        removeUntrackedCompanions(store, playerId);
 
         if (hasCompanion(playerId)) {
             return null;
@@ -254,9 +262,6 @@ public class CompanionService {
         // Attach CompanionComponent to the NPC
         store.putComponent(npcRef, companionComponentType,
                 new CompanionComponent(playerId, roleName, level));
-
-        // Mark as non-serialized — companion entities are never written to chunk data
-        store.putComponent(npcRef, EntityStore.REGISTRY.getNonSerializedComponentType(), NonSerialized.get());
 
         // Create flock using the NPC's role for proper allowed-roles config
         NPCEntity npcEntity = spawnResult.second();
@@ -349,7 +354,13 @@ public class CompanionService {
             @Nonnull UUID playerId,
             @Nullable Vector3d spawnOrigin
     ) {
+        if (store != null) {
+            prepareForSpawn(store, playerId);
+        }
         cleanIfInvalid(playerId);
+        if (store != null) {
+            removeUntrackedCompanions(store, playerId);
+        }
         if (hasCompanion(playerId)) return;
 
         CompanionPreference preference = loadPreference(playerId);
@@ -365,24 +376,42 @@ public class CompanionService {
      * @return {@code true} if a companion was dismissed, {@code false} if none existed
      */
     public boolean dismiss(@Nonnull UUID playerId) {
-        ActiveCompanion companion = activeCompanions.remove(playerId);
+        ActiveCompanion companion = activeCompanions.get(playerId);
         if (companion == null) {
             return false;
         }
 
-        World world = companion.world();
-        Ref<EntityStore> npcRef = companion.npcRef();
-
-        // Dispatch store operations to WorldThread — this method may be called
-        // from non-world threads (e.g., RemovedPlayerFromWorldEvent).
-        world.execute(() -> {
-            Store<EntityStore> store = world.getEntityStore().getStore();
-            if (npcRef.isValid()) {
-                store.removeEntity(npcRef, RemoveReason.REMOVE);
-            }
-        });
+        dismissOnWorld(companion.world(), null, playerId, companion);
 
         LOGGER.atInfo().log("Dismissed companion for player %s", playerId);
+        return true;
+    }
+
+    /**
+     * Dismisses a player's companion and cleans orphan companions in the source world.
+     *
+     * <p>If the store is currently inside ECS processing, entity removal is queued while
+     * the active companion remains tracked. This prevents a ready event from spawning a
+     * duplicate before cleanup executes.
+     *
+     * @param sourceStore the source world store the player is leaving
+     * @param playerId the player's UUID
+     * @return {@code true} if a tracked companion was dismissed, {@code false} if only orphan cleanup ran
+     */
+    public boolean dismissFromWorld(@Nonnull Store<EntityStore> sourceStore, @Nonnull UUID playerId) {
+        ActiveCompanion companion = activeCompanions.get(playerId);
+        World sourceWorld = sourceStore.getExternalData().getWorld();
+        if (companion == null) {
+            runOrphanCleanup(sourceWorld, playerId, null);
+            return false;
+        }
+
+        if (companion.world() == sourceWorld) {
+            dismissOnWorld(sourceWorld, null, playerId, companion);
+        } else {
+            dismissOnWorld(companion.world(), null, playerId, companion);
+            runOrphanCleanup(sourceWorld, playerId, null);
+        }
         return true;
     }
 
@@ -400,19 +429,13 @@ public class CompanionService {
 
         LOGGER.atInfo().log("Attempting to dismiss companion for player %s", playerId);
 
-        ActiveCompanion companion = activeCompanions.remove(playerId);
+        ActiveCompanion companion = activeCompanions.get(playerId);
         if (companion == null) {
+            removeUntrackedCompanions(store, playerId);
             return false;
         }
 
-        // Remove player from flock
-        store.tryRemoveComponent(playerRef, FlockMembership.getComponentType());
-
-        // Remove the companion NPC entity (CombatScalingComponent dies with it)
-        Ref<EntityStore> npcRef = companion.npcRef();
-        if (npcRef.isValid()) {
-            store.removeEntity(npcRef, RemoveReason.REMOVE);
-        }
+        dismissOnStore(store, playerRef, playerId, companion);
 
         LOGGER.atInfo().log("Dismissed companion for player %s", playerId);
         return true;
@@ -427,7 +450,8 @@ public class CompanionService {
      */
     public boolean hasCompanion(@Nonnull UUID playerId) {
         cleanIfInvalid(playerId);
-        return activeCompanions.containsKey(playerId);
+        ActiveCompanion companion = activeCompanions.get(playerId);
+        return companion != null && pendingDismissals.get(playerId) != companion;
     }
 
     /**
@@ -590,7 +614,172 @@ public class CompanionService {
         ActiveCompanion companion = activeCompanions.get(playerId);
         if (companion != null && !companion.npcRef().isValid()) {
             activeCompanions.remove(playerId);
+            pendingDismissals.remove(playerId, companion);
             LOGGER.atWarning().log("Auto-cleaned stale companion entry for player %s", playerId);
         }
+    }
+
+    private void dismissOnWorld(
+            @Nonnull World world,
+            @Nullable Ref<EntityStore> playerRef,
+            @Nonnull UUID playerId,
+            @Nonnull ActiveCompanion companion
+    ) {
+        Store<EntityStore> store = world.getEntityStore().getStore();
+        if (canMutateStoreNow(store)) {
+            dismissNow(store, playerRef, playerId, companion);
+            return;
+        }
+
+        pendingDismissals.put(playerId, companion);
+        world.execute(() -> dismissNow(world.getEntityStore().getStore(), playerRef, playerId, companion));
+    }
+
+    private void dismissOnStore(
+            @Nonnull Store<EntityStore> store,
+            @Nullable Ref<EntityStore> playerRef,
+            @Nonnull UUID playerId,
+            @Nonnull ActiveCompanion companion
+    ) {
+        World sourceWorld = store.getExternalData().getWorld();
+        if (companion.world() != sourceWorld) {
+            dismissOnWorld(companion.world(), null, playerId, companion);
+            runOrphanCleanup(sourceWorld, playerId, null);
+            return;
+        }
+
+        if (canMutateStoreNow(store)) {
+            dismissNow(store, playerRef, playerId, companion);
+            return;
+        }
+
+        pendingDismissals.put(playerId, companion);
+        sourceWorld.execute(() -> dismissNow(sourceWorld.getEntityStore().getStore(), playerRef, playerId, companion));
+    }
+
+    private void dismissNow(
+            @Nonnull Store<EntityStore> store,
+            @Nullable Ref<EntityStore> playerRef,
+            @Nonnull UUID playerId,
+            @Nonnull ActiveCompanion companion
+    ) {
+        ActiveCompanion current = activeCompanions.get(playerId);
+        Ref<EntityStore> keepRef = current != null && current != companion ? current.npcRef() : null;
+
+        if (playerRef != null && playerRef.isValid() && playerRef.getStore() == store) {
+            store.tryRemoveComponent(playerRef, FlockMembership.getComponentType());
+        }
+
+        Ref<EntityStore> npcRef = companion.npcRef();
+        if (npcRef.isValid() && npcRef.getStore() == store) {
+            store.removeEntity(npcRef, RemoveReason.REMOVE);
+        }
+
+        Ref<EntityStore> flockRef = companion.flockRef();
+        if (flockRef.isValid() && flockRef.getStore() == store) {
+            store.removeEntity(flockRef, RemoveReason.REMOVE);
+        }
+
+        activeCompanions.remove(playerId, companion);
+        pendingDismissals.remove(playerId, companion);
+        removeOwnedCompanions(store, playerId, keepRef);
+    }
+
+    private void runOrphanCleanup(
+            @Nonnull World world,
+            @Nonnull UUID playerId,
+            @Nullable Ref<EntityStore> keepRef
+    ) {
+        Store<EntityStore> store = world.getEntityStore().getStore();
+        if (canMutateStoreNow(store)) {
+            removeOwnedCompanions(store, playerId, resolveKeepRef(world, playerId, keepRef));
+            return;
+        }
+
+        world.execute(() -> removeOwnedCompanions(
+                world.getEntityStore().getStore(),
+                playerId,
+                resolveKeepRef(world, playerId, keepRef)
+        ));
+    }
+
+    private void removeUntrackedCompanions(@Nonnull Store<EntityStore> store, @Nonnull UUID playerId) {
+        ActiveCompanion current = activeCompanions.get(playerId);
+        removeOwnedCompanions(store, playerId, current != null ? current.npcRef() : null);
+    }
+
+    private void prepareForSpawn(@Nonnull Store<EntityStore> store, @Nonnull UUID playerId) {
+        ActiveCompanion pending = pendingDismissals.get(playerId);
+        if (pending == null) {
+            return;
+        }
+
+        World spawnWorld = store.getExternalData().getWorld();
+        if (pending.world() == spawnWorld && canMutateStoreNow(store)) {
+            dismissNow(store, null, playerId, pending);
+            return;
+        }
+
+        activeCompanions.remove(playerId, pending);
+    }
+
+    @Nullable
+    private Ref<EntityStore> resolveKeepRef(
+            @Nonnull World world,
+            @Nonnull UUID playerId,
+            @Nullable Ref<EntityStore> explicitKeepRef
+    ) {
+        if (explicitKeepRef != null) {
+            return explicitKeepRef;
+        }
+
+        ActiveCompanion current = activeCompanions.get(playerId);
+        return current != null && current.world() == world ? current.npcRef() : null;
+    }
+
+    private int removeOwnedCompanions(
+            @Nonnull Store<EntityStore> store,
+            @Nonnull UUID playerId,
+            @Nullable Ref<EntityStore> keepRef
+    ) {
+        if (companionComponentType == null || !canMutateStoreNow(store)) {
+            return 0;
+        }
+
+        AtomicInteger removed = new AtomicInteger();
+        BiConsumer<ArchetypeChunk<EntityStore>, CommandBuffer<EntityStore>> cleanup =
+            (chunk, commandBuffer) -> removeOwnedCompanions(chunk, commandBuffer, playerId, keepRef, removed);
+        store.forEachChunk(Query.and(companionComponentType), cleanup);
+        int count = removed.get();
+        if (count > 0) {
+            LOGGER.atWarning().log("Removed %d orphan companion entities for player %s", count, playerId);
+        }
+        return count;
+    }
+
+    private void removeOwnedCompanions(
+            @Nonnull ArchetypeChunk<EntityStore> chunk,
+            @Nonnull CommandBuffer<EntityStore> commandBuffer,
+            @Nonnull UUID playerId,
+            @Nullable Ref<EntityStore> keepRef,
+            @Nonnull AtomicInteger removed
+    ) {
+        for (int index = 0; index < chunk.size(); index++) {
+            Ref<EntityStore> ref = chunk.getReferenceTo(index);
+            if (keepRef != null && ref == keepRef) {
+                continue;
+            }
+
+            CompanionComponent companion = chunk.getComponent(index, companionComponentType);
+            if (companion != null && playerId.equals(companion.getOwnerUuid())) {
+                commandBuffer.removeEntity(ref, RemoveReason.REMOVE);
+                removed.incrementAndGet();
+            }
+        }
+    }
+
+    @SuppressWarnings("deprecation")
+    private boolean canMutateStoreNow(@Nonnull Store<EntityStore> store) {
+        return store.isInThread() && !store.isProcessing();
     }
 }

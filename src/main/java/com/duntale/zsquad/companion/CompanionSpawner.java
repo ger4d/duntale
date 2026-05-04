@@ -4,6 +4,7 @@ import com.duntale.zsquad.progression.CombatScaling;
 import com.duntale.zsquad.progression.CombatScalingComponent;
 import com.hypixel.hytale.component.ComponentType;
 import com.hypixel.hytale.component.Holder;
+import com.hypixel.hytale.component.NonSerialized;
 import com.hypixel.hytale.component.Ref;
 import com.hypixel.hytale.component.Store;
 import com.hypixel.hytale.logger.HytaleLogger;
@@ -118,6 +119,7 @@ public class CompanionSpawner {
                 Nameplate.getComponentType(),
                 new Nameplate(buildNameplateText(roleName, displayNameOverride, level))
         );
+        holder.putComponent(EntityStore.REGISTRY.getNonSerializedComponentType(), NonSerialized.get());
     }
 
     @Nonnull

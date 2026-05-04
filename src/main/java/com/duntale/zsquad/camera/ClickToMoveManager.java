@@ -23,6 +23,7 @@ import com.hypixel.hytale.server.core.modules.entity.player.PlayerSkinComponent;
 import com.hypixel.hytale.server.core.event.events.player.PlayerMouseButtonEvent;
 import com.hypixel.hytale.server.core.event.events.player.PlayerMouseMotionEvent;
 import com.hypixel.hytale.server.core.entity.entities.Player;
+import com.hypixel.hytale.server.core.entity.entities.player.CameraManager;
 import com.hypixel.hytale.server.core.universe.PlayerRef;
 import com.hypixel.hytale.server.core.universe.Universe;
 import com.hypixel.hytale.server.core.universe.world.ParticleUtil;
@@ -387,7 +388,12 @@ public class ClickToMoveManager {
                                        @Nonnull PlayerRef playerRef) {
         disable(uuid, store, ref);
         removeDisablePrimary(store, ref);
-        playerRef.getPacketHandler().writeNoCache(new SetServerCamera(ClientCameraView.Custom, false, null));
+        CameraManager cameraManager = store.getComponent(ref, CameraManager.getComponentType());
+        if (cameraManager != null) {
+            cameraManager.resetCamera(playerRef);
+        } else {
+            playerRef.getPacketHandler().writeNoCache(new SetServerCamera(ClientCameraView.Custom, false, null));
+        }
     }
 
     /**

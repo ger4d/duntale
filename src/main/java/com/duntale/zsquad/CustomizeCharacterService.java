@@ -5,7 +5,6 @@ import com.duntale.zsquad.companion.CompanionService;
 import com.duntale.zsquad.companion.CompanionSpawner;
 import com.duntale.zsquad.config.asset.CustomizeCharacterConfigAsset;
 import com.duntale.zsquad.progression.ProgressionService;
-import com.hypixel.hytale.component.NonSerialized;
 import com.hypixel.hytale.component.Ref;
 import com.hypixel.hytale.component.RemoveReason;
 import com.hypixel.hytale.component.Store;
@@ -260,7 +259,6 @@ final class CustomizeCharacterService {
         }
 
         Ref<EntityStore> previewRef = spawnResult.first();
-        store.putComponent(previewRef, EntityStore.REGISTRY.getNonSerializedComponentType(), NonSerialized.get());
         return previewRef;
     }
 
