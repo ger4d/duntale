@@ -28,7 +28,7 @@ import java.util.Objects;
 public class FloorConfigDefaultAsset
         implements JsonAssetWithMap<String, IndexedLookupTableAssetMap<String, FloorConfigDefaultAsset>> {
 
-    public static final String ASSET_PATH = "Configs/ZSquad/FloorConfig";
+    public static final String ASSET_PATH = "Configs/FloorConfig";
 
     public static AssetBuilderCodec<String, FloorConfigDefaultAsset> CODEC;
     private static AssetStore<String, FloorConfigDefaultAsset,

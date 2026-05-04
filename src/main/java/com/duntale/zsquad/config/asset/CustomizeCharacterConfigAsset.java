@@ -23,7 +23,7 @@ import java.util.Objects;
 public class CustomizeCharacterConfigAsset
         implements JsonAssetWithMap<String, IndexedLookupTableAssetMap<String, CustomizeCharacterConfigAsset>> {
 
-    public static final String ASSET_PATH = "Configs/ZSquad/EntryFlow";
+    public static final String ASSET_PATH = "Configs/EntryFlow";
     private static final String ASSET_ID = "CustomizeCharacter";
     private static final ArrayCodec<BsonDocument> DOCUMENT_ARRAY_CODEC =
             new ArrayCodec<>(Codec.BSON_DOCUMENT, BsonDocument[]::new);
