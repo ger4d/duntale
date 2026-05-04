@@ -1,0 +1,45 @@
+{
+  "Rolls": 1,
+  "DropChance": 0.4,
+  "Entries": [
+    {
+      "Type": "LEVELED",
+      "ItemId": "Weapon_Longsword_Iron",
+      "Weight": 2.5,
+      "GearType": "WEAPON",
+      "GearLevelMin": 15,
+      "GearLevelMax": 25
+    },
+    {
+      "Type": "LEVELED",
+      "ItemId": "Weapon_Sword_Iron",
+      "Weight": 2.0,
+      "GearType": "WEAPON",
+      "GearLevelMin": 15,
+      "GearLevelMax": 25
+    },
+    {
+      "Type": "LEVELED",
+      "ItemId": "Armor_Iron_Chest",
+      "Weight": 1.5,
+      "GearType": "ARMOR",
+      "GearLevelMin": 15,
+      "GearLevelMax": 25
+    },
+    {
+      "Type": "LEVELED",
+      "ItemId": "Armor_Iron_Head",
+      "Weight": 1.0,
+      "GearType": "ARMOR",
+      "GearLevelMin": 15,
+      "GearLevelMax": 25
+    },
+    {
+      "Type": "SIMPLE",
+      "ItemId": "Gold_Coin",
+      "Weight": 5.0,
+      "QuantityMin": 4,
+      "QuantityMax": 10
+    }
+  ]
+}

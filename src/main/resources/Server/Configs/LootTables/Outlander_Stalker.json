@@ -1,0 +1,45 @@
+{
+  "Rolls": 1,
+  "DropChance": 0.35,
+  "Entries": [
+    {
+      "Type": "LEVELED",
+      "ItemId": "Weapon_Daggers_Crude",
+      "Weight": 3.0,
+      "GearType": "WEAPON",
+      "GearLevelMin": 5,
+      "GearLevelMax": 10
+    },
+    {
+      "Type": "LEVELED",
+      "ItemId": "Weapon_Spear_Crude",
+      "Weight": 2.0,
+      "GearType": "WEAPON",
+      "GearLevelMin": 5,
+      "GearLevelMax": 10
+    },
+    {
+      "Type": "LEVELED",
+      "ItemId": "Armor_Leather_Soft_Chest",
+      "Weight": 1.5,
+      "GearType": "ARMOR",
+      "GearLevelMin": 5,
+      "GearLevelMax": 10
+    },
+    {
+      "Type": "LEVELED",
+      "ItemId": "Armor_Leather_Soft_Head",
+      "Weight": 1.5,
+      "GearType": "ARMOR",
+      "GearLevelMin": 5,
+      "GearLevelMax": 10
+    },
+    {
+      "Type": "SIMPLE",
+      "ItemId": "Gold_Coin",
+      "Weight": 5.0,
+      "QuantityMin": 1,
+      "QuantityMax": 4
+    }
+  ]
+}

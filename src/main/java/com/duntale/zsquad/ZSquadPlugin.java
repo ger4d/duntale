@@ -8,6 +8,7 @@ import com.duntale.zsquad.camera.ClickToMoveTickSystem;
 import com.duntale.zsquad.camera.PlayerDeathCleanupSystem;
 import com.duntale.zsquad.config.asset.CustomizeCharacterConfigAsset;
 import com.duntale.zsquad.command.DGiveCommand;
+import com.duntale.zsquad.command.DLootCommand;
 import com.duntale.zsquad.command.DungeonCommand;
 import com.duntale.zsquad.command.PartyCommand;
 import com.duntale.zsquad.command.DListCommand;
@@ -30,11 +31,10 @@ import com.duntale.zsquad.economy.GoldCommand;
 import com.duntale.zsquad.economy.GoldPickupSystem;
 import com.duntale.zsquad.economy.GoldRepository;
 import com.duntale.zsquad.economy.GoldService;
-import com.duntale.zsquad.loot.LootEntry;
-import com.duntale.zsquad.loot.LootEntry.GearType;
-import com.duntale.zsquad.loot.LootTable;
+import com.duntale.zsquad.loot.LootRollService;
 import com.duntale.zsquad.loot.LootTableRegistry;
 import com.duntale.zsquad.loot.NpcLootSystem;
+import com.duntale.zsquad.loot.config.asset.LootTableConfig;
 import com.duntale.zsquad.db.DatabaseProvider;
 import com.duntale.zsquad.merchant.CatalogGenerator;
 import com.duntale.zsquad.merchant.MerchantCommand;
@@ -142,6 +142,7 @@ public class ZSquadPlugin extends JavaPlugin {
 
     // Loot system
     private LootTableRegistry lootTableRegistry;
+    private LootRollService lootRollService;
 
     // RPG system
     private DatabaseProvider databaseProvider;
@@ -374,6 +375,7 @@ public class ZSquadPlugin extends JavaPlugin {
 
         AssetRegistry.register(FloorConfigDefaultAsset.assetStoreBuilder().build());
         AssetRegistry.register(CustomizeCharacterConfigAsset.assetStoreBuilder().build());
+        AssetRegistry.register(LootTableConfig.assetStoreBuilder().build());
 
         // ── RPG System ───────────────────────────────────────────────
         this.databaseProvider = new DatabaseProvider();
@@ -439,7 +441,7 @@ public class ZSquadPlugin extends JavaPlugin {
 
         // ── Loot System ──────────────────────────────────────────────
         this.lootTableRegistry = new LootTableRegistry();
-        registerLootTables();
+        this.lootRollService = new LootRollService(lootTableRegistry);
 
         // ── Merchant System ──────────────────────────────────────────
         this.merchantPriceRegistry = new MerchantPriceRegistry();
@@ -461,7 +463,7 @@ public class ZSquadPlugin extends JavaPlugin {
         this.getEntityStoreRegistry().registerSystem(new ClickToMoveTickSystem(this.clickToMoveManager));
         this.getEntityStoreRegistry().registerSystem(new CombatScalingSystem(combatScalingComponentType));
         this.getEntityStoreRegistry().registerSystem(new ClickToMoveKnockbackSystem(this.clickToMoveManager));
-        this.getEntityStoreRegistry().registerSystem(new NpcLootSystem(lootTableRegistry, rpgService, progressionService));
+        this.getEntityStoreRegistry().registerSystem(new NpcLootSystem(lootRollService, rpgService, progressionService));
         this.getEntityStoreRegistry().registerSystem(new GoldPickupSystem(goldService));
         this.getEntityStoreRegistry().registerSystem(new RpgDamageScalingSystem(rpgService));
         this.getEntityStoreRegistry().registerSystem(new DungeonDeathScreenSystem(dungeonRespawnService));
@@ -507,6 +509,7 @@ public class ZSquadPlugin extends JavaPlugin {
         this.getCommandRegistry().registerCommand(new DSpawnCommand(leveledNpcSpawner, assetCatalog));
         this.getCommandRegistry().registerCommand(new DListCommand(assetCatalog));
         this.getCommandRegistry().registerCommand(new DGiveCommand(assetCatalog));
+        this.getCommandRegistry().registerCommand(new DLootCommand(lootRollService));
         this.getCommandRegistry().registerCommand(new GenerateCommand());
         this.getCommandRegistry().registerCommand(new GoldCommand(goldService));
         this.getCommandRegistry().registerCommand(new RpgStatCommand(rpgService));
@@ -1463,356 +1466,6 @@ public class ZSquadPlugin extends JavaPlugin {
         return first != null
                 && second != null
                 && first.getName().equalsIgnoreCase(second.getName());
-    }
-
-    /**
-     * Populates the {@link LootTableRegistry} with drop tables for each NPC role.
-     *
-     * <p>Each table defines weighted entries that may be level-gated. Entries can be:
-     * <ul>
-     *   <li>{@link LootEntry.Simple} — regular items (potions, materials).</li>
-     *   <li>{@link LootEntry.Leveled} — weapons/armor with gear level + variance metadata.</li>
-     * </ul>
-     */
-    private void registerLootTables() {
-        // ── Trork mobs (Lv.5–15 zone) ───────────────────────────────
-        lootTableRegistry.register("Trork_Warrior", new LootTable(List.of(
-                new LootEntry.Leveled("Weapon_Axe_Crude", GearType.WEAPON, 5, 8, 3.0),
-                new LootEntry.Leveled("Weapon_Spear_Crude", GearType.WEAPON, 5, 8, 3.0),
-                new LootEntry.Leveled("Armor_Wood_Head", GearType.ARMOR, 5, 8, 2.0),
-                new LootEntry.Leveled("Armor_Wood_Chest", GearType.ARMOR, 5, 8, 1.0),
-                new LootEntry.Simple("Gold_Coin", 1, 3, 5.0)
-        ), 1, 0.35));
-
-        lootTableRegistry.register("Trork_Brawler", new LootTable(List.of(
-                new LootEntry.Leveled("Weapon_Club_Crude", GearType.WEAPON, 5, 10, 3.0),
-                new LootEntry.Leveled("Weapon_Mace_Crude", GearType.WEAPON, 7, 10, 2.0),
-                new LootEntry.Leveled("Armor_Wood_Hands", GearType.ARMOR, 5, 8, 1.5),
-                new LootEntry.Leveled("Armor_Wood_Legs", GearType.ARMOR, 5, 8, 1.5),
-                new LootEntry.Simple("Gold_Coin", 1, 3, 5.0)
-        ), 1, 0.35));
-
-        lootTableRegistry.register("Trork_Hunter", new LootTable(List.of(
-                new LootEntry.Leveled("Weapon_Spear_Crude", GearType.WEAPON, 5, 10, 3.0),
-                new LootEntry.Leveled("Weapon_Daggers_Crude", GearType.WEAPON, 6, 10, 2.0),
-                new LootEntry.Leveled("Armor_Leather_Soft_Chest", GearType.ARMOR, 8, 12, 1.5, 8, null),
-                new LootEntry.Simple("Gold_Coin", 1, 3, 5.0)
-        ), 1, 0.35));
-
-        lootTableRegistry.register("Trork_Guard", new LootTable(List.of(
-                new LootEntry.Leveled("Weapon_Longsword_Crude", GearType.WEAPON, 5, 10, 3.0),
-                new LootEntry.Leveled("Weapon_Axe_Copper", GearType.WEAPON, 10, 12, 1.5, 10, null),
-                new LootEntry.Leveled("Armor_Copper_Chest", GearType.ARMOR, 10, 12, 1.0, 10, null),
-                new LootEntry.Leveled("Armor_Copper_Head", GearType.ARMOR, 10, 12, 1.0, 10, null),
-                new LootEntry.Simple("Gold_Coin", 2, 4, 5.0)
-        ), 1, 0.40));
-
-        // ── Skeleton mobs (Lv.15–30 zone) ───────────────────────────
-        lootTableRegistry.register("Skeleton_Soldier", new LootTable(List.of(
-                new LootEntry.Leveled("Weapon_Sword_Iron", GearType.WEAPON, 18, 22, 3.0),
-                new LootEntry.Leveled("Weapon_Longsword_Iron", GearType.WEAPON, 18, 22, 2.0),
-                new LootEntry.Leveled("Armor_Iron_Chest", GearType.ARMOR, 18, 22, 1.5),
-                new LootEntry.Leveled("Armor_Iron_Head", GearType.ARMOR, 18, 22, 1.5),
-                new LootEntry.Simple("Gold_Coin", 3, 8, 5.0)
-        ), 1, 0.40));
-
-        lootTableRegistry.register("Skeleton_Fighter", new LootTable(List.of(
-                new LootEntry.Leveled("Weapon_Axe_Iron", GearType.WEAPON, 18, 22, 3.0),
-                new LootEntry.Leveled("Weapon_Mace_Iron", GearType.WEAPON, 18, 22, 2.0),
-                new LootEntry.Leveled("Armor_Iron_Hands", GearType.ARMOR, 18, 22, 1.5),
-                new LootEntry.Leveled("Armor_Iron_Legs", GearType.ARMOR, 18, 22, 1.5),
-                new LootEntry.Simple("Gold_Coin", 3, 8, 5.0)
-        ), 1, 0.40));
-
-        lootTableRegistry.register("Skeleton_Knight", new LootTable(List.of(
-                new LootEntry.Leveled("Weapon_Sword_Bronze", GearType.WEAPON, 23, 27, 2.5),
-                new LootEntry.Leveled("Weapon_Longsword_Praetorian", GearType.WEAPON, 23, 27, 1.5),
-                new LootEntry.Leveled("Armor_Bronze_Chest", GearType.ARMOR, 23, 27, 1.5),
-                new LootEntry.Leveled("Armor_Bronze_Head", GearType.ARMOR, 23, 27, 1.5),
-                new LootEntry.Leveled("Armor_Bronze_Ornate_Chest", GearType.ARMOR, 26, 30, 0.5, 25, null),
-                new LootEntry.Simple("Gold_Coin", 4, 10, 5.0)
-        ), 1, 0.45));
-
-        lootTableRegistry.register("Skeleton_Archer", new LootTable(List.of(
-                new LootEntry.Leveled("Weapon_Spear_Iron", GearType.WEAPON, 18, 22, 3.0),
-                new LootEntry.Leveled("Weapon_Daggers_Iron", GearType.WEAPON, 18, 22, 2.0),
-                new LootEntry.Leveled("Armor_Leather_Light_Chest", GearType.ARMOR, 15, 20, 1.5),
-                new LootEntry.Leveled("Armor_Leather_Light_Head", GearType.ARMOR, 15, 20, 1.5),
-                new LootEntry.Simple("Gold_Coin", 3, 8, 5.0)
-        ), 1, 0.40));
-
-        // ── Goblin mobs (Lv.10–25 zone) ─────────────────────────────
-        lootTableRegistry.register("Goblin_Scrapper", new LootTable(List.of(
-                new LootEntry.Leveled("Weapon_Club_Copper", GearType.WEAPON, 10, 15, 3.0),
-                new LootEntry.Leveled("Weapon_Sword_Scrap", GearType.WEAPON, 13, 17, 2.0, 12, null),
-                new LootEntry.Leveled("Armor_Copper_Hands", GearType.ARMOR, 10, 15, 1.5),
-                new LootEntry.Simple("Gold_Coin", 2, 5, 5.0)
-        ), 1, 0.40));
-
-        lootTableRegistry.register("Goblin_Scavenger", new LootTable(List.of(
-                new LootEntry.Leveled("Weapon_Mace_Scrap", GearType.WEAPON, 13, 17, 3.0),
-                new LootEntry.Leveled("Weapon_Club_Scrap", GearType.WEAPON, 13, 17, 2.0),
-                new LootEntry.Leveled("Armor_Copper_Legs", GearType.ARMOR, 10, 15, 1.5),
-                new LootEntry.Simple("Gold_Coin", 2, 5, 5.0)
-        ), 1, 0.40));
-
-        // ── Zombie mobs (Lv.25–35 zone) ─────────────────────────────
-        lootTableRegistry.register("Zombie", new LootTable(List.of(
-                new LootEntry.Leveled("Weapon_Sword_Bone", GearType.WEAPON, 23, 27, 2.0),
-                new LootEntry.Leveled("Weapon_Axe_Bone", GearType.WEAPON, 23, 27, 2.0),
-                new LootEntry.Leveled("Weapon_Sword_Doomed", GearType.WEAPON, 28, 32, 1.0, 28, null),
-                new LootEntry.Leveled("Armor_Thorium_Chest", GearType.ARMOR, 28, 32, 0.8, 28, null),
-                new LootEntry.Simple("Gold_Coin", 5, 12, 5.0)
-        ), 1, 0.50));
-
-        // ── Outlander mobs — Arcane dungeon floor (Lv.1–60) ─────────
-        lootTableRegistry.register("Outlander_Stalker", new LootTable(List.of(
-                new LootEntry.Leveled("Weapon_Daggers_Crude", GearType.WEAPON, 5, 10, 3.0),
-                new LootEntry.Leveled("Weapon_Spear_Crude", GearType.WEAPON, 5, 10, 2.0),
-                new LootEntry.Leveled("Armor_Leather_Soft_Chest", GearType.ARMOR, 5, 10, 1.5),
-                new LootEntry.Leveled("Armor_Leather_Soft_Head", GearType.ARMOR, 5, 10, 1.5),
-                new LootEntry.Simple("Gold_Coin", 1, 4, 5.0)
-        ), 1, 0.35));
-
-        lootTableRegistry.register("Outlander_Berserker", new LootTable(List.of(
-                new LootEntry.Leveled("Weapon_Axe_Copper", GearType.WEAPON, 8, 15, 3.0),
-                new LootEntry.Leveled("Weapon_Club_Crude", GearType.WEAPON, 5, 12, 2.0),
-                new LootEntry.Leveled("Armor_Copper_Chest", GearType.ARMOR, 8, 15, 1.5),
-                new LootEntry.Leveled("Armor_Copper_Head", GearType.ARMOR, 8, 15, 1.0),
-                new LootEntry.Simple("Gold_Coin", 2, 6, 5.0)
-        ), 1, 0.40));
-
-        lootTableRegistry.register("Outlander_Sorcerer", new LootTable(List.of(
-                new LootEntry.Leveled("Weapon_Longsword_Iron", GearType.WEAPON, 15, 25, 2.5),
-                new LootEntry.Leveled("Weapon_Sword_Iron", GearType.WEAPON, 15, 25, 2.0),
-                new LootEntry.Leveled("Armor_Iron_Chest", GearType.ARMOR, 15, 25, 1.5),
-                new LootEntry.Leveled("Armor_Iron_Head", GearType.ARMOR, 15, 25, 1.0),
-                new LootEntry.Simple("Gold_Coin", 4, 10, 5.0)
-        ), 1, 0.40));
-
-        lootTableRegistry.register("Outlander_Marauder", new LootTable(List.of(
-                new LootEntry.Leveled("Weapon_Sword_Bronze", GearType.WEAPON, 20, 35, 2.5),
-                new LootEntry.Leveled("Weapon_Longsword_Praetorian", GearType.WEAPON, 25, 35, 1.5),
-                new LootEntry.Leveled("Armor_Bronze_Chest", GearType.ARMOR, 20, 35, 1.5),
-                new LootEntry.Leveled("Armor_Bronze_Head", GearType.ARMOR, 20, 35, 1.0),
-                new LootEntry.Leveled("Armor_Bronze_Ornate_Chest", GearType.ARMOR, 28, 35, 0.5, 28, null),
-                new LootEntry.Simple("Gold_Coin", 5, 15, 5.0)
-        ), 1, 0.45));
-
-        lootTableRegistry.register("Outlander_Brute", new LootTable(List.of(
-                new LootEntry.Leveled("Weapon_Longsword_Praetorian", GearType.WEAPON, 25, 40, 2.0),
-                new LootEntry.Leveled("Weapon_Sword_Doomed", GearType.WEAPON, 30, 40, 1.5),
-                new LootEntry.Leveled("Armor_Bronze_Ornate_Chest", GearType.ARMOR, 28, 40, 1.5),
-                new LootEntry.Leveled("Armor_Thorium_Chest", GearType.ARMOR, 30, 40, 1.0, 30, null),
-                new LootEntry.Simple("Gold_Coin", 10, 25, 5.0)
-        ), 2, 0.80));
-
-        // ── Crypt extras (Skeleton_Mage + Ghoul boss) ────────────────────
-        lootTableRegistry.register("Skeleton_Mage", new LootTable(List.of(
-                new LootEntry.Leveled("Weapon_Longsword_Iron", GearType.WEAPON, 18, 25, 2.5),
-                new LootEntry.Leveled("Weapon_Sword_Iron", GearType.WEAPON, 18, 25, 2.0),
-                new LootEntry.Leveled("Armor_Cloth_Linen_Head", GearType.ARMOR, 14, 22, 0.7),
-                new LootEntry.Leveled("Armor_Cloth_Cotton_Chest", GearType.ARMOR, 22, 32, 0.4, 22, null),
-                new LootEntry.Simple("Gold_Coin", 4, 10, 5.0)
-        ), 1, 0.45));
-
-        lootTableRegistry.register("Ghoul", new LootTable(List.of(
-                new LootEntry.Leveled("Weapon_Sword_Bone", GearType.WEAPON, 23, 32, 2.0),
-                new LootEntry.Leveled("Weapon_Axe_Bone", GearType.WEAPON, 23, 30, 1.5),
-                new LootEntry.Leveled("Weapon_Longsword_Void", GearType.WEAPON, 28, 38, 1.0, 28, null),
-                new LootEntry.Leveled("Armor_Iron_Head", GearType.ARMOR, 18, 28, 0.5),
-                new LootEntry.Leveled("Armor_Bronze_Chest", GearType.ARMOR, 25, 36, 0.4, 25, null),
-                new LootEntry.Simple("Gold_Coin", 12, 30, 5.0)
-        ), 1, 0.90));
-
-        // ── Hive theme (Scarak) ──────────────────────────────────────────
-        // Louse: swarm mob — tiny gold only, no armour to speak of
-        lootTableRegistry.register("Scarak_Louse", new LootTable(List.of(
-                new LootEntry.Simple("Gold_Coin", 1, 2, 5.0)
-        ), 1, 0.20));
-
-        lootTableRegistry.register("Scarak_Fighter", new LootTable(List.of(
-                new LootEntry.Leveled("Weapon_Axe_Crude", GearType.WEAPON, 5, 12, 2.5),
-                new LootEntry.Leveled("Weapon_Club_Crude", GearType.WEAPON, 5, 12, 2.0),
-                new LootEntry.Leveled("Armor_Leather_Soft_Head", GearType.ARMOR, 5, 12, 0.5),
-                new LootEntry.Simple("Gold_Coin", 1, 3, 5.0)
-        ), 1, 0.35));
-
-        lootTableRegistry.register("Scarak_Seeker", new LootTable(List.of(
-                new LootEntry.Leveled("Weapon_Daggers_Crude", GearType.WEAPON, 6, 14, 2.5),
-                new LootEntry.Leveled("Weapon_Spear_Crude", GearType.WEAPON, 5, 14, 2.0),
-                new LootEntry.Leveled("Armor_Leather_Soft_Chest", GearType.ARMOR, 8, 16, 0.8),
-                new LootEntry.Leveled("Armor_Leather_Light_Head", GearType.ARMOR, 14, 22, 0.5, 14, null),
-                new LootEntry.Simple("Gold_Coin", 2, 5, 5.0)
-        ), 1, 0.40));
-
-        lootTableRegistry.register("Scarak_Defender", new LootTable(List.of(
-                new LootEntry.Leveled("Weapon_Axe_Copper", GearType.WEAPON, 10, 20, 2.5),
-                new LootEntry.Leveled("Weapon_Mace_Crude", GearType.WEAPON, 8, 18, 2.0),
-                new LootEntry.Leveled("Armor_Copper_Chest", GearType.ARMOR, 10, 20, 0.8),
-                new LootEntry.Leveled("Armor_Iron_Legs", GearType.ARMOR, 18, 28, 0.5, 18, null),
-                new LootEntry.Simple("Gold_Coin", 2, 6, 5.0)
-        ), 1, 0.42));
-
-        lootTableRegistry.register("Scarak_Fighter_Royal_Guard", new LootTable(List.of(
-                new LootEntry.Leveled("Weapon_Axe_Copper", GearType.WEAPON, 10, 22, 2.5),
-                new LootEntry.Leveled("Weapon_Longsword_Copper", GearType.WEAPON, 10, 22, 2.0),
-                new LootEntry.Leveled("Armor_Iron_Chest", GearType.ARMOR, 18, 28, 1.0),
-                new LootEntry.Leveled("Armor_Bronze_Hands", GearType.ARMOR, 24, 34, 0.5, 24, null),
-                new LootEntry.Simple("Gold_Coin", 4, 10, 5.0)
-        ), 1, 0.45));
-
-        lootTableRegistry.register("Scarak_Broodmother", new LootTable(List.of(
-                new LootEntry.Leveled("Weapon_Axe_Iron", GearType.WEAPON, 20, 32, 2.0),
-                new LootEntry.Leveled("Weapon_Mace_Iron", GearType.WEAPON, 18, 30, 1.5),
-                new LootEntry.Leveled("Weapon_Longsword_Praetorian", GearType.WEAPON, 24, 36, 1.0, 24, null),
-                new LootEntry.Leveled("Armor_Iron_Chest", GearType.ARMOR, 20, 28, 0.5),
-                new LootEntry.Leveled("Armor_Bronze_Chest", GearType.ARMOR, 25, 36, 0.4, 25, null),
-                new LootEntry.Simple("Gold_Coin", 15, 35, 5.0)
-        ), 1, 0.90));
-
-        // ── Mine theme (Goblin extras) ───────────────────────────────────
-        lootTableRegistry.register("Goblin_Miner", new LootTable(List.of(
-                new LootEntry.Leveled("Weapon_Club_Crude", GearType.WEAPON, 5, 12, 2.5),
-                new LootEntry.Leveled("Weapon_Axe_Crude", GearType.WEAPON, 5, 12, 2.0),
-                new LootEntry.Leveled("Armor_Wood_Head", GearType.ARMOR, 5, 12, 0.5),
-                new LootEntry.Simple("Gold_Coin", 1, 4, 5.0)
-        ), 1, 0.35));
-
-        lootTableRegistry.register("Goblin_Lobber", new LootTable(List.of(
-                new LootEntry.Leveled("Weapon_Spear_Crude", GearType.WEAPON, 5, 16, 2.5),
-                new LootEntry.Leveled("Weapon_Spear_Copper", GearType.WEAPON, 10, 22, 2.0),
-                new LootEntry.Leveled("Armor_Leather_Light_Head", GearType.ARMOR, 14, 22, 0.8),
-                new LootEntry.Leveled("Armor_Iron_Hands", GearType.ARMOR, 18, 28, 0.5, 18, null),
-                new LootEntry.Simple("Gold_Coin", 2, 6, 5.0)
-        ), 1, 0.40));
-
-        lootTableRegistry.register("Goblin_Ogre", new LootTable(List.of(
-                new LootEntry.Leveled("Weapon_Club_Iron", GearType.WEAPON, 18, 28, 2.5),
-                new LootEntry.Leveled("Weapon_Mace_Iron", GearType.WEAPON, 18, 26, 2.0),
-                new LootEntry.Leveled("Armor_Iron_Chest", GearType.ARMOR, 18, 28, 1.0),
-                new LootEntry.Leveled("Armor_Bronze_Legs", GearType.ARMOR, 24, 34, 0.5, 24, null),
-                new LootEntry.Simple("Gold_Coin", 4, 12, 5.0)
-        ), 1, 0.45));
-
-        lootTableRegistry.register("Goblin_Duke", new LootTable(List.of(
-                new LootEntry.Leveled("Weapon_Sword_Bronze", GearType.WEAPON, 24, 36, 2.0),
-                new LootEntry.Leveled("Weapon_Longsword_Praetorian", GearType.WEAPON, 24, 36, 1.5),
-                new LootEntry.Leveled("Weapon_Axe_Thorium", GearType.WEAPON, 28, 42, 1.0, 28, null),
-                new LootEntry.Leveled("Armor_Bronze_Chest", GearType.ARMOR, 25, 36, 0.5),
-                new LootEntry.Leveled("Armor_Thorium_Legs", GearType.ARMOR, 28, 40, 0.4, 28, null),
-                new LootEntry.Simple("Gold_Coin", 15, 35, 5.0)
-        ), 1, 0.90));
-
-        // ── Mushroom theme (Trork extras) ────────────────────────────────
-        lootTableRegistry.register("Trork_Shaman", new LootTable(List.of(
-                new LootEntry.Leveled("Weapon_Spear_Leaf", GearType.WEAPON, 14, 22, 2.5),
-                new LootEntry.Leveled("Weapon_Club_Crude", GearType.WEAPON, 5, 18, 2.0),
-                new LootEntry.Leveled("Armor_Cloth_Linen_Head", GearType.ARMOR, 14, 22, 0.8),
-                new LootEntry.Leveled("Armor_Cloth_Cotton_Chest", GearType.ARMOR, 22, 32, 0.5, 22, null),
-                new LootEntry.Simple("Gold_Coin", 2, 6, 5.0)
-        ), 1, 0.40));
-
-        lootTableRegistry.register("Trork_Mauler", new LootTable(List.of(
-                new LootEntry.Leveled("Weapon_Axe_Iron", GearType.WEAPON, 18, 28, 2.5),
-                new LootEntry.Leveled("Weapon_Club_Iron", GearType.WEAPON, 18, 26, 2.0),
-                new LootEntry.Leveled("Armor_Iron_Chest", GearType.ARMOR, 18, 28, 1.0),
-                new LootEntry.Leveled("Armor_Bronze_Hands", GearType.ARMOR, 24, 34, 0.5, 24, null),
-                new LootEntry.Simple("Gold_Coin", 4, 12, 5.0)
-        ), 1, 0.45));
-
-        lootTableRegistry.register("Trork_Chieftain", new LootTable(List.of(
-                new LootEntry.Leveled("Weapon_Axe_Stone_Trork", GearType.WEAPON, 22, 34, 2.0),
-                new LootEntry.Leveled("Weapon_Club_Stone_Trork", GearType.WEAPON, 22, 34, 1.5),
-                new LootEntry.Leveled("Weapon_Axe_Iron", GearType.WEAPON, 18, 30, 1.0, 18, null),
-                new LootEntry.Leveled("Armor_Trork_Chest", GearType.ARMOR, 24, 34, 0.5),
-                new LootEntry.Leveled("Armor_Bronze_Chest", GearType.ARMOR, 25, 36, 0.4, 25, null),
-                new LootEntry.Simple("Gold_Coin", 15, 35, 5.0)
-        ), 1, 0.90));
-
-        // ── Temple_Dark theme (Undead/Shadow) ────────────────────────────
-        lootTableRegistry.register("Wraith_Lantern", new LootTable(List.of(
-                new LootEntry.Leveled("Weapon_Sword_Crude", GearType.WEAPON, 4, 12, 2.5),
-                new LootEntry.Leveled("Weapon_Daggers_Crude", GearType.WEAPON, 6, 12, 2.0),
-                new LootEntry.Leveled("Armor_Cloth_Wool_Head", GearType.ARMOR, 8, 14, 0.5),
-                new LootEntry.Simple("Gold_Coin", 1, 3, 5.0)
-        ), 1, 0.33));
-
-        lootTableRegistry.register("Shadow_Knight", new LootTable(List.of(
-                new LootEntry.Leveled("Weapon_Sword_Iron", GearType.WEAPON, 18, 26, 2.5),
-                new LootEntry.Leveled("Weapon_Daggers_Iron", GearType.WEAPON, 18, 24, 2.0),
-                new LootEntry.Leveled("Armor_Iron_Head", GearType.ARMOR, 18, 26, 0.8),
-                new LootEntry.Leveled("Armor_Iron_Chest", GearType.ARMOR, 18, 26, 0.5, 18, null),
-                new LootEntry.Simple("Gold_Coin", 3, 8, 5.0)
-        ), 1, 0.42));
-
-        lootTableRegistry.register("Wraith", new LootTable(List.of(
-                new LootEntry.Leveled("Weapon_Sword_Bone", GearType.WEAPON, 22, 32, 2.5),
-                new LootEntry.Leveled("Weapon_Daggers_Bone", GearType.WEAPON, 22, 30, 2.0),
-                new LootEntry.Leveled("Armor_Cloth_Linen_Head", GearType.ARMOR, 14, 24, 0.8),
-                new LootEntry.Leveled("Armor_Cloth_Cotton_Chest", GearType.ARMOR, 22, 32, 0.5, 22, null),
-                new LootEntry.Simple("Gold_Coin", 2, 7, 5.0)
-        ), 1, 0.40));
-
-        lootTableRegistry.register("Risen_Knight", new LootTable(List.of(
-                new LootEntry.Leveled("Weapon_Sword_Bronze", GearType.WEAPON, 24, 34, 2.5),
-                new LootEntry.Leveled("Weapon_Longsword_Praetorian", GearType.WEAPON, 24, 34, 2.0),
-                new LootEntry.Leveled("Armor_Bronze_Head", GearType.ARMOR, 24, 34, 1.0),
-                new LootEntry.Leveled("Armor_Bronze_Ornate_Head", GearType.ARMOR, 28, 40, 0.5, 28, null),
-                new LootEntry.Simple("Gold_Coin", 5, 14, 5.0)
-        ), 1, 0.45));
-
-        lootTableRegistry.register("Zombie_Aberrant", new LootTable(List.of(
-                new LootEntry.Leveled("Weapon_Sword_Doomed", GearType.WEAPON, 28, 40, 2.0),
-                new LootEntry.Leveled("Weapon_Axe_Doomed", GearType.WEAPON, 28, 40, 1.5),
-                new LootEntry.Leveled("Weapon_Club_Zombie_Arm", GearType.WEAPON, 28, 40, 1.0, 28, null),
-                new LootEntry.Leveled("Armor_Thorium_Head", GearType.ARMOR, 28, 40, 0.5),
-                new LootEntry.Leveled("Armor_Steel_Ancient_Chest", GearType.ARMOR, 28, 40, 0.4, 28, null),
-                new LootEntry.Simple("Gold_Coin", 15, 35, 5.0)
-        ), 1, 0.90));
-
-        // ── Volcanic theme ───────────────────────────────────────────────
-        lootTableRegistry.register("Feran_Sharptooth", new LootTable(List.of(
-                new LootEntry.Leveled("Weapon_Axe_Crude", GearType.WEAPON, 5, 12, 2.5),
-                new LootEntry.Leveled("Weapon_Club_Crude", GearType.WEAPON, 5, 12, 2.0),
-                new LootEntry.Leveled("Armor_Leather_Soft_Chest", GearType.ARMOR, 8, 14, 0.5),
-                new LootEntry.Simple("Gold_Coin", 1, 3, 5.0)
-        ), 1, 0.33));
-
-        lootTableRegistry.register("Feran_Longtooth", new LootTable(List.of(
-                new LootEntry.Leveled("Weapon_Axe_Copper", GearType.WEAPON, 10, 20, 2.5),
-                new LootEntry.Leveled("Weapon_Spear_Copper", GearType.WEAPON, 10, 18, 2.0),
-                new LootEntry.Leveled("Armor_Leather_Soft_Chest", GearType.ARMOR, 8, 18, 0.8),
-                new LootEntry.Leveled("Armor_Copper_Head", GearType.ARMOR, 10, 20, 0.5, 10, null),
-                new LootEntry.Simple("Gold_Coin", 2, 5, 5.0)
-        ), 1, 0.38));
-
-        lootTableRegistry.register("Spirit_Ember", new LootTable(List.of(
-                new LootEntry.Leveled("Weapon_Sword_Iron", GearType.WEAPON, 18, 28, 2.5),
-                new LootEntry.Leveled("Weapon_Spear_Iron", GearType.WEAPON, 18, 26, 2.0),
-                new LootEntry.Leveled("Armor_Cloth_Linen_Head", GearType.ARMOR, 14, 24, 0.8),
-                new LootEntry.Leveled("Armor_Cloth_Silk_Chest", GearType.ARMOR, 34, 44, 0.4, 34, null),
-                new LootEntry.Simple("Gold_Coin", 3, 9, 5.0)
-        ), 1, 0.42));
-
-        lootTableRegistry.register("Golem_Crystal_Flame", new LootTable(List.of(
-                new LootEntry.Leveled("Weapon_Axe_Iron", GearType.WEAPON, 18, 30, 2.5),
-                new LootEntry.Leveled("Weapon_Mace_Iron", GearType.WEAPON, 18, 28, 2.0),
-                new LootEntry.Leveled("Armor_Iron_Chest", GearType.ARMOR, 18, 30, 1.0),
-                new LootEntry.Leveled("Armor_Cobalt_Head", GearType.ARMOR, 34, 44, 0.5, 34, null),
-                new LootEntry.Simple("Gold_Coin", 5, 15, 5.0)
-        ), 1, 0.47));
-
-        lootTableRegistry.register("Golem_Firesteel", new LootTable(List.of(
-                new LootEntry.Leveled("Weapon_Axe_Thorium", GearType.WEAPON, 28, 40, 2.0),
-                new LootEntry.Leveled("Weapon_Mace_Thorium", GearType.WEAPON, 28, 40, 1.5),
-                new LootEntry.Leveled("Weapon_Axe_Cobalt", GearType.WEAPON, 34, 46, 1.0, 34, null),
-                new LootEntry.Leveled("Armor_Cobalt_Chest", GearType.ARMOR, 34, 46, 0.5),
-                new LootEntry.Leveled("Armor_Adamantite_Head", GearType.ARMOR, 38, 50, 0.4, 38, null),
-                new LootEntry.Simple("Gold_Coin", 15, 40, 5.0)
-        ), 1, 0.90));
-
-        LOGGER.atInfo().log("Registered %d custom loot tables", lootTableRegistry.size());
     }
 
     /**

@@ -1,0 +1,45 @@
+{
+  "Rolls": 1,
+  "DropChance": 0.4,
+  "Entries": [
+    {
+      "Type": "LEVELED",
+      "ItemId": "Weapon_Axe_Copper",
+      "Weight": 3.0,
+      "GearType": "WEAPON",
+      "GearLevelMin": 8,
+      "GearLevelMax": 15
+    },
+    {
+      "Type": "LEVELED",
+      "ItemId": "Weapon_Club_Crude",
+      "Weight": 2.0,
+      "GearType": "WEAPON",
+      "GearLevelMin": 5,
+      "GearLevelMax": 12
+    },
+    {
+      "Type": "LEVELED",
+      "ItemId": "Armor_Copper_Chest",
+      "Weight": 1.5,
+      "GearType": "ARMOR",
+      "GearLevelMin": 8,
+      "GearLevelMax": 15
+    },
+    {
+      "Type": "LEVELED",
+      "ItemId": "Armor_Copper_Head",
+      "Weight": 1.0,
+      "GearType": "ARMOR",
+      "GearLevelMin": 8,
+      "GearLevelMax": 15
+    },
+    {
+      "Type": "SIMPLE",
+      "ItemId": "Gold_Coin",
+      "Weight": 5.0,
+      "QuantityMin": 2,
+      "QuantityMax": 6
+    }
+  ]
+}

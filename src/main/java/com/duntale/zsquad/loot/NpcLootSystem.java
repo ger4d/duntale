@@ -32,17 +32,16 @@ import com.hypixel.hytale.server.npc.entities.NPCEntity;
 import com.hypixel.hytale.server.npc.systems.NPCDamageSystems;
 
 import javax.annotation.Nonnull;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
 
 /**
- * Intercepts NPC death and replaces default drops with custom loot from {@link LootTableRegistry}.
+ * Intercepts NPC death and replaces default drops with custom loot from {@link LootRollService}.
  *
  * <p>Runs <em>before</em> the engine's {@link NPCDamageSystems.DropDeathItems} system.
  * Sets {@link DeathConfig.ItemsLossMode#NONE} on the {@link DeathComponent} to suppress
- * the default drop logic, then spawns custom items from the matching {@link LootTable}.
+ * the default drop logic, then spawns custom items from the matching loot table.
  *
  * <p>Only applies to leveled NPCs that have a {@link CombatScalingComponent}. Untracked NPCs
  * are left untouched and will still have their default drops suppressed (nothing drops
@@ -68,21 +67,21 @@ public class NpcLootSystem extends DeathSystems.OnDeathSystem {
     /** Base XP per kill, scaled by NPC level. */
     private static final long BASE_XP_PER_KILL = 10;
 
-    private final LootTableRegistry lootTableRegistry;
+    private final LootRollService lootRollService;
     private final RpgService rpgService;
     private final ProgressionService progressionService;
 
     /**
      * Creates a new NPC loot system.
      *
-     * @param lootTableRegistry    the registry of custom loot tables
+     * @param lootRollService      the shared loot roll service
      * @param rpgService           the RPG service for attacker stat lookups
      * @param progressionService   the progression service for granting XP on kill
      */
-    public NpcLootSystem(@Nonnull LootTableRegistry lootTableRegistry,
+    public NpcLootSystem(@Nonnull LootRollService lootRollService,
                          @Nonnull RpgService rpgService,
                          @Nonnull ProgressionService progressionService) {
-        this.lootTableRegistry = lootTableRegistry;
+        this.lootRollService = lootRollService;
         this.rpgService = rpgService;
         this.progressionService = progressionService;
     }
@@ -143,26 +142,15 @@ public class NpcLootSystem extends DeathSystems.OnDeathSystem {
         }
 
         // ── 3. Look up the loot table for this NPC role ──────────────
-        LootTable lootTable = lootTableRegistry.get(npcId);
-        if (lootTable == null) {
+        if (!lootRollService.hasTable(npcId)) {
             // No custom table — default drops already suppressed, nothing else to do
             return;
         }
 
         // ── 4. Roll loot ─────────────────────────────────────────────
-        List<ItemStack> rolledDrops = lootTable.roll(npcLevel, luckLevel);
-        if (rolledDrops.isEmpty()) {
+        List<ItemStack> drops = lootRollService.roll(npcId, npcLevel, luckLevel);
+        if (drops.isEmpty()) {
             return;
-        }
-
-        // ── 4b. Scale gold quantities linearly by NPC level ──────────
-        List<ItemStack> drops = new ArrayList<>(rolledDrops.size());
-        for (ItemStack drop : rolledDrops) {
-            if ("Gold_Coin".equals(drop.getItemId()) && npcLevel > 1) {
-                drops.add(new ItemStack(drop.getItemId(), drop.getQuantity() * npcLevel));
-            } else {
-                drops.add(drop);
-            }
         }
 
         // ── 5. Spawn item entities at the NPC's position ─────────────

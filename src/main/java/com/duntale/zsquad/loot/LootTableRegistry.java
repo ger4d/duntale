@@ -1,20 +1,29 @@
 package com.duntale.zsquad.loot;
 
+import com.duntale.zsquad.loot.config.asset.LootTableConfig;
+import com.hypixel.hytale.logger.HytaleLogger;
+
 import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
+import java.util.HashSet;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
  * Registry of {@link LootTable}s keyed by NPC role name.
  *
- * <p>Tables are registered programmatically at plugin startup.
- * When a leveled NPC dies, the {@link NpcLootSystem} looks up the table
- * by the dead NPC's role name (from the {@link com.duntale.zsquad.progression.CombatScalingComponent}).
+ * <p>Production tables are resolved from {@link LootTableConfig} assets embedded in the ZSquad
+ * plugin asset pack. Programmatic registrations still exist for narrow tests and take precedence
+ * over asset-backed configs with the same key.
  *
  * <p>If no table is registered for a role, the default engine drops are suppressed
  * and nothing drops — this is by design for an RPG where only configured mobs yield loot.
  */
 public class LootTableRegistry {
+
+    private static final HytaleLogger LOGGER = HytaleLogger.forEnclosingClass();
+    private static final AtomicBoolean ASSET_WARNING_LOGGED = new AtomicBoolean(false);
 
     private final ConcurrentHashMap<String, LootTable> tables = new ConcurrentHashMap<>();
 
@@ -36,7 +45,22 @@ public class LootTableRegistry {
      */
     @Nullable
     public LootTable get(@Nonnull String roleName) {
-        return tables.get(roleName);
+        LootTable registered = tables.get(roleName);
+        if (registered != null) {
+            return registered;
+        }
+
+        LootTableConfig config = resolveAssetConfig(roleName);
+        if (config == null) {
+            return null;
+        }
+
+        try {
+            return config.toLootTable();
+        } catch (RuntimeException e) {
+            LOGGER.atWarning().log("Invalid loot table config for role %s: %s", roleName, e.getMessage());
+            return null;
+        }
     }
 
     /**
@@ -46,7 +70,7 @@ public class LootTableRegistry {
      * @return {@code true} if a table exists
      */
     public boolean has(@Nonnull String roleName) {
-        return tables.containsKey(roleName);
+        return tables.containsKey(roleName) || resolveAssetConfig(roleName) != null;
     }
 
     /**
@@ -62,6 +86,36 @@ public class LootTableRegistry {
      * @return the count
      */
     public int size() {
-        return tables.size();
+        Set<String> keys = new HashSet<>(tables.keySet());
+        for (LootTableConfig config : resolveAssetConfigs()) {
+            keys.add(config.getId());
+        }
+        return keys.size();
+    }
+
+    @Nullable
+    private LootTableConfig resolveAssetConfig(@Nonnull String roleName) {
+        try {
+            return LootTableConfig.get(roleName);
+        } catch (RuntimeException e) {
+            logAssetLookupWarning(e);
+            return null;
+        }
+    }
+
+    @Nonnull
+    private Iterable<LootTableConfig> resolveAssetConfigs() {
+        try {
+            return LootTableConfig.getAll();
+        } catch (RuntimeException e) {
+            logAssetLookupWarning(e);
+            return Set.of();
+        }
+    }
+
+    private void logAssetLookupWarning(@Nonnull RuntimeException e) {
+        if (ASSET_WARNING_LOGGED.compareAndSet(false, true)) {
+            LOGGER.atWarning().log("Loot table asset store is not ready: %s", e.getMessage());
+        }
     }
 }

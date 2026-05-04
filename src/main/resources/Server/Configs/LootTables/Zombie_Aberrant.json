@@ -1,0 +1,55 @@
+{
+  "Rolls": 1,
+  "DropChance": 0.9,
+  "Entries": [
+    {
+      "Type": "LEVELED",
+      "ItemId": "Weapon_Sword_Doomed",
+      "Weight": 2.0,
+      "GearType": "WEAPON",
+      "GearLevelMin": 28,
+      "GearLevelMax": 40
+    },
+    {
+      "Type": "LEVELED",
+      "ItemId": "Weapon_Axe_Doomed",
+      "Weight": 1.5,
+      "GearType": "WEAPON",
+      "GearLevelMin": 28,
+      "GearLevelMax": 40
+    },
+    {
+      "Type": "LEVELED",
+      "ItemId": "Weapon_Club_Zombie_Arm",
+      "Weight": 1.0,
+      "GearType": "WEAPON",
+      "GearLevelMin": 28,
+      "GearLevelMax": 40,
+      "MinNpcLevel": 28
+    },
+    {
+      "Type": "LEVELED",
+      "ItemId": "Armor_Thorium_Head",
+      "Weight": 0.5,
+      "GearType": "ARMOR",
+      "GearLevelMin": 28,
+      "GearLevelMax": 40
+    },
+    {
+      "Type": "LEVELED",
+      "ItemId": "Armor_Steel_Ancient_Chest",
+      "Weight": 0.4,
+      "GearType": "ARMOR",
+      "GearLevelMin": 28,
+      "GearLevelMax": 40,
+      "MinNpcLevel": 28
+    },
+    {
+      "Type": "SIMPLE",
+      "ItemId": "Gold_Coin",
+      "Weight": 5.0,
+      "QuantityMin": 15,
+      "QuantityMax": 35
+    }
+  ]
+}

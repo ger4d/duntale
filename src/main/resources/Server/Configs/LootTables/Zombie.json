@@ -1,0 +1,47 @@
+{
+  "Rolls": 1,
+  "DropChance": 0.5,
+  "Entries": [
+    {
+      "Type": "LEVELED",
+      "ItemId": "Weapon_Sword_Bone",
+      "Weight": 2.0,
+      "GearType": "WEAPON",
+      "GearLevelMin": 23,
+      "GearLevelMax": 27
+    },
+    {
+      "Type": "LEVELED",
+      "ItemId": "Weapon_Axe_Bone",
+      "Weight": 2.0,
+      "GearType": "WEAPON",
+      "GearLevelMin": 23,
+      "GearLevelMax": 27
+    },
+    {
+      "Type": "LEVELED",
+      "ItemId": "Weapon_Sword_Doomed",
+      "Weight": 1.0,
+      "GearType": "WEAPON",
+      "GearLevelMin": 28,
+      "GearLevelMax": 32,
+      "MinNpcLevel": 28
+    },
+    {
+      "Type": "LEVELED",
+      "ItemId": "Armor_Thorium_Chest",
+      "Weight": 0.8,
+      "GearType": "ARMOR",
+      "GearLevelMin": 28,
+      "GearLevelMax": 32,
+      "MinNpcLevel": 28
+    },
+    {
+      "Type": "SIMPLE",
+      "ItemId": "Gold_Coin",
+      "Weight": 5.0,
+      "QuantityMin": 5,
+      "QuantityMax": 12
+    }
+  ]
+}

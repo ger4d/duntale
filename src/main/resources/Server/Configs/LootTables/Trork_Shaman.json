@@ -1,0 +1,46 @@
+{
+  "Rolls": 1,
+  "DropChance": 0.4,
+  "Entries": [
+    {
+      "Type": "LEVELED",
+      "ItemId": "Weapon_Spear_Leaf",
+      "Weight": 2.5,
+      "GearType": "WEAPON",
+      "GearLevelMin": 14,
+      "GearLevelMax": 22
+    },
+    {
+      "Type": "LEVELED",
+      "ItemId": "Weapon_Club_Crude",
+      "Weight": 2.0,
+      "GearType": "WEAPON",
+      "GearLevelMin": 5,
+      "GearLevelMax": 18
+    },
+    {
+      "Type": "LEVELED",
+      "ItemId": "Armor_Cloth_Linen_Head",
+      "Weight": 0.8,
+      "GearType": "ARMOR",
+      "GearLevelMin": 14,
+      "GearLevelMax": 22
+    },
+    {
+      "Type": "LEVELED",
+      "ItemId": "Armor_Cloth_Cotton_Chest",
+      "Weight": 0.5,
+      "GearType": "ARMOR",
+      "GearLevelMin": 22,
+      "GearLevelMax": 32,
+      "MinNpcLevel": 22
+    },
+    {
+      "Type": "SIMPLE",
+      "ItemId": "Gold_Coin",
+      "Weight": 5.0,
+      "QuantityMin": 2,
+      "QuantityMax": 6
+    }
+  ]
+}

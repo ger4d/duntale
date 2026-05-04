@@ -1,0 +1,37 @@
+{
+  "Rolls": 1,
+  "DropChance": 0.35,
+  "Entries": [
+    {
+      "Type": "LEVELED",
+      "ItemId": "Weapon_Club_Crude",
+      "Weight": 2.5,
+      "GearType": "WEAPON",
+      "GearLevelMin": 5,
+      "GearLevelMax": 12
+    },
+    {
+      "Type": "LEVELED",
+      "ItemId": "Weapon_Axe_Crude",
+      "Weight": 2.0,
+      "GearType": "WEAPON",
+      "GearLevelMin": 5,
+      "GearLevelMax": 12
+    },
+    {
+      "Type": "LEVELED",
+      "ItemId": "Armor_Wood_Head",
+      "Weight": 0.5,
+      "GearType": "ARMOR",
+      "GearLevelMin": 5,
+      "GearLevelMax": 12
+    },
+    {
+      "Type": "SIMPLE",
+      "ItemId": "Gold_Coin",
+      "Weight": 5.0,
+      "QuantityMin": 1,
+      "QuantityMax": 4
+    }
+  ]
+}

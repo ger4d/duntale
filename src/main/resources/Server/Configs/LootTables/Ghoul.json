@@ -1,0 +1,55 @@
+{
+  "Rolls": 1,
+  "DropChance": 0.9,
+  "Entries": [
+    {
+      "Type": "LEVELED",
+      "ItemId": "Weapon_Sword_Bone",
+      "Weight": 2.0,
+      "GearType": "WEAPON",
+      "GearLevelMin": 23,
+      "GearLevelMax": 32
+    },
+    {
+      "Type": "LEVELED",
+      "ItemId": "Weapon_Axe_Bone",
+      "Weight": 1.5,
+      "GearType": "WEAPON",
+      "GearLevelMin": 23,
+      "GearLevelMax": 30
+    },
+    {
+      "Type": "LEVELED",
+      "ItemId": "Weapon_Longsword_Void",
+      "Weight": 1.0,
+      "GearType": "WEAPON",
+      "GearLevelMin": 28,
+      "GearLevelMax": 38,
+      "MinNpcLevel": 28
+    },
+    {
+      "Type": "LEVELED",
+      "ItemId": "Armor_Iron_Head",
+      "Weight": 0.5,
+      "GearType": "ARMOR",
+      "GearLevelMin": 18,
+      "GearLevelMax": 28
+    },
+    {
+      "Type": "LEVELED",
+      "ItemId": "Armor_Bronze_Chest",
+      "Weight": 0.4,
+      "GearType": "ARMOR",
+      "GearLevelMin": 25,
+      "GearLevelMax": 36,
+      "MinNpcLevel": 25
+    },
+    {
+      "Type": "SIMPLE",
+      "ItemId": "Gold_Coin",
+      "Weight": 5.0,
+      "QuantityMin": 12,
+      "QuantityMax": 30
+    }
+  ]
+}

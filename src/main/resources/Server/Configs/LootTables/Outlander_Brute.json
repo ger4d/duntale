@@ -1,0 +1,46 @@
+{
+  "Rolls": 2,
+  "DropChance": 0.8,
+  "Entries": [
+    {
+      "Type": "LEVELED",
+      "ItemId": "Weapon_Longsword_Praetorian",
+      "Weight": 2.0,
+      "GearType": "WEAPON",
+      "GearLevelMin": 25,
+      "GearLevelMax": 40
+    },
+    {
+      "Type": "LEVELED",
+      "ItemId": "Weapon_Sword_Doomed",
+      "Weight": 1.5,
+      "GearType": "WEAPON",
+      "GearLevelMin": 30,
+      "GearLevelMax": 40
+    },
+    {
+      "Type": "LEVELED",
+      "ItemId": "Armor_Bronze_Ornate_Chest",
+      "Weight": 1.5,
+      "GearType": "ARMOR",
+      "GearLevelMin": 28,
+      "GearLevelMax": 40
+    },
+    {
+      "Type": "LEVELED",
+      "ItemId": "Armor_Thorium_Chest",
+      "Weight": 1.0,
+      "GearType": "ARMOR",
+      "GearLevelMin": 30,
+      "GearLevelMax": 40,
+      "MinNpcLevel": 30
+    },
+    {
+      "Type": "SIMPLE",
+      "ItemId": "Gold_Coin",
+      "Weight": 5.0,
+      "QuantityMin": 10,
+      "QuantityMax": 25
+    }
+  ]
+}
