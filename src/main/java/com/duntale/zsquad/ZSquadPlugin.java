@@ -31,6 +31,7 @@ import com.duntale.zsquad.economy.GoldCommand;
 import com.duntale.zsquad.economy.GoldPickupSystem;
 import com.duntale.zsquad.economy.GoldRepository;
 import com.duntale.zsquad.economy.GoldService;
+import com.duntale.zsquad.loot.ChestLootService;
 import com.duntale.zsquad.loot.LootRollService;
 import com.duntale.zsquad.loot.LootTableRegistry;
 import com.duntale.zsquad.loot.NpcLootSystem;
@@ -143,6 +144,7 @@ public class ZSquadPlugin extends JavaPlugin {
     // Loot system
     private LootTableRegistry lootTableRegistry;
     private LootRollService lootRollService;
+    private ChestLootService chestLootService;
 
     // RPG system
     private DatabaseProvider databaseProvider;
@@ -252,6 +254,16 @@ public class ZSquadPlugin extends JavaPlugin {
     @Nonnull
     public LootTableRegistry getLootTableRegistry() {
         return lootTableRegistry;
+    }
+
+    /**
+     * Returns the shared chest loot service.
+     *
+     * @return the chest loot service
+     */
+    @Nonnull
+    public ChestLootService getChestLootService() {
+        return chestLootService;
     }
 
     /**
@@ -442,6 +454,7 @@ public class ZSquadPlugin extends JavaPlugin {
         // ── Loot System ──────────────────────────────────────────────
         this.lootTableRegistry = new LootTableRegistry();
         this.lootRollService = new LootRollService(lootTableRegistry);
+        this.chestLootService = new ChestLootService(lootTableRegistry);
 
         // ── Merchant System ──────────────────────────────────────────
         this.merchantPriceRegistry = new MerchantPriceRegistry();

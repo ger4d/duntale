@@ -1623,6 +1623,7 @@ class DungeonInstanceServiceTest {
                 DungeonInstanceService.InstanceWorld world,
                 Vec3i origin,
                 Vec3i entrancePosition,
+            int floorLevel,
                 GenerationResult result
         ) {
             finalizedEntrances.put(world.worldName(), entrancePosition);
@@ -1775,6 +1776,8 @@ class DungeonInstanceServiceTest {
                 List.of(),
                 1,
                 List.of(),
+            0,
+            List.of(),
                 entrance,
                 exit,
                 20L,

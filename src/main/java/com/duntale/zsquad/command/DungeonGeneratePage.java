@@ -335,6 +335,14 @@ public class DungeonGeneratePage extends InteractiveCustomUIPage<DungeonGenerate
         if (!result.merchantDefinitions().isEmpty()) {
             plugin.getMerchantNpcSpawner().spawnMerchants(previewStore, result.merchantDefinitions(), previewConfig.origin());
         }
+        if (!result.chestDefinitions().isEmpty()) {
+            plugin.getChestLootService().fillChests(
+                    previewWorld,
+                    previewConfig.origin(),
+                    result.chestDefinitions(),
+                    previewConfig.floorLevel()
+            );
+        }
     }
 
     private void enterPreviewWorld(@Nonnull Ref<EntityStore> ref,
@@ -380,9 +388,9 @@ public class DungeonGeneratePage extends InteractiveCustomUIPage<DungeonGenerate
 
     private void sendGenerationSummary(@Nonnull GenerationResult result, @Nullable String previewWorldName) {
         String summary = String.format(
-            "[DungeonGen] Done! %d rooms, %d corridors, %d blocks, %d spawners, %d merchants - gen %dms, asm %dms",
+            "[DungeonGen] Done! %d rooms, %d corridors, %d blocks, %d spawners, %d merchants, %d chests - gen %dms, asm %dms",
             result.rooms(), result.corridors(), result.totalBlocks(), result.spawners(),
-            result.merchants(), result.generationTimeMs(), result.assemblyTimeMs()
+            result.merchants(), result.chests(), result.generationTimeMs(), result.assemblyTimeMs()
         );
         String color = result.assemblyError() == null ? "#55FF55" : "#FFAA00";
         playerRef.sendMessage(Message.raw(summary).color(color));

@@ -1,0 +1,59 @@
+{
+  "Rolls": 1,
+  "DropChance": 1.0,
+  "Entries": [
+    {
+      "Type": "SIMPLE",
+      "ItemId": "Gold_Coin",
+      "Weight": 6.0,
+      "QuantityMin": 12,
+      "QuantityMax": 24
+    },
+    {
+      "Type": "LEVELED",
+      "ItemId": "Weapon_Axe_Crude",
+      "Weight": 2.2,
+      "GearType": "WEAPON",
+      "GearLevelMin": 2,
+      "GearLevelMax": 6,
+      "MaxFloorLevel": 6
+    },
+    {
+      "Type": "LEVELED",
+      "ItemId": "Weapon_Spear_Copper",
+      "Weight": 2.0,
+      "GearType": "WEAPON",
+      "GearLevelMin": 7,
+      "GearLevelMax": 12,
+      "MinFloorLevel": 7,
+      "MaxFloorLevel": 12
+    },
+    {
+      "Type": "LEVELED",
+      "ItemId": "Weapon_Sword_Iron",
+      "Weight": 1.6,
+      "GearType": "WEAPON",
+      "GearLevelMin": 13,
+      "GearLevelMax": 18,
+      "MinFloorLevel": 13
+    },
+    {
+      "Type": "LEVELED",
+      "ItemId": "Armor_Leather_Soft_Chest",
+      "Weight": 1.8,
+      "GearType": "ARMOR",
+      "GearLevelMin": 2,
+      "GearLevelMax": 8,
+      "MaxFloorLevel": 8
+    },
+    {
+      "Type": "LEVELED",
+      "ItemId": "Armor_Copper_Head",
+      "Weight": 1.4,
+      "GearType": "ARMOR",
+      "GearLevelMin": 9,
+      "GearLevelMax": 15,
+      "MinFloorLevel": 9
+    }
+  ]
+}

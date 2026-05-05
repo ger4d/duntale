@@ -1,0 +1,69 @@
+{
+  "Rolls": 1,
+  "DropChance": 1.0,
+  "Entries": [
+    {
+      "Type": "SIMPLE",
+      "ItemId": "Gold_Coin",
+      "Weight": 5.5,
+      "QuantityMin": 20,
+      "QuantityMax": 40
+    },
+    {
+      "Type": "LEVELED",
+      "ItemId": "Weapon_Sword_Bronze",
+      "Weight": 2.2,
+      "GearType": "WEAPON",
+      "GearLevelMin": 10,
+      "GearLevelMax": 18,
+      "MaxFloorLevel": 15
+    },
+    {
+      "Type": "LEVELED",
+      "ItemId": "Weapon_Longsword_Praetorian",
+      "Weight": 1.9,
+      "GearType": "WEAPON",
+      "GearLevelMin": 16,
+      "GearLevelMax": 24,
+      "MinFloorLevel": 12,
+      "MaxFloorLevel": 24
+    },
+    {
+      "Type": "LEVELED",
+      "ItemId": "Weapon_Sword_Doomed",
+      "Weight": 1.4,
+      "GearType": "WEAPON",
+      "GearLevelMin": 25,
+      "GearLevelMax": 30,
+      "MinFloorLevel": 25
+    },
+    {
+      "Type": "LEVELED",
+      "ItemId": "Armor_Bronze_Chest",
+      "Weight": 1.8,
+      "GearType": "ARMOR",
+      "GearLevelMin": 10,
+      "GearLevelMax": 18,
+      "MaxFloorLevel": 15
+    },
+    {
+      "Type": "LEVELED",
+      "ItemId": "Armor_Iron_Chest",
+      "Weight": 1.6,
+      "GearType": "ARMOR",
+      "GearLevelMin": 16,
+      "GearLevelMax": 24,
+      "MinFloorLevel": 12,
+      "MaxFloorLevel": 24
+    },
+    {
+      "Type": "LEVELED",
+      "ItemId": "Armor_Thorium_Chest",
+      "Weight": 1.2,
+      "GearType": "ARMOR",
+      "GearLevelMin": 25,
+      "GearLevelMax": 30,
+      "MinFloorLevel": 25
+    }
+  ]
+}

@@ -757,7 +757,7 @@ public class DungeonInstanceService {
                 pendingInstance.createdAt()
         );
 
-        return runtimeAdapter.finalizeWorld(world, origin, entrancePosition, result)
+        return runtimeAdapter.finalizeWorld(world, origin, entrancePosition, pendingInstance.floorLevel(), result)
                 .thenCompose(unused -> updatePersistedInstance(readyInstance))
                 .thenCompose(unused -> runtimeAdapter.teleportRoster(roster, world, entrancePosition))
                 .thenCompose(unused -> updatePersistedInstance(activeInstance).thenApply(ignored -> activeInstance))
@@ -823,7 +823,7 @@ public class DungeonInstanceService {
         );
 
         return ensureTransitionNotForceEnded(previousFloor.instanceId(), transitionState)
-                .thenCompose(unused -> runtimeAdapter.finalizeWorld(newWorld, origin, entrancePosition, result))
+            .thenCompose(unused -> runtimeAdapter.finalizeWorld(newWorld, origin, entrancePosition, nextFloor, result))
                 .thenCompose(unused -> updatePersistedInstanceWhileTransitioning(
                         updatedInstance,
                         transitionState,
@@ -1366,6 +1366,7 @@ public class DungeonInstanceService {
                 @Nonnull InstanceWorld world,
                 @Nonnull Vec3i origin,
                 @Nonnull Vec3i entrancePosition,
+            int floorLevel,
                 @Nonnull GenerationResult result
         );
 
@@ -1506,6 +1507,7 @@ public class DungeonInstanceService {
                 @Nonnull InstanceWorld world,
                 @Nonnull Vec3i origin,
                 @Nonnull Vec3i entrancePosition,
+            int floorLevel,
                 @Nonnull GenerationResult result
         ) {
             Objects.requireNonNull(world, "world");
@@ -1527,6 +1529,9 @@ public class DungeonInstanceService {
                 }
                 if (!result.merchantDefinitions().isEmpty()) {
                     plugin.getMerchantNpcSpawner().spawnMerchants(store, result.merchantDefinitions(), origin);
+                }
+                if (!result.chestDefinitions().isEmpty()) {
+                    plugin.getChestLootService().fillChests(liveWorld, origin, result.chestDefinitions(), floorLevel);
                 }
             });
         }

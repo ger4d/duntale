@@ -1,0 +1,60 @@
+{
+  "Rolls": 1,
+  "DropChance": 1.0,
+  "Entries": [
+    {
+      "Type": "SIMPLE",
+      "ItemId": "Gold_Coin",
+      "Weight": 4.5,
+      "QuantityMin": 60,
+      "QuantityMax": 100
+    },
+    {
+      "Type": "LEVELED",
+      "ItemId": "Weapon_Axe_Thorium",
+      "Weight": 1.6,
+      "GearType": "WEAPON",
+      "GearLevelMin": 34,
+      "GearLevelMax": 40,
+      "MinFloorLevel": 24,
+      "MaxFloorLevel": 36
+    },
+    {
+      "Type": "LEVELED",
+      "ItemId": "Weapon_Axe_Cobalt",
+      "Weight": 1.7,
+      "GearType": "WEAPON",
+      "GearLevelMin": 38,
+      "GearLevelMax": 46,
+      "MinFloorLevel": 30
+    },
+    {
+      "Type": "LEVELED",
+      "ItemId": "Armor_Steel_Ancient_Chest",
+      "Weight": 1.4,
+      "GearType": "ARMOR",
+      "GearLevelMin": 34,
+      "GearLevelMax": 40,
+      "MinFloorLevel": 24,
+      "MaxFloorLevel": 36
+    },
+    {
+      "Type": "LEVELED",
+      "ItemId": "Armor_Cobalt_Chest",
+      "Weight": 1.5,
+      "GearType": "ARMOR",
+      "GearLevelMin": 38,
+      "GearLevelMax": 45,
+      "MinFloorLevel": 30
+    },
+    {
+      "Type": "LEVELED",
+      "ItemId": "Armor_Adamantite_Head",
+      "Weight": 1.2,
+      "GearType": "ARMOR",
+      "GearLevelMin": 42,
+      "GearLevelMax": 48,
+      "MinFloorLevel": 34
+    }
+  ]
+}
