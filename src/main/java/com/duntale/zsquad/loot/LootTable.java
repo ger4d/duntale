@@ -1,6 +1,5 @@
 package com.duntale.zsquad.loot;
 
-import com.duntale.zsquad.progression.GearLevelService;
 import com.duntale.zsquad.rpg.RpgStatEffects;
 import com.hypixel.hytale.server.core.inventory.ItemStack;
 
@@ -13,15 +12,8 @@ import java.util.concurrent.ThreadLocalRandom;
 /**
  * A loot table that produces randomised {@link ItemStack} drops from a weighted pool of {@link LootEntry} items.
  *
- * <p>Each table has a configurable number of rolls. Entries are filtered by the NPC's level
- * before rolling, so level-gated items are excluded automatically.
- *
- * <p>Supports two entry types:
- * <ul>
- *   <li>{@link LootEntry.Simple} — plain items (quantity only).</li>
- *   <li>{@link LootEntry.Leveled} — weapons/armor stamped with gear level + variance
- *       via {@link GearLevelService}.</li>
- * </ul>
+ * <p>Each table stores a default roll count and drop chance used by the NPC loot flow,
+ * while the entry pool itself remains generic enough for other callers such as chest rolls.
  */
 public class LootTable {
 
@@ -66,38 +58,7 @@ public class LootTable {
      */
     @Nonnull
     public List<ItemStack> roll(int npcLevel) {
-        ThreadLocalRandom random = ThreadLocalRandom.current();
-
-        // Drop chance gate — checked once per kill
-        if (dropChance < 1.0 && random.nextDouble() >= dropChance) {
-            return Collections.emptyList();
-        }
-
-        // Filter eligible entries
-        List<LootEntry> eligible = new ArrayList<>();
-        double totalWeight = 0;
-        for (LootEntry entry : entries) {
-            if (entry.isEligible(npcLevel)) {
-                eligible.add(entry);
-                totalWeight += entry.weight();
-            }
-        }
-
-        if (eligible.isEmpty() || totalWeight <= 0) {
-            return Collections.emptyList();
-        }
-
-        List<ItemStack> result = new ArrayList<>(rolls);
-
-        for (int i = 0; i < rolls; i++) {
-            LootEntry picked = pickWeighted(eligible, totalWeight, random);
-            ItemStack stack = createItemStack(picked, random);
-            if (stack != null) {
-                result.add(stack);
-            }
-        }
-
-        return Collections.unmodifiableList(result);
+        return roll(LootContext.forNpcLevel(npcLevel), new RollRequest(rolls, dropChance, true));
     }
 
     /**
@@ -119,80 +80,32 @@ public class LootTable {
             return roll(npcLevel);
         }
 
-        ThreadLocalRandom random = ThreadLocalRandom.current();
-
         // Adjusted drop chance with Luck bonus
         float dropBonus = RpgStatEffects.computeLuckDropBonus(luckLevel);
         double adjustedDropChance = Math.min(1.0, dropChance + dropBonus);
 
-        if (adjustedDropChance < 1.0 && random.nextDouble() >= adjustedDropChance) {
-            return Collections.emptyList();
-        }
-
-        // Filter eligible entries
-        List<LootEntry> eligible = new ArrayList<>();
-        double totalWeight = 0;
-        for (LootEntry entry : entries) {
-            if (entry.isEligible(npcLevel)) {
-                eligible.add(entry);
-                totalWeight += entry.weight();
-            }
-        }
-
-        if (eligible.isEmpty() || totalWeight <= 0) {
-            return Collections.emptyList();
-        }
-
         // Total rolls = base rolls + Luck bonus rolls
         int bonusRolls = RpgStatEffects.computeLuckBonusRolls(luckLevel);
-        int totalRolls = rolls + bonusRolls;
-
-        List<ItemStack> result = new ArrayList<>(totalRolls);
-
-        for (int i = 0; i < totalRolls; i++) {
-            LootEntry picked = pickWeighted(eligible, totalWeight, random);
-            ItemStack stack = createItemStack(picked, random);
-            if (stack != null) {
-                result.add(stack);
-            }
-        }
-
-        return Collections.unmodifiableList(result);
+        return roll(
+                LootContext.forNpcLevel(npcLevel),
+                new RollRequest(rolls + bonusRolls, adjustedDropChance, true)
+        );
     }
 
     /**
-     * Creates an {@link ItemStack} from a picked {@link LootEntry}, applying gear metadata
-     * for leveled entries.
+     * Rolls this loot table using an explicit runtime context and selection mode.
+     *
+     * <p>This is used by non-NPC callers such as chest rolls, which may want fixed
+     * stack counts or no-replacement selection while reusing the same weighted pool.
+     *
+     * @param context          the runtime loot context used for condition evaluation
+     * @param requestedRolls   the number of picks to make
+     * @param withReplacement  whether the same entry may be picked multiple times
+     * @return an unmodifiable list of rolled drops (may be empty)
      */
     @Nonnull
-    private static ItemStack createItemStack(@Nonnull LootEntry entry, @Nonnull ThreadLocalRandom random) {
-        return switch (entry) {
-            case LootEntry.Simple simple -> {
-                int quantity = simple.quantityMin() == simple.quantityMax()
-                        ? simple.quantityMin()
-                        : random.nextInt(simple.quantityMin(), simple.quantityMax() + 1);
-                yield new ItemStack(simple.itemId(), Math.max(quantity, 1));
-            }
-            case LootEntry.Leveled leveled -> {
-                int gearLevel = leveled.gearLevelMin() == leveled.gearLevelMax()
-                        ? leveled.gearLevelMin()
-                        : random.nextInt(leveled.gearLevelMin(), leveled.gearLevelMax() + 1);
-                float variance = GearLevelService.rollVariance();
-
-                ItemStack stack = new ItemStack(leveled.itemId(), 1);
-                stack = switch (leveled.gearType()) {
-                    case WEAPON -> {
-                        ItemStack s = GearLevelService.setWeaponLevel(stack, gearLevel);
-                        yield GearLevelService.setWeaponVariance(s, variance);
-                    }
-                    case ARMOR -> {
-                        ItemStack s = GearLevelService.setArmorLevel(stack, gearLevel);
-                        yield GearLevelService.setArmorVariance(s, variance);
-                    }
-                };
-                yield stack;
-            }
-        };
+    public List<ItemStack> roll(@Nonnull LootContext context, int requestedRolls, boolean withReplacement) {
+        return roll(context, new RollRequest(requestedRolls, 1.0, withReplacement));
     }
 
     /**
@@ -214,6 +127,57 @@ public class LootTable {
         }
         // Floating-point edge case — return last entry
         return eligible.getLast();
+    }
+
+    @Nonnull
+    private List<ItemStack> roll(@Nonnull LootContext context, @Nonnull RollRequest request) {
+        ThreadLocalRandom random = ThreadLocalRandom.current();
+
+        if (request.rolls() <= 0) {
+            return Collections.emptyList();
+        }
+        if (request.dropChance() < 1.0 && random.nextDouble() >= request.dropChance()) {
+            return Collections.emptyList();
+        }
+
+        List<LootEntry> eligible = new ArrayList<>();
+        double totalWeight = 0;
+        for (LootEntry entry : entries) {
+            if (entry.isEligible(context)) {
+                eligible.add(entry);
+                totalWeight += entry.weight();
+            }
+        }
+
+        if (eligible.isEmpty() || totalWeight <= 0.0) {
+            return Collections.emptyList();
+        }
+
+        int rollCount = request.withReplacement()
+                ? request.rolls()
+                : Math.min(request.rolls(), eligible.size());
+        List<ItemStack> result = new ArrayList<>(rollCount);
+
+        if (request.withReplacement()) {
+            for (int index = 0; index < rollCount; index++) {
+                LootEntry picked = pickWeighted(eligible, totalWeight, random);
+                result.add(picked.createItemStack(random));
+            }
+            return Collections.unmodifiableList(result);
+        }
+
+        List<LootEntry> remaining = new ArrayList<>(eligible);
+        double remainingWeight = totalWeight;
+        for (int index = 0; index < rollCount && !remaining.isEmpty() && remainingWeight > 0.0; index++) {
+            LootEntry picked = pickWeighted(remaining, remainingWeight, random);
+            result.add(picked.createItemStack(random));
+            remaining.remove(picked);
+            remainingWeight -= picked.weight();
+        }
+        return Collections.unmodifiableList(result);
+    }
+
+    private record RollRequest(int rolls, double dropChance, boolean withReplacement) {
     }
 
     /**

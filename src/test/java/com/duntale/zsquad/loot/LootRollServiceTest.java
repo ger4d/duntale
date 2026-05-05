@@ -100,7 +100,7 @@ class LootRollServiceTest {
         private int lastLuckLevel;
 
         private RecordingLootTable(List<ItemStack> drops) {
-            super(List.of(new LootEntry.Simple("Gold_Coin", 1, 1, 1.0)), 1);
+            super(List.of(new LootEntry("Gold_Coin", 1.0)), 1);
             this.drops = List.copyOf(drops);
         }
 

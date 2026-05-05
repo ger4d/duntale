@@ -51,7 +51,7 @@ class LootTableRegistryTest {
         LootTableRegistry registry = new LootTableRegistry();
         int baselineSize = registry.size();
         String roleName = uniqueRole("ProgrammaticRole");
-        LootTable table = new LootTable(List.of(new LootEntry.Simple("Gold_Coin", 1, 1, 1.0)), 1);
+        LootTable table = new LootTable(List.of(new LootEntry("Gold_Coin", 1.0)), 1);
 
         registry.register(roleName, table);
 
@@ -102,7 +102,7 @@ class LootTableRegistryTest {
         loadAssetConfig(roleName, 1, 0.35,
                 entry("SIMPLE", "Gold_Coin", "WEAPON", 1, 1, 1, 3, 5.0, 0, 0));
 
-        LootTable programmatic = new LootTable(List.of(new LootEntry.Simple("Weapon_Sword_Iron", 1, 1, 1.0)), 2);
+        LootTable programmatic = new LootTable(List.of(new LootEntry("Weapon_Sword_Iron", 1.0)), 2);
         registry.register(roleName, programmatic);
 
         assertSame(programmatic, registry.get(roleName));

@@ -10,71 +10,93 @@ import java.lang.reflect.Field;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
-import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 @DisplayName("LootTableConfig")
 class LootTableConfigTest {
 
     @Test
-    @DisplayName("Should convert simple entries into runtime simple loot entries")
+    @DisplayName("Should convert simple entries into runtime loot entries with quantity modifiers")
     void shouldConvertSimpleEntry() {
         LootEntryConfig config = entry("SIMPLE", "Gold_Coin", "WEAPON", 1, 1, 2, 4, 5.0, 0, 0);
 
-        LootEntry.Simple simple = assertInstanceOf(LootEntry.Simple.class, config.toLootEntry());
+        LootEntry entry = config.toLootEntry();
+        LootModifier.Quantity quantity = assertInstanceOf(LootModifier.Quantity.class, entry.modifiers().getFirst());
 
-        assertEquals("Gold_Coin", simple.itemId());
-        assertEquals(2, simple.quantityMin());
-        assertEquals(4, simple.quantityMax());
-        assertEquals(5.0, simple.weight());
-        assertNull(simple.minNpcLevel());
-        assertNull(simple.maxNpcLevel());
+        assertEquals("Gold_Coin", entry.itemId());
+        assertEquals(2, quantity.minQuantity());
+        assertEquals(4, quantity.maxQuantity());
+        assertEquals(5.0, entry.weight());
+        assertTrue(entry.conditions().isEmpty());
     }
 
     @Test
-    @DisplayName("Should convert leveled weapon entries into runtime leveled loot entries")
+    @DisplayName("Should convert leveled weapon entries into runtime loot entries with gear modifiers")
     void shouldConvertLeveledWeaponEntry() {
         LootEntryConfig config = entry("LEVELED", "Weapon_Sword_Iron", "WEAPON", 18, 22, 1, 1, 2.5, 0, 0);
 
-        LootEntry.Leveled leveled = assertInstanceOf(LootEntry.Leveled.class, config.toLootEntry());
+        LootEntry entry = config.toLootEntry();
+        LootModifier.GearLevel leveled = assertInstanceOf(LootModifier.GearLevel.class, entry.modifiers().getFirst());
 
-        assertEquals("Weapon_Sword_Iron", leveled.itemId());
+        assertEquals("Weapon_Sword_Iron", entry.itemId());
         assertEquals(GearType.WEAPON, leveled.gearType());
-        assertEquals(18, leveled.gearLevelMin());
-        assertEquals(22, leveled.gearLevelMax());
+        assertEquals(18, leveled.minLevel());
+        assertEquals(22, leveled.maxLevel());
     }
 
     @Test
-    @DisplayName("Should convert leveled armor entries into runtime leveled loot entries")
+    @DisplayName("Should convert leveled armor entries into runtime loot entries with armor gear modifiers")
     void shouldConvertLeveledArmorEntry() {
         LootEntryConfig config = entry("LEVELED", "Armor_Iron_Chest", "ARMOR", 18, 22, 1, 1, 1.5, 0, 0);
 
-        LootEntry.Leveled leveled = assertInstanceOf(LootEntry.Leveled.class, config.toLootEntry());
+        LootEntry entry = config.toLootEntry();
+        LootModifier.GearLevel leveled = assertInstanceOf(LootModifier.GearLevel.class, entry.modifiers().getFirst());
 
         assertEquals(GearType.ARMOR, leveled.gearType());
-        assertEquals("Armor_Iron_Chest", leveled.itemId());
+        assertEquals("Armor_Iron_Chest", entry.itemId());
     }
 
     @Test
-    @DisplayName("Should map zero NPC-level bounds to null")
+    @DisplayName("Should omit NPC-level conditions when bounds are zero")
     void shouldMapZeroBoundsToNull() {
         LootEntryConfig config = entry("SIMPLE", "Gold_Coin", "WEAPON", 1, 1, 1, 3, 5.0, 0, 0);
 
-        LootEntry.Simple simple = assertInstanceOf(LootEntry.Simple.class, config.toLootEntry());
+        LootEntry entry = config.toLootEntry();
 
-        assertNull(simple.minNpcLevel());
-        assertNull(simple.maxNpcLevel());
+        assertTrue(entry.conditions().isEmpty());
     }
 
     @Test
-    @DisplayName("Should preserve positive NPC-level bounds")
+    @DisplayName("Should preserve positive NPC-level bounds as conditions")
     void shouldPreservePositiveBounds() {
         LootEntryConfig config = entry("SIMPLE", "Gold_Coin", "WEAPON", 1, 1, 1, 3, 5.0, 10, 20);
 
-        LootEntry.Simple simple = assertInstanceOf(LootEntry.Simple.class, config.toLootEntry());
+        LootEntry entry = config.toLootEntry();
+        LootCondition.NpcLevelRange condition = assertInstanceOf(
+                LootCondition.NpcLevelRange.class,
+                entry.conditions().getFirst()
+        );
 
-        assertEquals(10, simple.minNpcLevel());
-        assertEquals(20, simple.maxNpcLevel());
+        assertEquals(10, condition.minLevel());
+        assertEquals(20, condition.maxLevel());
+    }
+
+    @Test
+    @DisplayName("Should preserve positive floor-level bounds as conditions")
+    void shouldPreservePositiveFloorBounds() {
+        LootEntryConfig config = entry("SIMPLE", "Gold_Coin", "WEAPON", 1, 1, 1, 3, 5.0, 0, 0);
+        setField(config, "minFloorLevel", 5);
+        setField(config, "maxFloorLevel", 8);
+
+        LootEntry entry = config.toLootEntry();
+        LootCondition.FloorLevelRange condition = assertInstanceOf(
+                LootCondition.FloorLevelRange.class,
+                entry.conditions().getFirst()
+        );
+
+        assertEquals(5, condition.minLevel());
+        assertEquals(8, condition.maxLevel());
     }
 
     @Test
