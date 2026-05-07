@@ -19,7 +19,6 @@ import com.hypixel.hytale.server.core.modules.entity.damage.Damage;
 import com.hypixel.hytale.server.core.modules.entity.damage.DamageCause;
 import com.hypixel.hytale.server.core.modules.entity.damage.DamageEventSystem;
 import com.hypixel.hytale.server.core.modules.entity.damage.DamageModule;
-import com.hypixel.hytale.server.core.modules.entitystats.modifier.StaticModifier;
 import com.hypixel.hytale.server.core.modules.entity.damage.ResistanceModifier;
 import com.hypixel.hytale.server.core.universe.world.storage.EntityStore;
 
@@ -47,6 +46,7 @@ public class CombatScalingSystem extends DamageEventSystem {
     private static final HytaleLogger LOGGER = HytaleLogger.forEnclosingClass();
 
     @Nonnull
+    @SuppressWarnings("deprecation")
     private static final Query<EntityStore> QUERY = AllLegacyLivingEntityTypesQuery.INSTANCE;
 
     @Nonnull
@@ -201,8 +201,9 @@ public class CombatScalingSystem extends DamageEventSystem {
 
             float baseResist = 0f;
             Map<DamageCause, ResistanceModifier[]> resistMap = itemArmor.getDamageResistanceValues();
-            if (resistMap != null) {
-                ResistanceModifier[] physMods = resistMap.get(DamageCause.PHYSICAL);
+            DamageCause physicalCause = DamageCause.getAssetMap().getAsset("Physical");
+            if (resistMap != null && physicalCause != null) {
+                ResistanceModifier[] physMods = resistMap.get(physicalCause);
                 if (physMods != null) {
                     for (ResistanceModifier mod : physMods) {
                         baseResist += mod.getAmount();

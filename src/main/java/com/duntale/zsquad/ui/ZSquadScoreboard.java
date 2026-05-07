@@ -21,7 +21,7 @@ import javax.annotation.Nullable;
  * <ul>
  *   <li>{@code show()} on player join — renders the initial UI from template</li>
  *   <li>{@code updateData(...)} on gold/XP/stat changes — incremental updates</li>
- *   <li>{@code HudManager.setCustomHud(null)} on leave — removes the HUD</li>
+ *   <li>{@code HudManager.removeCustomHud(..., "default")} on leave — removes the HUD</li>
  * </ul>
  */
 public class ZSquadScoreboard extends CustomUIHud {

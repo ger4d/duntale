@@ -37,6 +37,7 @@ public class CompanionDeathProtectionSystem extends DamageEventSystem {
     private static final float MIN_COMPANION_HP = 1.0f;
 
     @Nonnull
+    @SuppressWarnings("deprecation")
     private static final Query<EntityStore> QUERY = AllLegacyLivingEntityTypesQuery.INSTANCE;
 
     @Nonnull

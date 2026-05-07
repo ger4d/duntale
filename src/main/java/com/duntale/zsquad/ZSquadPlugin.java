@@ -730,7 +730,7 @@ public class ZSquadPlugin extends JavaPlugin {
 
         UUID uuid = playerRef.getUuid();
         ZSquadScoreboard scoreboard = new ZSquadScoreboard(playerRef);
-        player.getHudManager().setCustomHud(playerRef, scoreboard);
+        player.getHudManager().addCustomHud(playerRef, scoreboard);
         scoreboard.updateData(buildScoreboardData(uuid));
         scoreboards.put(uuid, scoreboard);
 

@@ -42,6 +42,7 @@ public class ClickToMoveKnockbackSystem extends DamageEventSystem {
     private static final double KNOCKBACK_MODIFIER = 0.08;
 
     @Nonnull
+    @SuppressWarnings("deprecation")
     private static final Query<EntityStore> QUERY = AllLegacyLivingEntityTypesQuery.INSTANCE;
 
     @Nonnull

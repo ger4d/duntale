@@ -38,9 +38,8 @@ import java.util.UUID;
  */
 public class RpgDamageScalingSystem extends DamageEventSystem {
 
-    private static final HytaleLogger LOGGER = HytaleLogger.forEnclosingClass();
-
     @Nonnull
+    @SuppressWarnings("deprecation")
     private static final Query<EntityStore> QUERY = AllLegacyLivingEntityTypesQuery.INSTANCE;
 
     @Nonnull

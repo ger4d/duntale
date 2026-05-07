@@ -41,8 +41,7 @@ import java.util.stream.Stream;
  * Read-only asset catalog populated from the Hytale runtime asset registry.
  *
  * <p>Scans {@link Item#getAssetMap()} at startup to build in-memory indexes for
- * weapons, armor, and (lazily) monsters. Eliminates the need for an external
- * {@code scaling.db} SQLite database and the Python asset-parsing pipeline.
+ * weapons, armor, and (lazily) monsters.
  *
  * <p>All runtime scaling computation lives in {@link CombatScaling}.
  * This class only serves the asset catalog role — no scaling math, no hot-path queries.
@@ -377,17 +376,19 @@ public class AssetCatalog {
         float physResist = 0f;
         float projResist = 0f;
         Map<DamageCause, ResistanceModifier[]> drMap = armorConfig.getDamageResistanceValues();
+        DamageCause physicalCause = DamageCause.getAssetMap().getAsset("Physical");
+        DamageCause projectileCause = DamageCause.getAssetMap().getAsset("Projectile");
         if (drMap != null) {
-            if (DamageCause.PHYSICAL != null) {
-                ResistanceModifier[] physMods = drMap.get(DamageCause.PHYSICAL);
+            if (physicalCause != null) {
+                ResistanceModifier[] physMods = drMap.get(physicalCause);
                 if (physMods != null) {
                     for (ResistanceModifier mod : physMods) {
                         physResist += (float) mod.getAmount();
                     }
                 }
             }
-            if (DamageCause.PROJECTILE != null) {
-                ResistanceModifier[] projMods = drMap.get(DamageCause.PROJECTILE);
+            if (projectileCause != null) {
+                ResistanceModifier[] projMods = drMap.get(projectileCause);
                 if (projMods != null) {
                     for (ResistanceModifier mod : projMods) {
                         projResist += (float) mod.getAmount();
