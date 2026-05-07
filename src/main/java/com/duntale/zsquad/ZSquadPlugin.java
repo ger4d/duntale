@@ -28,6 +28,7 @@ import com.duntale.dungeongen.generator.GenerationOrchestrator;
 import com.duntale.dungeongen.util.BlockResolver;
 import com.duntale.zsquad.economy.CurrencyDrop;
 import com.duntale.zsquad.economy.GoldCommand;
+import com.duntale.zsquad.economy.InventoryGoldConversionSystem;
 import com.duntale.zsquad.economy.GoldPickupSystem;
 import com.duntale.zsquad.economy.GoldRepository;
 import com.duntale.zsquad.economy.GoldService;
@@ -478,6 +479,7 @@ public class ZSquadPlugin extends JavaPlugin {
         this.getEntityStoreRegistry().registerSystem(new ClickToMoveKnockbackSystem(this.clickToMoveManager));
         this.getEntityStoreRegistry().registerSystem(new NpcLootSystem(lootRollService, rpgService, progressionService));
         this.getEntityStoreRegistry().registerSystem(new GoldPickupSystem(goldService));
+        this.getEntityStoreRegistry().registerSystem(new InventoryGoldConversionSystem(goldService));
         this.getEntityStoreRegistry().registerSystem(new RpgDamageScalingSystem(rpgService));
         this.getEntityStoreRegistry().registerSystem(new DungeonDeathScreenSystem(dungeonRespawnService));
         this.getEntityStoreRegistry().registerSystem(
