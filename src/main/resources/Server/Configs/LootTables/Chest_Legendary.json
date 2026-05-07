@@ -5,56 +5,299 @@
     {
       "Type": "SIMPLE",
       "ItemId": "Gold_Coin",
-      "Weight": 4.5,
-      "QuantityMin": 60,
-      "QuantityMax": 100
+      "Weight": 0.9,
+      "QuantityMin": 350,
+      "QuantityMax": 500,
+      "MaxFloorLevel": 15
     },
     {
       "Type": "LEVELED",
-      "ItemId": "Weapon_Axe_Thorium",
+      "ItemId": "Weapon_Mace_Copper",
       "Weight": 1.6,
       "GearType": "WEAPON",
-      "GearLevelMin": 34,
-      "GearLevelMax": 40,
-      "MinFloorLevel": 24,
-      "MaxFloorLevel": 36
+      "GearLevelMin": 10,
+      "GearLevelMax": 14,
+      "MinFloorLevel": 2,
+      "MaxFloorLevel": 15
     },
     {
       "Type": "LEVELED",
-      "ItemId": "Weapon_Axe_Cobalt",
+      "ItemId": "Weapon_Battleaxe_Copper",
       "Weight": 1.7,
       "GearType": "WEAPON",
-      "GearLevelMin": 38,
-      "GearLevelMax": 46,
-      "MinFloorLevel": 30
+      "GearLevelMin": 10,
+      "GearLevelMax": 14,
+      "MinFloorLevel": 2,
+      "MaxFloorLevel": 15
     },
     {
       "Type": "LEVELED",
-      "ItemId": "Armor_Steel_Ancient_Chest",
+      "ItemId": "Weapon_Longsword_Copper",
       "Weight": 1.4,
+      "GearType": "WEAPON",
+      "GearLevelMin": 9,
+      "GearLevelMax": 13,
+      "MinFloorLevel": 2,
+      "MaxFloorLevel": 15
+    },
+    {
+      "Type": "LEVELED",
+      "ItemId": "Armor_Copper_Chest",
+      "Weight": 1.5,
       "GearType": "ARMOR",
-      "GearLevelMin": 34,
-      "GearLevelMax": 40,
-      "MinFloorLevel": 24,
-      "MaxFloorLevel": 36
+      "GearLevelMin": 9,
+      "GearLevelMax": 13,
+      "MinFloorLevel": 3,
+      "MaxFloorLevel": 15
+    },
+    {
+      "Type": "LEVELED",
+      "ItemId": "Armor_Leather_Soft_Chest",
+      "Weight": 1.2,
+      "GearType": "ARMOR",
+      "GearLevelMin": 7,
+      "GearLevelMax": 11,
+      "MinFloorLevel": 1,
+      "MaxFloorLevel": 15
+    },
+    {
+      "Type": "LEVELED",
+      "ItemId": "Armor_Cloth_Wool_Chest",
+      "Weight": 1.2,
+      "GearType": "ARMOR",
+      "GearLevelMin": 7,
+      "GearLevelMax": 11,
+      "MinFloorLevel": 1,
+      "MaxFloorLevel": 15
+    },
+    {
+      "Type": "LEVELED",
+      "ItemId": "Weapon_Shortbow_Copper",
+      "Weight": 1.3,
+      "GearType": "WEAPON",
+      "GearLevelMin": 10,
+      "GearLevelMax": 14,
+      "MinFloorLevel": 4,
+      "MaxFloorLevel": 15
+    },
+    {
+      "Type": "LEVELED",
+      "ItemId": "Armor_Copper_Head",
+      "Weight": 1.3,
+      "GearType": "ARMOR",
+      "GearLevelMin": 9,
+      "GearLevelMax": 13,
+      "MinFloorLevel": 5,
+      "MaxFloorLevel": 15
+    },
+    {
+      "Type": "SIMPLE",
+      "ItemId": "Gold_Coin",
+      "Weight": 0.8,
+      "QuantityMin": 700,
+      "QuantityMax": 1000,
+      "MinFloorLevel": 16,
+      "MaxFloorLevel": 30
+    },
+    {
+      "Type": "LEVELED",
+      "ItemId": "Weapon_Crossbow_Iron",
+      "Weight": 1.6,
+      "GearType": "WEAPON",
+      "GearLevelMin": 22,
+      "GearLevelMax": 28,
+      "MinFloorLevel": 16,
+      "MaxFloorLevel": 30
+    },
+    {
+      "Type": "LEVELED",
+      "ItemId": "Weapon_Mace_Iron",
+      "Weight": 1.7,
+      "GearType": "WEAPON",
+      "GearLevelMin": 24,
+      "GearLevelMax": 30,
+      "MinFloorLevel": 20,
+      "MaxFloorLevel": 30
+    },
+    {
+      "Type": "LEVELED",
+      "ItemId": "Weapon_Mace_Stone_Trork",
+      "Weight": 1.6,
+      "GearType": "WEAPON",
+      "GearLevelMin": 25,
+      "GearLevelMax": 30,
+      "MinFloorLevel": 22,
+      "MaxFloorLevel": 30
+    },
+    {
+      "Type": "LEVELED",
+      "ItemId": "Weapon_Sword_Bone",
+      "Weight": 1.4,
+      "GearType": "WEAPON",
+      "GearLevelMin": 22,
+      "GearLevelMax": 28,
+      "MinFloorLevel": 16,
+      "MaxFloorLevel": 30
+    },
+    {
+      "Type": "LEVELED",
+      "ItemId": "Armor_Bronze_Ornate_Chest",
+      "Weight": 1.3,
+      "GearType": "ARMOR",
+      "GearLevelMin": 22,
+      "GearLevelMax": 28,
+      "MinFloorLevel": 16,
+      "MaxFloorLevel": 28
+    },
+    {
+      "Type": "LEVELED",
+      "ItemId": "Armor_Steel_Chest",
+      "Weight": 1.3,
+      "GearType": "ARMOR",
+      "GearLevelMin": 24,
+      "GearLevelMax": 30,
+      "MinFloorLevel": 22,
+      "MaxFloorLevel": 30
+    },
+    {
+      "Type": "SIMPLE",
+      "ItemId": "Gold_Coin",
+      "Weight": 0.7,
+      "QuantityMin": 1400,
+      "QuantityMax": 2000,
+      "MinFloorLevel": 31,
+      "MaxFloorLevel": 45
+    },
+    {
+      "Type": "LEVELED",
+      "ItemId": "Weapon_Battleaxe_Scythe_Void",
+      "Weight": 1.8,
+      "GearType": "WEAPON",
+      "GearLevelMin": 38,
+      "GearLevelMax": 44,
+      "MinFloorLevel": 35,
+      "MaxFloorLevel": 45
+    },
+    {
+      "Type": "LEVELED",
+      "ItemId": "Weapon_Longsword_Flame",
+      "Weight": 1.4,
+      "GearType": "WEAPON",
+      "GearLevelMin": 36,
+      "GearLevelMax": 42,
+      "MinFloorLevel": 33,
+      "MaxFloorLevel": 45
+    },
+    {
+      "Type": "LEVELED",
+      "ItemId": "Weapon_Longsword_Spectral",
+      "Weight": 1.4,
+      "GearType": "WEAPON",
+      "GearLevelMin": 36,
+      "GearLevelMax": 42,
+      "MinFloorLevel": 33,
+      "MaxFloorLevel": 45
     },
     {
       "Type": "LEVELED",
       "ItemId": "Armor_Cobalt_Chest",
-      "Weight": 1.5,
+      "Weight": 1.3,
       "GearType": "ARMOR",
-      "GearLevelMin": 38,
-      "GearLevelMax": 45,
-      "MinFloorLevel": 30
+      "GearLevelMin": 36,
+      "GearLevelMax": 42,
+      "MinFloorLevel": 31,
+      "MaxFloorLevel": 45
     },
     {
       "Type": "LEVELED",
-      "ItemId": "Armor_Adamantite_Head",
+      "ItemId": "Armor_Thorium_Chest",
+      "Weight": 1.3,
+      "GearType": "ARMOR",
+      "GearLevelMin": 36,
+      "GearLevelMax": 42,
+      "MinFloorLevel": 31,
+      "MaxFloorLevel": 45
+    },
+    {
+      "Type": "LEVELED",
+      "ItemId": "Armor_Adamantite_Chest",
       "Weight": 1.2,
       "GearType": "ARMOR",
-      "GearLevelMin": 42,
-      "GearLevelMax": 48,
-      "MinFloorLevel": 34
+      "GearLevelMin": 38,
+      "GearLevelMax": 44,
+      "MinFloorLevel": 38,
+      "MaxFloorLevel": 45
+    },
+    {
+      "Type": "SIMPLE",
+      "ItemId": "Gold_Coin",
+      "Weight": 0.6,
+      "QuantityMin": 2200,
+      "QuantityMax": 3200,
+      "MinFloorLevel": 46
+    },
+    {
+      "Type": "LEVELED",
+      "ItemId": "Weapon_Mace_Mithril",
+      "Weight": 1.6,
+      "GearType": "WEAPON",
+      "GearLevelMin": 50,
+      "GearLevelMax": 56,
+      "MinFloorLevel": 46
+    },
+    {
+      "Type": "LEVELED",
+      "ItemId": "Weapon_Axe_Mithril",
+      "Weight": 1.5,
+      "GearType": "WEAPON",
+      "GearLevelMin": 50,
+      "GearLevelMax": 56,
+      "MinFloorLevel": 46
+    },
+    {
+      "Type": "LEVELED",
+      "ItemId": "Weapon_Longsword_Mithril",
+      "Weight": 1.5,
+      "GearType": "WEAPON",
+      "GearLevelMin": 50,
+      "GearLevelMax": 56,
+      "MinFloorLevel": 46
+    },
+    {
+      "Type": "LEVELED",
+      "ItemId": "Weapon_Club_Onyxium",
+      "Weight": 1.4,
+      "GearType": "WEAPON",
+      "GearLevelMin": 54,
+      "GearLevelMax": 60,
+      "MinFloorLevel": 50
+    },
+    {
+      "Type": "LEVELED",
+      "ItemId": "Weapon_Axe_Onyxium",
+      "Weight": 1.4,
+      "GearType": "WEAPON",
+      "GearLevelMin": 54,
+      "GearLevelMax": 60,
+      "MinFloorLevel": 50
+    },
+    {
+      "Type": "LEVELED",
+      "ItemId": "Armor_Mithril_Chest",
+      "Weight": 1.3,
+      "GearType": "ARMOR",
+      "GearLevelMin": 50,
+      "GearLevelMax": 56,
+      "MinFloorLevel": 46
+    },
+    {
+      "Type": "LEVELED",
+      "ItemId": "Armor_Mithril_Legs",
+      "Weight": 1.2,
+      "GearType": "ARMOR",
+      "GearLevelMin": 48,
+      "GearLevelMax": 54,
+      "MinFloorLevel": 46
     }
   ]
 }

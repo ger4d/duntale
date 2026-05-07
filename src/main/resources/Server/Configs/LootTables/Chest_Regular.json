@@ -5,14 +5,15 @@
     {
       "Type": "SIMPLE",
       "ItemId": "Gold_Coin",
-      "Weight": 6.0,
-      "QuantityMin": 12,
-      "QuantityMax": 24
+      "Weight": 5.2,
+      "QuantityMin": 110,
+      "QuantityMax": 170,
+      "MaxFloorLevel": 15
     },
     {
       "Type": "LEVELED",
       "ItemId": "Weapon_Axe_Crude",
-      "Weight": 2.2,
+      "Weight": 1.9,
       "GearType": "WEAPON",
       "GearLevelMin": 2,
       "GearLevelMax": 6,
@@ -20,40 +21,427 @@
     },
     {
       "Type": "LEVELED",
+      "ItemId": "Weapon_Longsword_Crude",
+      "Weight": 1.7,
+      "GearType": "WEAPON",
+      "GearLevelMin": 4,
+      "GearLevelMax": 8,
+      "MaxFloorLevel": 10
+    },
+    {
+      "Type": "LEVELED",
+      "ItemId": "Weapon_Shield_Copper",
+      "Weight": 1.6,
+      "GearType": "WEAPON",
+      "GearLevelMin": 5,
+      "GearLevelMax": 9,
+      "MinFloorLevel": 4,
+      "MaxFloorLevel": 15
+    },
+    {
+      "Type": "LEVELED",
+      "ItemId": "Weapon_Shortbow_Copper",
+      "Weight": 1.5,
+      "GearType": "WEAPON",
+      "GearLevelMin": 6,
+      "GearLevelMax": 10,
+      "MinFloorLevel": 6,
+      "MaxFloorLevel": 15
+    },
+    {
+      "Type": "LEVELED",
       "ItemId": "Weapon_Spear_Copper",
-      "Weight": 2.0,
+      "Weight": 1.4,
       "GearType": "WEAPON",
       "GearLevelMin": 7,
-      "GearLevelMax": 12,
+      "GearLevelMax": 11,
       "MinFloorLevel": 7,
+      "MaxFloorLevel": 15
+    },
+    {
+      "Type": "LEVELED",
+      "ItemId": "Armor_Leather_Soft_Head",
+      "Weight": 1.5,
+      "GearType": "ARMOR",
+      "GearLevelMin": 2,
+      "GearLevelMax": 6,
+      "MaxFloorLevel": 6
+    },
+    {
+      "Type": "LEVELED",
+      "ItemId": "Armor_Cloth_Wool_Legs",
+      "Weight": 1.6,
+      "GearType": "ARMOR",
+      "GearLevelMin": 4,
+      "GearLevelMax": 8,
+      "MinFloorLevel": 1,
       "MaxFloorLevel": 12
     },
     {
       "Type": "LEVELED",
-      "ItemId": "Weapon_Sword_Iron",
-      "Weight": 1.6,
-      "GearType": "WEAPON",
-      "GearLevelMin": 13,
-      "GearLevelMax": 18,
-      "MinFloorLevel": 13
+      "ItemId": "Armor_Cloth_Wool_Chest",
+      "Weight": 1.4,
+      "GearType": "ARMOR",
+      "GearLevelMin": 4,
+      "GearLevelMax": 8,
+      "MinFloorLevel": 1,
+      "MaxFloorLevel": 12
     },
     {
       "Type": "LEVELED",
       "ItemId": "Armor_Leather_Soft_Chest",
-      "Weight": 1.8,
+      "Weight": 1.4,
       "GearType": "ARMOR",
-      "GearLevelMin": 2,
+      "GearLevelMin": 5,
+      "GearLevelMax": 9,
+      "MinFloorLevel": 2,
+      "MaxFloorLevel": 13
+    },
+    {
+      "Type": "LEVELED",
+      "ItemId": "Armor_Leather_Soft_Legs",
+      "Weight": 1.3,
+      "GearType": "ARMOR",
+      "GearLevelMin": 4,
       "GearLevelMax": 8,
-      "MaxFloorLevel": 8
+      "MinFloorLevel": 1,
+      "MaxFloorLevel": 13
+    },
+    {
+      "Type": "LEVELED",
+      "ItemId": "Armor_Copper_Chest",
+      "Weight": 1.4,
+      "GearType": "ARMOR",
+      "GearLevelMin": 6,
+      "GearLevelMax": 10,
+      "MinFloorLevel": 5,
+      "MaxFloorLevel": 15
     },
     {
       "Type": "LEVELED",
       "ItemId": "Armor_Copper_Head",
+      "Weight": 1.3,
+      "GearType": "ARMOR",
+      "GearLevelMin": 7,
+      "GearLevelMax": 11,
+      "MinFloorLevel": 7,
+      "MaxFloorLevel": 15
+    },
+    {
+      "Type": "SIMPLE",
+      "ItemId": "Gold_Coin",
+      "Weight": 5.0,
+      "QuantityMin": 240,
+      "QuantityMax": 360,
+      "MinFloorLevel": 16,
+      "MaxFloorLevel": 30
+    },
+    {
+      "Type": "LEVELED",
+      "ItemId": "Weapon_Spear_Bronze",
+      "Weight": 1.8,
+      "GearType": "WEAPON",
+      "GearLevelMin": 16,
+      "GearLevelMax": 22,
+      "MinFloorLevel": 16,
+      "MaxFloorLevel": 24
+    },
+    {
+      "Type": "LEVELED",
+      "ItemId": "Weapon_Shield_Rusty",
+      "Weight": 1.5,
+      "GearType": "WEAPON",
+      "GearLevelMin": 16,
+      "GearLevelMax": 22,
+      "MinFloorLevel": 16,
+      "MaxFloorLevel": 24
+    },
+    {
+      "Type": "LEVELED",
+      "ItemId": "Weapon_Shield_Scrap",
+      "Weight": 1.6,
+      "GearType": "WEAPON",
+      "GearLevelMin": 18,
+      "GearLevelMax": 24,
+      "MinFloorLevel": 18,
+      "MaxFloorLevel": 30
+    },
+    {
+      "Type": "LEVELED",
+      "ItemId": "Weapon_Spear_Iron",
+      "Weight": 1.5,
+      "GearType": "WEAPON",
+      "GearLevelMin": 18,
+      "GearLevelMax": 24,
+      "MinFloorLevel": 18,
+      "MaxFloorLevel": 28
+    },
+    {
+      "Type": "LEVELED",
+      "ItemId": "Weapon_Spear_Bone",
+      "Weight": 1.4,
+      "GearType": "WEAPON",
+      "GearLevelMin": 22,
+      "GearLevelMax": 28,
+      "MinFloorLevel": 20,
+      "MaxFloorLevel": 30
+    },
+    {
+      "Type": "LEVELED",
+      "ItemId": "Armor_Bronze_Head",
+      "Weight": 1.6,
+      "GearType": "ARMOR",
+      "GearLevelMin": 16,
+      "GearLevelMax": 20,
+      "MinFloorLevel": 16,
+      "MaxFloorLevel": 22
+    },
+    {
+      "Type": "LEVELED",
+      "ItemId": "Armor_Iron_Head",
+      "Weight": 1.5,
+      "GearType": "ARMOR",
+      "GearLevelMin": 20,
+      "GearLevelMax": 24,
+      "MinFloorLevel": 20,
+      "MaxFloorLevel": 28
+    },
+    {
+      "Type": "LEVELED",
+      "ItemId": "Armor_Steel_Head",
       "Weight": 1.4,
       "GearType": "ARMOR",
-      "GearLevelMin": 9,
-      "GearLevelMax": 15,
-      "MinFloorLevel": 9
+      "GearLevelMin": 22,
+      "GearLevelMax": 28,
+      "MinFloorLevel": 22,
+      "MaxFloorLevel": 30
+    },
+    {
+      "Type": "LEVELED",
+      "ItemId": "Armor_Iron_Legs",
+      "Weight": 1.3,
+      "GearType": "ARMOR",
+      "GearLevelMin": 20,
+      "GearLevelMax": 26,
+      "MinFloorLevel": 20,
+      "MaxFloorLevel": 30
+    },
+    {
+      "Type": "LEVELED",
+      "ItemId": "Armor_Bronze_Legs",
+      "Weight": 1.4,
+      "GearType": "ARMOR",
+      "GearLevelMin": 18,
+      "GearLevelMax": 24,
+      "MinFloorLevel": 18,
+      "MaxFloorLevel": 30
+    },
+    {
+      "Type": "SIMPLE",
+      "ItemId": "Gold_Coin",
+      "Weight": 4.8,
+      "QuantityMin": 460,
+      "QuantityMax": 640,
+      "MinFloorLevel": 31,
+      "MaxFloorLevel": 45
+    },
+    {
+      "Type": "LEVELED",
+      "ItemId": "Weapon_Shield_Cobalt",
+      "Weight": 1.6,
+      "GearType": "WEAPON",
+      "GearLevelMin": 30,
+      "GearLevelMax": 36,
+      "MinFloorLevel": 31,
+      "MaxFloorLevel": 40
+    },
+    {
+      "Type": "LEVELED",
+      "ItemId": "Weapon_Staff_Cobalt",
+      "Weight": 1.4,
+      "GearType": "WEAPON",
+      "GearLevelMin": 31,
+      "GearLevelMax": 36,
+      "MinFloorLevel": 31,
+      "MaxFloorLevel": 40
+    },
+    {
+      "Type": "LEVELED",
+      "ItemId": "Weapon_Staff_Doomed",
+      "Weight": 1.3,
+      "GearType": "WEAPON",
+      "GearLevelMin": 35,
+      "GearLevelMax": 40,
+      "MinFloorLevel": 35,
+      "MaxFloorLevel": 45
+    },
+    {
+      "Type": "LEVELED",
+      "ItemId": "Weapon_Shield_Adamantite",
+      "Weight": 1.4,
+      "GearType": "WEAPON",
+      "GearLevelMin": 36,
+      "GearLevelMax": 42,
+      "MinFloorLevel": 35,
+      "MaxFloorLevel": 45
+    },
+    {
+      "Type": "LEVELED",
+      "ItemId": "Armor_Steel_Ancient_Head",
+      "Weight": 1.6,
+      "GearType": "ARMOR",
+      "GearLevelMin": 31,
+      "GearLevelMax": 36,
+      "MinFloorLevel": 31,
+      "MaxFloorLevel": 40
+    },
+    {
+      "Type": "LEVELED",
+      "ItemId": "Armor_Cobalt_Hands",
+      "Weight": 1.5,
+      "GearType": "ARMOR",
+      "GearLevelMin": 32,
+      "GearLevelMax": 38,
+      "MinFloorLevel": 31,
+      "MaxFloorLevel": 45
+    },
+    {
+      "Type": "LEVELED",
+      "ItemId": "Armor_Cobalt_Head",
+      "Weight": 1.4,
+      "GearType": "ARMOR",
+      "GearLevelMin": 32,
+      "GearLevelMax": 38,
+      "MinFloorLevel": 31,
+      "MaxFloorLevel": 40
+    },
+    {
+      "Type": "LEVELED",
+      "ItemId": "Armor_Thorium_Hands",
+      "Weight": 1.4,
+      "GearType": "ARMOR",
+      "GearLevelMin": 34,
+      "GearLevelMax": 40,
+      "MinFloorLevel": 34,
+      "MaxFloorLevel": 45
+    },
+    {
+      "Type": "LEVELED",
+      "ItemId": "Armor_Adamantite_Hands",
+      "Weight": 1.3,
+      "GearType": "ARMOR",
+      "GearLevelMin": 36,
+      "GearLevelMax": 42,
+      "MinFloorLevel": 36,
+      "MaxFloorLevel": 45
+    },
+    {
+      "Type": "LEVELED",
+      "ItemId": "Armor_Cloth_Silk_Legs",
+      "Weight": 1.4,
+      "GearType": "ARMOR",
+      "GearLevelMin": 34,
+      "GearLevelMax": 40,
+      "MinFloorLevel": 34,
+      "MaxFloorLevel": 45
+    },
+    {
+      "Type": "SIMPLE",
+      "ItemId": "Gold_Coin",
+      "Weight": 4.6,
+      "QuantityMin": 700,
+      "QuantityMax": 980,
+      "MinFloorLevel": 46
+    },
+    {
+      "Type": "LEVELED",
+      "ItemId": "Weapon_Spear_Mithril",
+      "Weight": 1.6,
+      "GearType": "WEAPON",
+      "GearLevelMin": 46,
+      "GearLevelMax": 52,
+      "MinFloorLevel": 46
+    },
+    {
+      "Type": "LEVELED",
+      "ItemId": "Weapon_Shield_Mithril",
+      "Weight": 1.4,
+      "GearType": "WEAPON",
+      "GearLevelMin": 48,
+      "GearLevelMax": 54,
+      "MinFloorLevel": 46
+    },
+    {
+      "Type": "LEVELED",
+      "ItemId": "Weapon_Spear_Onyxium",
+      "Weight": 1.5,
+      "GearType": "WEAPON",
+      "GearLevelMin": 50,
+      "GearLevelMax": 56,
+      "MinFloorLevel": 50
+    },
+    {
+      "Type": "LEVELED",
+      "ItemId": "Weapon_Shield_Onyxium",
+      "Weight": 1.4,
+      "GearType": "WEAPON",
+      "GearLevelMin": 50,
+      "GearLevelMax": 56,
+      "MinFloorLevel": 50
+    },
+    {
+      "Type": "LEVELED",
+      "ItemId": "Weapon_Staff_Onyxium",
+      "Weight": 1.3,
+      "GearType": "WEAPON",
+      "GearLevelMin": 50,
+      "GearLevelMax": 56,
+      "MinFloorLevel": 50
+    },
+    {
+      "Type": "LEVELED",
+      "ItemId": "Armor_Onyxium_Head",
+      "Weight": 1.6,
+      "GearType": "ARMOR",
+      "GearLevelMin": 46,
+      "GearLevelMax": 52,
+      "MinFloorLevel": 46
+    },
+    {
+      "Type": "LEVELED",
+      "ItemId": "Armor_Mithril_Hands",
+      "Weight": 1.5,
+      "GearType": "ARMOR",
+      "GearLevelMin": 48,
+      "GearLevelMax": 54,
+      "MinFloorLevel": 46
+    },
+    {
+      "Type": "LEVELED",
+      "ItemId": "Armor_Mithril_Head",
+      "Weight": 1.4,
+      "GearType": "ARMOR",
+      "GearLevelMin": 48,
+      "GearLevelMax": 54,
+      "MinFloorLevel": 46
+    },
+    {
+      "Type": "LEVELED",
+      "ItemId": "Armor_Onyxium_Legs",
+      "Weight": 1.3,
+      "GearType": "ARMOR",
+      "GearLevelMin": 50,
+      "GearLevelMax": 56,
+      "MinFloorLevel": 50
+    },
+    {
+      "Type": "LEVELED",
+      "ItemId": "Armor_Onyxium_Chest",
+      "Weight": 1.3,
+      "GearType": "ARMOR",
+      "GearLevelMin": 50,
+      "GearLevelMax": 56,
+      "MinFloorLevel": 50
     }
   ]
 }
