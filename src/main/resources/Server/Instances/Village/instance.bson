@@ -4,19 +4,19 @@
   "ChunkStorage": {
     "Type": "Hytale"
   },
-  "GameMode": "Creative",
+  "GameMode": "Adventure",
   "IsPvpEnabled": false,
-  "IsSpawningNPC": true,
+  "IsSpawningNPC": false,
   "GameTime": "0001-01-01T07:00:00Z",
   "UUID": {
     "$binary": "AZKxiVAMQfWIS0qBsBfjzQ==",
     "$type": "04"
   },
-  "GameplayConfig": "Default",
+  "GameplayConfig": "Village",
   "IsCompassUpdating": true,
   "IsTicking": true,
-  "IsGameTimePaused": false,
-  "IsObjectiveMarkersEnabled": true,
+  "IsGameTimePaused": true,
+  "IsObjectiveMarkersEnabled": false,
   "IsAllNPCFrozen": false,
   "IsSavingPlayers": true,
   "WorldGen": {
@@ -26,15 +26,15 @@
   "SpawnProvider": {
     "Id": "Global",
     "SpawnPoint": {
-      "X": 0.5,
-      "Y": 80,
-      "Z": 0.5,
+      "X": 4.5,
+      "Y": 68,
+      "Z": 169.5,
       "Pitch": 0,
       "Yaw": 180,
       "Roll": 0.0
     }
   },
-  "IsSpawnMarkersEnabled": true,
+  "IsSpawnMarkersEnabled": false,
   "DeleteOnRemove": false,
   "Version": 2
 }

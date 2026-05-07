@@ -111,7 +111,6 @@ import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
 import java.nio.file.Path;
 import java.sql.SQLException;
-import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
@@ -177,8 +176,13 @@ public class ZSquadPlugin extends JavaPlugin {
     private DungeonInstanceService dungeonInstanceService;
     private DungeonRespawnService dungeonRespawnService;
     private DungeonInstancePortalTriggerService dungeonInstancePortalTriggerService;
+    private VillageWorldBootstrapService villageWorldBootstrapService;
     private final AtomicBoolean dungeonStartupRecoveryLoaded = new AtomicBoolean();
     private final AtomicBoolean dungeonPortalTriggerRegistered = new AtomicBoolean();
+    private final AtomicBoolean sharedWorldStartupStarted = new AtomicBoolean();
+    private final Object sharedWorldStartupLock = new Object();
+    @Nullable
+    private CompletableFuture<Void> sharedWorldStartupFuture;
 
     // HUD scoreboards per player
     private final Map<UUID, ZSquadScoreboard> scoreboards = new ConcurrentHashMap<>();
@@ -436,6 +440,7 @@ public class ZSquadPlugin extends JavaPlugin {
         }
         this.floorConfigService = new FloorConfigService(floorConfigRepository);
         this.floorConfigService.loadOnStartup();
+        this.villageWorldBootstrapService = new VillageWorldBootstrapService();
         this.dungeonInstanceService = new DungeonInstanceService(
                 databaseProvider,
                 dungeonInstanceRepository,
@@ -585,8 +590,7 @@ public class ZSquadPlugin extends JavaPlugin {
         if (universe != null) {
             CompletableFuture<Void> universeReady = universe.getUniverseReady();
             if (universeReady != null && universeReady.isDone()) {
-                loadDungeonInstancesAfterWorldsLoaded();
-                registerDungeonInstancePortalTrigger();
+                ensureSharedWorldStartup();
             }
         }
 
@@ -623,8 +627,45 @@ public class ZSquadPlugin extends JavaPlugin {
     // ── Player lifecycle events ──────────────────────────────────────
 
     private void onAllWorldsLoaded(@Nonnull AllWorldsLoadedEvent ignored) {
-        loadDungeonInstancesAfterWorldsLoaded();
-        registerDungeonInstancePortalTrigger();
+        ensureSharedWorldStartup();
+    }
+
+    @Nonnull
+    private CompletableFuture<Void> ensureSharedWorldStartup() {
+        CompletableFuture<Void> existingFuture = sharedWorldStartupFuture;
+        if (existingFuture != null) {
+            return existingFuture;
+        }
+
+        synchronized (sharedWorldStartupLock) {
+            existingFuture = sharedWorldStartupFuture;
+            if (existingFuture != null) {
+                return existingFuture;
+            }
+
+            if (!sharedWorldStartupStarted.compareAndSet(false, true)) {
+                return sharedWorldStartupFuture;
+            }
+
+            CompletableFuture<Void> future = villageWorldBootstrapService.ensureVillageWorldReady()
+                    .handle((world, throwable) -> {
+                        if (throwable != null) {
+                            LOGGER.atWarning()
+                                    .withCause(unwrapCompletionException(throwable))
+                                    .log(
+                                            "Failed to bootstrap village world %s; falling back to the server default world",
+                                            VillageWorldBootstrapService.WORLD_NAME
+                                    );
+                        }
+                        return null;
+                    })
+                    .thenRun(() -> {
+                        loadDungeonInstancesAfterWorldsLoaded();
+                        registerDungeonInstancePortalTrigger();
+                    });
+            sharedWorldStartupFuture = future;
+            return future;
+        }
     }
 
     private void loadDungeonInstancesAfterWorldsLoaded() {
@@ -1451,6 +1492,12 @@ public class ZSquadPlugin extends JavaPlugin {
 
     @Nullable
     private World resolveSharedWorld() {
+        if (villageWorldBootstrapService != null) {
+            World villageWorld = villageWorldBootstrapService.getLoadedVillageWorld();
+            if (villageWorld != null) {
+                return villageWorld;
+            }
+        }
         Universe universe = Universe.get();
         return universe != null ? universe.getDefaultWorld() : null;
     }

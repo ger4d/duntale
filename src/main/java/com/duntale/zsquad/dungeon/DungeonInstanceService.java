@@ -70,6 +70,7 @@ public class DungeonInstanceService {
 
     private static final HytaleLogger LOGGER = HytaleLogger.forEnclosingClass();
     private static final String INSTANCE_WORLD_PREFIX = "dungeon-";
+    private static final String SHARED_WORLD_NAME = "village";
     // Hytale filler cleanup scans 15 blocks below non-unit block hitboxes.
     private static final int DEFAULT_INSTANCE_ORIGIN_Y = 20;
 
@@ -1615,7 +1616,10 @@ public class DungeonInstanceService {
                         new IllegalStateException("Universe is not available for player evacuation"));
             }
 
-            World sharedWorld = universe.getDefaultWorld();
+            World sharedWorld = universe.getWorld(SHARED_WORLD_NAME);
+            if (sharedWorld == null) {
+                sharedWorld = universe.getDefaultWorld();
+            }
             if (sharedWorld == null) {
                 return CompletableFuture.failedFuture(
                         new IllegalStateException("No shared world available for player evacuation"));
