@@ -81,15 +81,18 @@ final class CustomizeCharacterPage extends InteractiveCustomUIPage<CustomizeChar
         static final BuilderCodec<CustomizeEventData> CODEC = BuilderCodec.builder(
                         CustomizeEventData.class,
                         CustomizeEventData::new)
-                .addField(new KeyedCodec<>("Action", Codec.STRING),
+            .append(new KeyedCodec<>("Action", Codec.STRING),
                         (event, value) -> event.action = value,
                         event -> event.action)
-                .addField(new KeyedCodec<>("@CompanionName", Codec.STRING),
+            .add()
+            .append(new KeyedCodec<>("@CompanionName", Codec.STRING),
                         (event, value) -> event.companionName = value,
                         event -> event.companionName)
-                .addField(new KeyedCodec<>("RoleName", Codec.STRING),
+            .add()
+            .append(new KeyedCodec<>("RoleName", Codec.STRING),
                         (event, value) -> event.roleName = value,
                         event -> event.roleName)
+            .add()
                 .build();
 
         String action;

@@ -7,6 +7,7 @@ import com.hypixel.hytale.server.core.asset.type.item.config.ItemQuality;
 import com.hypixel.hytale.server.core.modules.entity.damage.DamageCause;
 import com.hypixel.hytale.server.core.modules.entitystats.asset.EntityStatType;
 import com.hypixel.hytale.server.core.modules.entitystats.modifier.StaticModifier;
+import com.hypixel.hytale.server.core.modules.entity.damage.ResistanceModifier;
 import com.hypixel.hytale.server.core.modules.interaction.interaction.config.Interaction;
 import com.hypixel.hytale.server.core.modules.interaction.interaction.config.RootInteraction;
 import com.hypixel.hytale.server.core.modules.interaction.interaction.config.server.DamageEntityInteraction;
@@ -375,20 +376,20 @@ public class AssetCatalog {
         // Physical and projectile resistance
         float physResist = 0f;
         float projResist = 0f;
-        Map<DamageCause, StaticModifier[]> drMap = armorConfig.getDamageResistanceValues();
+        Map<DamageCause, ResistanceModifier[]> drMap = armorConfig.getDamageResistanceValues();
         if (drMap != null) {
             if (DamageCause.PHYSICAL != null) {
-                StaticModifier[] physMods = drMap.get(DamageCause.PHYSICAL);
+                ResistanceModifier[] physMods = drMap.get(DamageCause.PHYSICAL);
                 if (physMods != null) {
-                    for (StaticModifier mod : physMods) {
+                    for (ResistanceModifier mod : physMods) {
                         physResist += (float) mod.getAmount();
                     }
                 }
             }
             if (DamageCause.PROJECTILE != null) {
-                StaticModifier[] projMods = drMap.get(DamageCause.PROJECTILE);
+                ResistanceModifier[] projMods = drMap.get(DamageCause.PROJECTILE);
                 if (projMods != null) {
-                    for (StaticModifier mod : projMods) {
+                    for (ResistanceModifier mod : projMods) {
                         projResist += (float) mod.getAmount();
                     }
                 }

@@ -121,8 +121,8 @@ final class AttackHandler {
      * <p>Manually populates {@link Interaction#TARGET_BLOCK} and
      * {@link Interaction#TARGET_BLOCK_RAW} on the interaction context's meta store,
      * since server-initiated chains (unlike client packets) do not auto-populate
-     * these values. Uses {@link World#getBaseBlock(BlockPosition)} to resolve
-     * multi-block structures (e.g. double chests) to their base position.</p>
+    * these values. Resolves filler-backed multi-block structures (e.g. double
+    * chests) to their base position before starting the interaction chain.</p>
      *
      * @param state      per-player state (for throttle tracking)
      * @param store      entity store

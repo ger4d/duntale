@@ -20,6 +20,7 @@ import com.hypixel.hytale.server.core.modules.entity.damage.DamageCause;
 import com.hypixel.hytale.server.core.modules.entity.damage.DamageEventSystem;
 import com.hypixel.hytale.server.core.modules.entity.damage.DamageModule;
 import com.hypixel.hytale.server.core.modules.entitystats.modifier.StaticModifier;
+import com.hypixel.hytale.server.core.modules.entity.damage.ResistanceModifier;
 import com.hypixel.hytale.server.core.universe.world.storage.EntityStore;
 
 import javax.annotation.Nonnull;
@@ -199,11 +200,11 @@ public class CombatScalingSystem extends DamageEventSystem {
             }
 
             float baseResist = 0f;
-            Map<DamageCause, StaticModifier[]> resistMap = itemArmor.getDamageResistanceValues();
+            Map<DamageCause, ResistanceModifier[]> resistMap = itemArmor.getDamageResistanceValues();
             if (resistMap != null) {
-                StaticModifier[] physMods = resistMap.get(DamageCause.PHYSICAL);
+                ResistanceModifier[] physMods = resistMap.get(DamageCause.PHYSICAL);
                 if (physMods != null) {
-                    for (StaticModifier mod : physMods) {
+                    for (ResistanceModifier mod : physMods) {
                         baseResist += mod.getAmount();
                     }
                 }

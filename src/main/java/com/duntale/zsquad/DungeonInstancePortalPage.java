@@ -127,9 +127,10 @@ final class DungeonInstancePortalPage extends InteractiveCustomUIPage<DungeonIns
         static final BuilderCodec<PortalEventData> CODEC = BuilderCodec.builder(
                         PortalEventData.class,
                         PortalEventData::new)
-                .addField(new KeyedCodec<>("Action", Codec.STRING),
+            .append(new KeyedCodec<>("Action", Codec.STRING),
                         (event, value) -> event.action = value,
                         event -> event.action)
+            .add()
                 .build();
 
         String action;

@@ -17,7 +17,6 @@ import com.hypixel.hytale.server.core.universe.PlayerRef;
 import com.hypixel.hytale.server.core.universe.world.storage.EntityStore;
 
 import javax.annotation.Nonnull;
-import java.util.Map;
 import java.util.UUID;
 import java.util.logging.Level;
 
@@ -36,7 +35,6 @@ public class StatAssignmentPage extends InteractiveCustomUIPage<StatAssignmentPa
 
     private static final HytaleLogger LOGGER = HytaleLogger.forEnclosingClass();
 
-    private static final String COLOR_GOLD = "#FFD700";
     private static final String COLOR_GREEN = "#55FF55";
     private static final String COLOR_RED = "#FF5555";
     private static final String COLOR_GRAY = "#AAAAAA";
@@ -170,8 +168,9 @@ public class StatAssignmentPage extends InteractiveCustomUIPage<StatAssignmentPa
         /** Codec for deserialising button click events. */
         public static final BuilderCodec<StatAssignmentData> CODEC = BuilderCodec.builder(
                         StatAssignmentData.class, StatAssignmentData::new)
-                .addField(new KeyedCodec<>("AssignStat", Codec.STRING),
+            .append(new KeyedCodec<>("AssignStat", Codec.STRING),
                         (e, v) -> e.assignStat = v, e -> e.assignStat)
+            .add()
                 .build();
 
         String assignStat;

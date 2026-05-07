@@ -78,9 +78,10 @@ final class DungeonEntryPage extends InteractiveCustomUIPage<DungeonEntryPage.En
 
         static final BuilderCodec<EntryEventData> CODEC = BuilderCodec.builder(
                         EntryEventData.class, EntryEventData::new)
-                .addField(new KeyedCodec<>("Action", Codec.STRING),
+            .append(new KeyedCodec<>("Action", Codec.STRING),
                         (event, value) -> event.action = value,
                         event -> event.action)
+            .add()
                 .build();
 
         String action;
