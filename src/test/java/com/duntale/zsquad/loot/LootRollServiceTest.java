@@ -1,5 +1,6 @@
 package com.duntale.zsquad.loot;
 
+import com.duntale.zsquad.progression.CombatScaling;
 import com.hypixel.hytale.assetstore.AssetRegistry;
 import com.hypixel.hytale.assetstore.AssetStore;
 import com.hypixel.hytale.assetstore.AssetUpdateQuery;
@@ -92,6 +93,45 @@ class LootRollServiceTest {
         assertEquals(12, drops.getFirst().getQuantity());
         assertEquals(1, drops.get(1).getQuantity());
         assertEquals("Weapon_Axe_Crude", drops.get(1).getItemId());
+    }
+
+    @Test
+    @DisplayName("Should prefer a boss-specific loot table when one exists")
+    void shouldPreferBossSpecificLootTable() {
+        LootTableRegistry registry = new LootTableRegistry();
+        registry.register("Zombie_Test", new RecordingLootTable(List.of(new ItemStack("Weapon_Axe_Crude", 1))));
+        registry.register("Zombie_Test_Boss", new RecordingLootTable(List.of(new ItemStack("Weapon_Sword_Iron", 1))));
+
+        LootRollService service = new LootRollService(registry);
+        List<ItemStack> drops = service.roll("Zombie_Test", CombatScaling.NpcVariant.BOSS, 10, 0);
+
+        assertEquals(1, drops.size());
+        assertEquals("Weapon_Sword_Iron", drops.getFirst().getItemId());
+    }
+
+    @Test
+    @DisplayName("Should fall back to the base loot table when no boss-specific table exists")
+    void shouldFallBackToBaseLootTableForBossVariant() {
+        LootTableRegistry registry = new LootTableRegistry();
+        registry.register("Zombie_Test", new RecordingLootTable(List.of(new ItemStack("Weapon_Axe_Crude", 1))));
+
+        LootRollService service = new LootRollService(registry);
+        List<ItemStack> drops = service.roll("Zombie_Test", CombatScaling.NpcVariant.BOSS, 10, 0);
+
+        assertEquals(1, drops.size());
+        assertEquals("Weapon_Axe_Crude", drops.getFirst().getItemId());
+    }
+
+    @Test
+    @DisplayName("Should report boss table availability when only a boss-specific table exists")
+    void shouldReportBossTableAvailability() {
+        LootTableRegistry registry = new LootTableRegistry();
+        registry.register("Zombie_Test_Boss", new RecordingLootTable(List.of(new ItemStack("Weapon_Sword_Iron", 1))));
+
+        LootRollService service = new LootRollService(registry);
+
+        assertTrue(service.hasTable("Zombie_Test", CombatScaling.NpcVariant.BOSS));
+        assertTrue(!service.hasTable("Zombie_Test", CombatScaling.NpcVariant.NORMAL));
     }
 
     private static final class RecordingLootTable extends LootTable {

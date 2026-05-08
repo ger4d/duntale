@@ -144,13 +144,13 @@ public class NpcLootSystem extends DeathSystems.OnDeathSystem {
         }
 
         // ── 3. Look up the loot table for this NPC role ──────────────
-        if (!lootRollService.hasTable(npcId)) {
+        if (!lootRollService.hasTable(npcId, npcVariant)) {
             // No custom table — default drops already suppressed, nothing else to do
             return;
         }
 
         // ── 4. Roll loot ─────────────────────────────────────────────
-        List<ItemStack> drops = lootRollService.roll(npcId, npcLevel, luckLevel);
+        List<ItemStack> drops = lootRollService.roll(npcId, npcVariant, npcLevel, luckLevel);
         if (drops.isEmpty()) {
             return;
         }
