@@ -151,7 +151,7 @@ public class LeveledNpcSpawner {
 
         // Attach ECS component (replaces NpcLevelRegistry.register)
         store.putComponent(ref, combatScalingType,
-                new CombatScalingComponent(level, damageMult, false));
+            new CombatScalingComponent(level, damageMult, false, variant));
 
         LOGGER.atInfo().log("Spawned %s%s Lv.%d — HP: %d, DmgMult: %.2f",
                 variant != CombatScaling.NpcVariant.NORMAL ? variant.name() + " " : "",

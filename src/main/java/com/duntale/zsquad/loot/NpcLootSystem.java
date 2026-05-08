@@ -1,6 +1,7 @@
 package com.duntale.zsquad.loot;
 
 import com.duntale.zsquad.economy.CurrencyDrop;
+import com.duntale.zsquad.progression.CombatScaling;
 import com.duntale.zsquad.progression.CombatScalingComponent;
 import com.duntale.zsquad.progression.ProgressionService;
 import com.duntale.zsquad.rpg.RpgService;
@@ -113,6 +114,7 @@ public class NpcLootSystem extends DeathSystems.OnDeathSystem {
         }
 
         int npcLevel = scalingComp.getLevel();
+        CombatScaling.NpcVariant npcVariant = scalingComp.getVariant();
 
         // Get the NPC role name from NPCEntity
         NPCEntity npcEntity = store.getComponent(ref, NPCEntity.getComponentType());
@@ -124,8 +126,8 @@ public class NpcLootSystem extends DeathSystems.OnDeathSystem {
             return;
         }
 
-        LOGGER.atInfo().log("Handling death of %s (Lv.%d) — applying custom loot logic",
-                npcId, npcLevel);
+        LOGGER.atInfo().log("Handling death of %s (%s Lv.%d) — applying custom loot logic",
+            npcId, npcVariant, npcLevel);
 
         // ── 2. Suppress default NPC drops for all tracked NPCs ──────
         component.setItemsLossMode(DeathConfig.ItemsLossMode.NONE);
