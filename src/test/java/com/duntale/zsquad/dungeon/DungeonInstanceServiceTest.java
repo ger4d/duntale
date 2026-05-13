@@ -280,6 +280,12 @@ class DungeonInstanceServiceTest {
             assertEquals(Set.of(player), Set.copyOf(runtime.teleportedPlayers));
             assertEquals(active.worldName(), runtime.createdWorldNames.get(0));
             assertEquals(active.entrancePosition(), runtime.finalizedEntrances.get(active.worldName()));
+            DungeonInstance finalized = runtime.finalizedInstances.get(active.worldName());
+            assertNotNull(finalized);
+            assertEquals(DungeonInstanceState.CREATING, finalized.state());
+            assertEquals(active.floorLevel(), finalized.floorLevel());
+            assertEquals(active.entrancePosition(), finalized.entrancePosition());
+            assertEquals(active.exitPosition(), finalized.exitPosition());
             assertTrue(runtime.cleanedWorlds.isEmpty());
             assertNotNull(runtime.generatedConfig);
             assertTrue(runtime.generatedConfig.assemble());
@@ -531,6 +537,13 @@ class DungeonInstanceServiceTest {
             assertEquals(new Vec3i(5, 21, 7), transitioned.entrancePosition());
             assertEquals(new Vec3i(30, 21, 31), transitioned.exitPosition());
             assertTrue(transitioned.worldName().contains("-f2"));
+
+            DungeonInstance finalized = runtime.finalizedInstances.get(transitioned.worldName());
+            assertNotNull(finalized);
+            assertEquals(DungeonInstanceState.TRANSITIONING, finalized.state());
+            assertEquals(2, finalized.floorLevel());
+            assertEquals(transitioned.entrancePosition(), finalized.entrancePosition());
+            assertEquals(transitioned.exitPosition(), finalized.exitPosition());
 
             DungeonInstance persisted = instanceRepository.findById(active.instanceId()).orElseThrow();
             assertEquals(transitioned, persisted);
@@ -1591,6 +1604,7 @@ class DungeonInstanceServiceTest {
         private GenerationResult nextGenerationResult = successGenerationResult();
         private String deferredWorldName;
         private final java.util.Map<String, Vec3i> finalizedEntrances = new java.util.HashMap<>();
+        private final java.util.Map<String, DungeonInstance> finalizedInstances = new java.util.HashMap<>();
         private boolean cleanupRequiresLoadedWorlds;
         private boolean worldsLoadedForCleanup = true;
 
@@ -1622,11 +1636,11 @@ class DungeonInstanceServiceTest {
         public CompletableFuture<Void> finalizeWorld(
                 DungeonInstanceService.InstanceWorld world,
                 Vec3i origin,
-                Vec3i entrancePosition,
-            int floorLevel,
+                DungeonInstance floorInstance,
                 GenerationResult result
         ) {
-            finalizedEntrances.put(world.worldName(), entrancePosition);
+            finalizedEntrances.put(world.worldName(), floorInstance.entrancePosition());
+            finalizedInstances.put(world.worldName(), floorInstance);
             return CompletableFuture.completedFuture(null);
         }
 

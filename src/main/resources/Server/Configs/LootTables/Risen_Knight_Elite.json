@@ -1,43 +1,35 @@
 {
   "Rolls": 1,
-  "DropChance": 0.9,
+  "DropChance": 0.74,
   "Entries": [
     {
       "Type": "LEVELED",
       "ItemId": "Weapon_Sword_Bone",
       "Weight": 1.2,
       "GearType": "WEAPON",
-      "GearLevelMin": 28,
-      "GearLevelMax": 34
+      "GearLevelMin": 26,
+      "GearLevelMax": 32
     },
     {
       "Type": "LEVELED",
-      "ItemId": "Weapon_Axe_Thorium",
-      "Weight": 0.5,
+      "ItemId": "Weapon_Axe_Bone",
+      "Weight": 1.0,
       "GearType": "WEAPON",
-      "GearLevelMin": 28,
-      "GearLevelMax": 34
+      "GearLevelMin": 26,
+      "GearLevelMax": 32
     },
     {
       "Type": "LEVELED",
       "ItemId": "Armor_Bronze_Chest",
-      "Weight": 0.8,
+      "Weight": 0.9,
       "GearType": "ARMOR",
-      "GearLevelMin": 28,
-      "GearLevelMax": 34
+      "GearLevelMin": 26,
+      "GearLevelMax": 32
     },
     {
       "Type": "LEVELED",
-      "ItemId": "Armor_Thorium_Legs",
+      "ItemId": "Armor_Thorium_Head",
       "Weight": 0.6,
-      "GearType": "ARMOR",
-      "GearLevelMin": 28,
-      "GearLevelMax": 34
-    },
-    {
-      "Type": "LEVELED",
-      "ItemId": "Armor_Bronze_Head",
-      "Weight": 0.8,
       "GearType": "ARMOR",
       "GearLevelMin": 28,
       "GearLevelMax": 34
@@ -46,8 +38,8 @@
       "Type": "SIMPLE",
       "ItemId": "Gold_Coin",
       "Weight": 6.0,
-      "QuantityMin": 12,
-      "QuantityMax": 24
+      "QuantityMin": 9,
+      "QuantityMax": 18
     }
   ]
 }

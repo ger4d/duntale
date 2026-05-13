@@ -5,43 +5,41 @@
     {
       "Type": "LEVELED",
       "ItemId": "Weapon_Sword_Bone",
-      "Weight": 2.0,
+      "Weight": 1.3,
       "GearType": "WEAPON",
-      "GearLevelMin": 23,
-      "GearLevelMax": 27
+      "GearLevelMin": 24,
+      "GearLevelMax": 28
     },
     {
       "Type": "LEVELED",
       "ItemId": "Weapon_Axe_Bone",
-      "Weight": 2.0,
+      "Weight": 1.6,
       "GearType": "WEAPON",
-      "GearLevelMin": 23,
-      "GearLevelMax": 27
+      "GearLevelMin": 24,
+      "GearLevelMax": 28
     },
     {
       "Type": "LEVELED",
-      "ItemId": "Weapon_Sword_Doomed",
+      "ItemId": "Armor_Bronze_Head",
       "Weight": 1.0,
-      "GearType": "WEAPON",
-      "GearLevelMin": 28,
-      "GearLevelMax": 32,
-      "MinNpcLevel": 28
+      "GearType": "ARMOR",
+      "GearLevelMin": 24,
+      "GearLevelMax": 28
     },
     {
       "Type": "LEVELED",
-      "ItemId": "Armor_Thorium_Chest",
+      "ItemId": "Armor_Bronze_Hands",
       "Weight": 0.8,
       "GearType": "ARMOR",
-      "GearLevelMin": 28,
-      "GearLevelMax": 32,
-      "MinNpcLevel": 28
+      "GearLevelMin": 24,
+      "GearLevelMax": 28
     },
     {
       "Type": "SIMPLE",
       "ItemId": "Gold_Coin",
-      "Weight": 5.0,
+      "Weight": 6.5,
       "QuantityMin": 5,
-      "QuantityMax": 12
+      "QuantityMax": 10
     }
   ]
 }

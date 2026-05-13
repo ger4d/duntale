@@ -1,46 +1,46 @@
 {
   "Rolls": 1,
-  "DropChance": 0.4,
+  "DropChance": 0.42,
   "Entries": [
     {
       "Type": "LEVELED",
       "ItemId": "Weapon_Spear_Crude",
-      "Weight": 2.5,
+      "Weight": 2.2,
       "GearType": "WEAPON",
-      "GearLevelMin": 5,
-      "GearLevelMax": 16
+      "GearLevelMin": 8,
+      "GearLevelMax": 14
     },
     {
       "Type": "LEVELED",
       "ItemId": "Weapon_Spear_Copper",
-      "Weight": 2.0,
+      "Weight": 1.8,
       "GearType": "WEAPON",
-      "GearLevelMin": 10,
-      "GearLevelMax": 22
+      "GearLevelMin": 12,
+      "GearLevelMax": 18
     },
     {
       "Type": "LEVELED",
       "ItemId": "Armor_Leather_Light_Head",
-      "Weight": 0.8,
+      "Weight": 1.0,
       "GearType": "ARMOR",
       "GearLevelMin": 14,
-      "GearLevelMax": 22
+      "GearLevelMax": 18
     },
     {
       "Type": "LEVELED",
       "ItemId": "Armor_Iron_Hands",
-      "Weight": 0.5,
+      "Weight": 0.7,
       "GearType": "ARMOR",
       "GearLevelMin": 18,
-      "GearLevelMax": 28,
+      "GearLevelMax": 20,
       "MinNpcLevel": 18
     },
     {
       "Type": "SIMPLE",
       "ItemId": "Gold_Coin",
-      "Weight": 5.0,
+      "Weight": 6.0,
       "QuantityMin": 2,
-      "QuantityMax": 6
+      "QuantityMax": 5
     }
   ]
 }

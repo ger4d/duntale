@@ -129,7 +129,18 @@ public class GoldPickupSystem extends EntityTickingSystem<EntityStore> {
         PlayerRef closest = null;
         double closestDistSq = PICKUP_RADIUS_SQ;
 
+        // Refs only validate against their owning store, so players in other worlds must be skipped
+        // before getComponent — otherwise this throws "Incorrect store for entity reference".
+        var localWorld = store.getExternalData().getWorld();
+        if (localWorld == null) {
+            return null;
+        }
+        UUID localWorldUuid = localWorld.getWorldConfig().getUuid();
+
         for (PlayerRef playerRef : Universe.get().getPlayers()) {
+            if (!localWorldUuid.equals(playerRef.getWorldUuid())) {
+                continue;
+            }
             Ref<EntityStore> playerEntity = playerRef.getReference();
             if (playerEntity == null || !playerEntity.isValid()) {
                 continue;

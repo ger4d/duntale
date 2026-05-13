@@ -1,54 +1,45 @@
 {
   "Rolls": 1,
-  "DropChance": 0.45,
+  "DropChance": 0.5,
   "Entries": [
     {
       "Type": "LEVELED",
       "ItemId": "Weapon_Sword_Bronze",
-      "Weight": 2.5,
-      "GearType": "WEAPON",
-      "GearLevelMin": 23,
-      "GearLevelMax": 27
-    },
-    {
-      "Type": "LEVELED",
-      "ItemId": "Weapon_Longsword_Praetorian",
       "Weight": 1.5,
       "GearType": "WEAPON",
-      "GearLevelMin": 23,
-      "GearLevelMax": 27
+      "GearLevelMin": 24,
+      "GearLevelMax": 28
     },
     {
       "Type": "LEVELED",
       "ItemId": "Armor_Bronze_Chest",
-      "Weight": 1.5,
+      "Weight": 0.8,
       "GearType": "ARMOR",
-      "GearLevelMin": 23,
-      "GearLevelMax": 27
+      "GearLevelMin": 24,
+      "GearLevelMax": 28
     },
     {
       "Type": "LEVELED",
       "ItemId": "Armor_Bronze_Head",
-      "Weight": 1.5,
+      "Weight": 1.0,
       "GearType": "ARMOR",
-      "GearLevelMin": 23,
-      "GearLevelMax": 27
+      "GearLevelMin": 24,
+      "GearLevelMax": 28
     },
     {
       "Type": "LEVELED",
-      "ItemId": "Armor_Bronze_Ornate_Chest",
-      "Weight": 0.5,
+      "ItemId": "Armor_Bronze_Hands",
+      "Weight": 0.8,
       "GearType": "ARMOR",
-      "GearLevelMin": 26,
-      "GearLevelMax": 30,
-      "MinNpcLevel": 25
+      "GearLevelMin": 24,
+      "GearLevelMax": 28
     },
     {
       "Type": "SIMPLE",
       "ItemId": "Gold_Coin",
-      "Weight": 5.0,
-      "QuantityMin": 4,
-      "QuantityMax": 10
+      "Weight": 6.0,
+      "QuantityMin": 5,
+      "QuantityMax": 11
     }
   ]
 }

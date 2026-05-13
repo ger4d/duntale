@@ -1,46 +1,45 @@
 {
   "Rolls": 1,
-  "DropChance": 0.42,
+  "DropChance": 0.45,
   "Entries": [
     {
       "Type": "LEVELED",
       "ItemId": "Weapon_Sword_Iron",
-      "Weight": 2.5,
-      "GearType": "WEAPON",
-      "GearLevelMin": 18,
-      "GearLevelMax": 28
-    },
-    {
-      "Type": "LEVELED",
-      "ItemId": "Weapon_Spear_Iron",
-      "Weight": 2.0,
+      "Weight": 1.4,
       "GearType": "WEAPON",
       "GearLevelMin": 18,
       "GearLevelMax": 26
     },
     {
       "Type": "LEVELED",
-      "ItemId": "Armor_Cloth_Linen_Head",
-      "Weight": 0.8,
-      "GearType": "ARMOR",
-      "GearLevelMin": 14,
+      "ItemId": "Weapon_Spear_Iron",
+      "Weight": 1.4,
+      "GearType": "WEAPON",
+      "GearLevelMin": 18,
       "GearLevelMax": 24
     },
     {
       "Type": "LEVELED",
-      "ItemId": "Armor_Cloth_Silk_Chest",
-      "Weight": 0.4,
+      "ItemId": "Armor_Cloth_Linen_Head",
+      "Weight": 1.0,
       "GearType": "ARMOR",
-      "GearLevelMin": 34,
-      "GearLevelMax": 44,
-      "MinNpcLevel": 34
+      "GearLevelMin": 18,
+      "GearLevelMax": 24
+    },
+    {
+      "Type": "LEVELED",
+      "ItemId": "Armor_Cloth_Wool_Head",
+      "Weight": 0.8,
+      "GearType": "ARMOR",
+      "GearLevelMin": 12,
+      "GearLevelMax": 18
     },
     {
       "Type": "SIMPLE",
       "ItemId": "Gold_Coin",
-      "Weight": 5.0,
-      "QuantityMin": 3,
-      "QuantityMax": 9
+      "Weight": 6.0,
+      "QuantityMin": 4,
+      "QuantityMax": 10
     }
   ]
 }

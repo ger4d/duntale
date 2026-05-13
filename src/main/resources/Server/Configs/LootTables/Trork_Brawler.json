@@ -1,35 +1,35 @@
 {
   "Rolls": 1,
-  "DropChance": 0.35,
+  "DropChance": 0.37,
   "Entries": [
     {
       "Type": "LEVELED",
       "ItemId": "Weapon_Club_Crude",
-      "Weight": 3.0,
+      "Weight": 2.5,
       "GearType": "WEAPON",
       "GearLevelMin": 5,
       "GearLevelMax": 10
     },
     {
       "Type": "LEVELED",
-      "ItemId": "Weapon_Mace_Crude",
-      "Weight": 2.0,
+      "ItemId": "Weapon_Axe_Crude",
+      "Weight": 1.5,
       "GearType": "WEAPON",
-      "GearLevelMin": 7,
-      "GearLevelMax": 10
+      "GearLevelMin": 5,
+      "GearLevelMax": 8
     },
     {
       "Type": "LEVELED",
       "ItemId": "Armor_Wood_Hands",
-      "Weight": 1.5,
+      "Weight": 1.0,
       "GearType": "ARMOR",
       "GearLevelMin": 5,
       "GearLevelMax": 8
     },
     {
       "Type": "LEVELED",
-      "ItemId": "Armor_Wood_Legs",
-      "Weight": 1.5,
+      "ItemId": "Armor_Wood_Head",
+      "Weight": 0.8,
       "GearType": "ARMOR",
       "GearLevelMin": 5,
       "GearLevelMax": 8
@@ -37,7 +37,7 @@
     {
       "Type": "SIMPLE",
       "ItemId": "Gold_Coin",
-      "Weight": 5.0,
+      "Weight": 6.2,
       "QuantityMin": 1,
       "QuantityMax": 3
     }

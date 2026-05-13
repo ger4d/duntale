@@ -1,27 +1,35 @@
 {
   "Rolls": 1,
-  "DropChance": 0.4,
+  "DropChance": 0.42,
   "Entries": [
     {
       "Type": "LEVELED",
-      "ItemId": "Weapon_Mace_Scrap",
-      "Weight": 3.0,
+      "ItemId": "Weapon_Club_Scrap",
+      "Weight": 2.1,
       "GearType": "WEAPON",
       "GearLevelMin": 13,
-      "GearLevelMax": 17
+      "GearLevelMax": 16
     },
     {
       "Type": "LEVELED",
-      "ItemId": "Weapon_Club_Scrap",
-      "Weight": 2.0,
+      "ItemId": "Weapon_Sword_Scrap",
+      "Weight": 1.1,
       "GearType": "WEAPON",
       "GearLevelMin": 13,
-      "GearLevelMax": 17
+      "GearLevelMax": 16
+    },
+    {
+      "Type": "LEVELED",
+      "ItemId": "Armor_Copper_Head",
+      "Weight": 0.9,
+      "GearType": "ARMOR",
+      "GearLevelMin": 10,
+      "GearLevelMax": 15
     },
     {
       "Type": "LEVELED",
       "ItemId": "Armor_Copper_Legs",
-      "Weight": 1.5,
+      "Weight": 0.4,
       "GearType": "ARMOR",
       "GearLevelMin": 10,
       "GearLevelMax": 15
@@ -29,7 +37,7 @@
     {
       "Type": "SIMPLE",
       "ItemId": "Gold_Coin",
-      "Weight": 5.0,
+      "Weight": 6.2,
       "QuantityMin": 2,
       "QuantityMax": 5
     }

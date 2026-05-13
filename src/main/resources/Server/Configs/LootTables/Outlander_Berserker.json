@@ -1,30 +1,22 @@
 {
   "Rolls": 1,
-  "DropChance": 0.4,
+  "DropChance": 0.38,
   "Entries": [
     {
       "Type": "LEVELED",
       "ItemId": "Weapon_Axe_Copper",
-      "Weight": 3.0,
+      "Weight": 2.2,
       "GearType": "WEAPON",
       "GearLevelMin": 8,
-      "GearLevelMax": 15
+      "GearLevelMax": 14
     },
     {
       "Type": "LEVELED",
-      "ItemId": "Weapon_Club_Crude",
-      "Weight": 2.0,
+      "ItemId": "Weapon_Club_Copper",
+      "Weight": 1.8,
       "GearType": "WEAPON",
-      "GearLevelMin": 5,
-      "GearLevelMax": 12
-    },
-    {
-      "Type": "LEVELED",
-      "ItemId": "Armor_Copper_Chest",
-      "Weight": 1.5,
-      "GearType": "ARMOR",
-      "GearLevelMin": 8,
-      "GearLevelMax": 15
+      "GearLevelMin": 10,
+      "GearLevelMax": 14
     },
     {
       "Type": "LEVELED",
@@ -32,14 +24,22 @@
       "Weight": 1.0,
       "GearType": "ARMOR",
       "GearLevelMin": 8,
-      "GearLevelMax": 15
+      "GearLevelMax": 14
+    },
+    {
+      "Type": "LEVELED",
+      "ItemId": "Armor_Copper_Hands",
+      "Weight": 0.8,
+      "GearType": "ARMOR",
+      "GearLevelMin": 10,
+      "GearLevelMax": 14
     },
     {
       "Type": "SIMPLE",
       "ItemId": "Gold_Coin",
-      "Weight": 5.0,
+      "Weight": 6.0,
       "QuantityMin": 2,
-      "QuantityMax": 6
+      "QuantityMax": 5
     }
   ]
 }

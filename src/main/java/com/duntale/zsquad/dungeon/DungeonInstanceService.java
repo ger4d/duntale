@@ -758,7 +758,7 @@ public class DungeonInstanceService {
                 pendingInstance.createdAt()
         );
 
-        return runtimeAdapter.finalizeWorld(world, origin, entrancePosition, pendingInstance.floorLevel(), result)
+        return runtimeAdapter.finalizeWorld(world, origin, readyInstance, result)
                 .thenCompose(unused -> updatePersistedInstance(readyInstance))
                 .thenCompose(unused -> runtimeAdapter.teleportRoster(roster, world, entrancePosition))
                 .thenCompose(unused -> updatePersistedInstance(activeInstance).thenApply(ignored -> activeInstance))
@@ -824,7 +824,7 @@ public class DungeonInstanceService {
         );
 
         return ensureTransitionNotForceEnded(previousFloor.instanceId(), transitionState)
-            .thenCompose(unused -> runtimeAdapter.finalizeWorld(newWorld, origin, entrancePosition, nextFloor, result))
+            .thenCompose(unused -> runtimeAdapter.finalizeWorld(newWorld, origin, updatedInstance, result))
                 .thenCompose(unused -> updatePersistedInstanceWhileTransitioning(
                         updatedInstance,
                         transitionState,
@@ -1366,8 +1366,7 @@ public class DungeonInstanceService {
         CompletableFuture<Void> finalizeWorld(
                 @Nonnull InstanceWorld world,
                 @Nonnull Vec3i origin,
-                @Nonnull Vec3i entrancePosition,
-            int floorLevel,
+            @Nonnull DungeonInstance floorInstance,
                 @Nonnull GenerationResult result
         );
 
@@ -1507,19 +1506,18 @@ public class DungeonInstanceService {
         public CompletableFuture<Void> finalizeWorld(
                 @Nonnull InstanceWorld world,
                 @Nonnull Vec3i origin,
-                @Nonnull Vec3i entrancePosition,
-            int floorLevel,
+                @Nonnull DungeonInstance floorInstance,
                 @Nonnull GenerationResult result
         ) {
             Objects.requireNonNull(world, "world");
             Objects.requireNonNull(origin, "origin");
-            Objects.requireNonNull(entrancePosition, "entrancePosition");
+            Objects.requireNonNull(floorInstance, "floorInstance");
             Objects.requireNonNull(result, "result");
 
             World liveWorld = toLiveWorld(world);
             return queueWorldTask(liveWorld, () -> {
                 WorldConfig worldConfig = liveWorld.getWorldConfig();
-                worldConfig.setSpawnProvider(new GlobalSpawnProvider(toPlayerTransform(entrancePosition)));
+                worldConfig.setSpawnProvider(new GlobalSpawnProvider(toPlayerTransform(floorInstance.entrancePosition())));
                 worldConfig.markChanged();
 
                 Store<EntityStore> store = liveWorld.getEntityStore().getStore();
@@ -1532,8 +1530,14 @@ public class DungeonInstanceService {
                     plugin.getMerchantNpcSpawner().spawnMerchants(store, result.merchantDefinitions(), origin);
                 }
                 if (!result.chestDefinitions().isEmpty()) {
-                    plugin.getChestLootService().fillChests(liveWorld, origin, result.chestDefinitions(), floorLevel);
+                    plugin.getChestLootService().fillChests(
+                            liveWorld,
+                            origin,
+                            result.chestDefinitions(),
+                            floorInstance.floorLevel()
+                    );
                 }
+                plugin.getDungeonEndPortalService().ensurePortal(liveWorld, store, floorInstance);
             });
         }
 

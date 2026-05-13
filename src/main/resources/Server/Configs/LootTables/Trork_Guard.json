@@ -1,11 +1,11 @@
 {
   "Rolls": 1,
-  "DropChance": 0.4,
+  "DropChance": 0.38,
   "Entries": [
     {
       "Type": "LEVELED",
       "ItemId": "Weapon_Longsword_Crude",
-      "Weight": 3.0,
+      "Weight": 1.8,
       "GearType": "WEAPON",
       "GearLevelMin": 5,
       "GearLevelMax": 10
@@ -21,8 +21,8 @@
     },
     {
       "Type": "LEVELED",
-      "ItemId": "Armor_Copper_Chest",
-      "Weight": 1.0,
+      "ItemId": "Armor_Copper_Head",
+      "Weight": 0.9,
       "GearType": "ARMOR",
       "GearLevelMin": 10,
       "GearLevelMax": 12,
@@ -30,8 +30,8 @@
     },
     {
       "Type": "LEVELED",
-      "ItemId": "Armor_Copper_Head",
-      "Weight": 1.0,
+      "ItemId": "Armor_Copper_Hands",
+      "Weight": 0.8,
       "GearType": "ARMOR",
       "GearLevelMin": 10,
       "GearLevelMax": 12,
@@ -40,7 +40,7 @@
     {
       "Type": "SIMPLE",
       "ItemId": "Gold_Coin",
-      "Weight": 5.0,
+      "Weight": 6.0,
       "QuantityMin": 2,
       "QuantityMax": 4
     }

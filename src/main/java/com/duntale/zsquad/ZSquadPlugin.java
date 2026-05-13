@@ -46,6 +46,7 @@ import com.duntale.zsquad.merchant.MerchantPriceRegistry;
 import com.duntale.zsquad.merchant.MerchantService;
 import com.duntale.zsquad.merchant.BuilderActionOpenDungeonMerchant;
 import com.duntale.zsquad.merchant.MerchantTooltipProvider;
+import com.duntale.zsquad.portal.DungeonEndPortalService;
 import com.duntale.zsquad.progression.AssetCatalog;
 import com.duntale.zsquad.progression.CombatScalingComponent;
 import com.duntale.zsquad.progression.CombatScalingSystem;
@@ -56,6 +57,7 @@ import com.duntale.zsquad.progression.ProgressionService;
 import com.duntale.zsquad.companion.CompanionSpawner;
 import com.duntale.zsquad.dungeon.DungeonInstanceRepository;
 import com.duntale.zsquad.dungeon.DungeonInstance;
+import com.duntale.zsquad.dungeon.DungeonInstanceState;
 import com.duntale.zsquad.dungeon.DungeonInstanceService;
 import com.duntale.zsquad.dungeon.DungeonMembershipRepository;
 import com.duntale.zsquad.dungeon.FloorConfigRepository;
@@ -109,9 +111,11 @@ import org.joml.Vector3d;
 
 import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
+import java.util.List;
 import java.nio.file.Path;
 import java.sql.SQLException;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
@@ -175,14 +179,17 @@ public class ZSquadPlugin extends JavaPlugin {
     private FloorConfigService floorConfigService;
     private DungeonInstanceService dungeonInstanceService;
     private DungeonRespawnService dungeonRespawnService;
+    private DungeonEndPortalService dungeonEndPortalService;
     private DungeonInstancePortalTriggerService dungeonInstancePortalTriggerService;
     private VillageWorldBootstrapService villageWorldBootstrapService;
     private final AtomicBoolean dungeonStartupRecoveryLoaded = new AtomicBoolean();
     private final AtomicBoolean dungeonPortalTriggerRegistered = new AtomicBoolean();
+    private final AtomicBoolean dungeonEndPortalTriggerRegistered = new AtomicBoolean();
     private final AtomicBoolean sharedWorldStartupStarted = new AtomicBoolean();
     private final Object sharedWorldStartupLock = new Object();
     @Nullable
     private CompletableFuture<Void> sharedWorldStartupFuture;
+    private final Set<String> portalTransitionsInFlight = ConcurrentHashMap.newKeySet();
 
     // HUD scoreboards per player
     private final Map<UUID, ZSquadScoreboard> scoreboards = new ConcurrentHashMap<>();
@@ -370,6 +377,16 @@ public class ZSquadPlugin extends JavaPlugin {
     }
 
     /**
+     * Returns the runtime service that manages dynamic dungeon end portals.
+     *
+     * @return the dungeon end portal service
+     */
+    @Nonnull
+    public DungeonEndPortalService getDungeonEndPortalService() {
+        return dungeonEndPortalService;
+    }
+
+    /**
      * Returns the dungeon generation orchestrator.
      *
      * @return the generation orchestrator
@@ -448,6 +465,7 @@ public class ZSquadPlugin extends JavaPlugin {
                 partyService,
                 floorConfigService
         );
+        this.dungeonEndPortalService = new DungeonEndPortalService();
         this.dungeonRespawnService = new DungeonRespawnService(dungeonInstanceService, goldService);
         this.dungeonInstancePortalTriggerService =
             new DungeonInstancePortalTriggerService(DUNGEON_INSTANCE_PORTAL_VOLUME_ID);
@@ -662,6 +680,8 @@ public class ZSquadPlugin extends JavaPlugin {
                     .thenRun(() -> {
                         loadDungeonInstancesAfterWorldsLoaded();
                         registerDungeonInstancePortalTrigger();
+                        registerDungeonEndPortalTrigger();
+                        backfillDungeonEndPortals();
                     });
             sharedWorldStartupFuture = future;
             return future;
@@ -696,6 +716,65 @@ public class ZSquadPlugin extends JavaPlugin {
                 DUNGEON_INSTANCE_PORTAL_VOLUME_ID,
                 sharedWorld.getName()
         );
+    }
+
+    private void registerDungeonEndPortalTrigger() {
+        if (!dungeonEndPortalTriggerRegistered.compareAndSet(false, true)) {
+            return;
+        }
+
+        this.getEventRegistry().registerGlobal(TriggerVolumeEvent.class, this::onDungeonEndPortalTrigger);
+        LOGGER.atInfo().log("Registered global dungeon end portal trigger handler");
+    }
+
+    private void backfillDungeonEndPortals() {
+        Universe universe = Universe.get();
+        if (universe == null) {
+            LOGGER.atWarning().log("Unable to backfill dungeon end portals because the universe is unavailable");
+            return;
+        }
+
+        List<DungeonInstance> instances;
+        try {
+            instances = dungeonInstanceService.listNonEndedInstances();
+        } catch (SQLException e) {
+            LOGGER.atWarning()
+                    .withCause(e)
+                    .log("Failed to list dungeon instances while backfilling end portals");
+            return;
+        }
+
+        for (DungeonInstance instance : instances) {
+            if (instance.state() != DungeonInstanceState.ACTIVE) {
+                continue;
+            }
+
+            World world = universe.getWorld(instance.worldName());
+            if (world == null) {
+                LOGGER.atFine().log(
+                        "Skipping dungeon end portal backfill for instance %s because world %s is not loaded",
+                        instance.instanceId(),
+                        instance.worldName()
+                );
+                continue;
+            }
+
+            try {
+                world.execute(() -> dungeonEndPortalService.ensurePortal(
+                        world,
+                        world.getEntityStore().getStore(),
+                        instance
+                ));
+            } catch (Exception e) {
+                LOGGER.atWarning()
+                        .withCause(e)
+                        .log(
+                                "Failed to queue dungeon end portal backfill for instance %s in world %s",
+                                instance.instanceId(),
+                                instance.worldName()
+                        );
+            }
+        }
     }
 
     private void onDungeonInstancePortalTrigger(@Nonnull TriggerVolumeEvent event) {
@@ -734,6 +813,117 @@ public class ZSquadPlugin extends JavaPlugin {
                 ? DungeonInstancePortalPage.PortalMode.NO_INSTANCE
                 : DungeonInstancePortalPage.PortalMode.EXISTING_INSTANCE;
         player.getPageManager().openCustomPage(ref, store, new DungeonInstancePortalPage(playerRef, mode, activeInstance));
+    }
+
+    private void onDungeonEndPortalTrigger(@Nonnull TriggerVolumeEvent event) {
+        DungeonEndPortalService.EndPortalTarget target = dungeonEndPortalService.parseTarget(event).orElse(null);
+        if (target == null) {
+            return;
+        }
+
+        Ref<EntityStore> ref = event.getEntityRef();
+        if (!ref.isValid()) {
+            return;
+        }
+
+        Store<EntityStore> store = ref.getStore();
+        PlayerRef playerRef = (PlayerRef) store.getComponent(ref, PlayerRef.getComponentType());
+        if (playerRef == null) {
+            return;
+        }
+
+        String triggerWorldName = event.getWorldName();
+
+        // Trigger dispatch runs inside the old world's system pass; defer the
+        // transition kickoff so we don't tie new-world setup to that tick.
+        CompletableFuture.runAsync(() -> handleEndPortalTriggerAsync(playerRef, target, triggerWorldName));
+    }
+
+    private void handleEndPortalTriggerAsync(
+            @Nonnull PlayerRef playerRef,
+            @Nonnull DungeonEndPortalService.EndPortalTarget target,
+            @Nonnull String triggerWorldName
+    ) {
+        DungeonInstance activeInstance;
+        try {
+            activeInstance = dungeonInstanceService.getActiveInstance(playerRef.getUuid());
+        } catch (SQLException e) {
+            LOGGER.atWarning()
+                    .withCause(e)
+                    .log("Failed to resolve dungeon end portal state for player %s", playerRef.getUuid());
+            playerRef.sendMessage(Message.raw("Unable to open the next floor right now.").color(COLOR_RED));
+            return;
+        }
+
+        if (activeInstance == null) {
+            return;
+        }
+        if (!activeInstance.instanceId().equals(target.instanceId())) {
+            return;
+        }
+        if (activeInstance.floorLevel() != target.floorLevel()) {
+            return;
+        }
+        if (!activeInstance.worldName().equalsIgnoreCase(triggerWorldName)) {
+            return;
+        }
+        if (activeInstance.state() != DungeonInstanceState.ACTIVE) {
+            return;
+        }
+        if (!portalTransitionsInFlight.add(activeInstance.instanceId())) {
+            return;
+        }
+
+        LOGGER.atInfo().log(
+                "Player %s triggered a dungeon end portal for instance %s floor %d",
+                playerRef.getUuid(),
+                activeInstance.instanceId(),
+                activeInstance.floorLevel()
+        );
+
+        CompletableFuture<DungeonInstance> transitionFuture;
+        try {
+            transitionFuture = dungeonInstanceService.transitionFloor(activeInstance.instanceId());
+        } catch (SQLException e) {
+            portalTransitionsInFlight.remove(activeInstance.instanceId());
+            LOGGER.atWarning()
+                .withCause(e)
+                .log("Failed to start dungeon end portal transition for instance %s", activeInstance.instanceId());
+            playerRef.sendMessage(
+                Message.raw("Unable to open the next floor right now: " + describeFailure(e)).color(COLOR_RED)
+            );
+            return;
+        }
+
+        // runOnPlayerWorld(playerRef, this::closeCustomPage);
+        // playerRef.sendMessage(Message.raw("Opening the next floor...").color("#FFD700"));
+
+        LOGGER.atInfo().log("Started dungeon end portal transition for instance %s; waiting for result...", activeInstance.instanceId());
+
+        transitionFuture
+                .thenAccept(nextInstance -> // playerRef.sendMessage(
+                    // Message.raw("Now entering floor " + nextInstance.floorLevel() + ".").color(COLOR_GREEN))
+                    LOGGER.atInfo().log("Dungeon end portal transition completed for instance %s; next floor is %d, exitPosition is %s",
+                            nextInstance.instanceId(), nextInstance.floorLevel(), nextInstance.exitPosition())
+                )
+                .exceptionally(throwable -> {
+                    Throwable cause = unwrapCompletionException(throwable);
+                    runOnPlayerWorld(playerRef, (currentRef, currentStore) -> {
+                        World currentWorld = currentStore.getExternalData().getWorld();
+                        if (currentWorld != null && activeInstance.worldName().equalsIgnoreCase(currentWorld.getName())) {
+                            dungeonEndPortalService.ensurePortal(currentWorld, currentStore, activeInstance);
+                        }
+                    });
+                    LOGGER.atWarning()
+                            .withCause(cause)
+                            .log("Dungeon end portal transition failed for instance %s", activeInstance.instanceId());
+                    playerRef.sendMessage(
+                            Message.raw("Unable to open the next floor right now: " + describeFailure(cause))
+                                    .color(COLOR_RED)
+                    );
+                    return null;
+                })
+                .whenComplete((unused, throwable) -> portalTransitionsInFlight.remove(activeInstance.instanceId()));
     }
 
     private void onPlayerConnect(@Nonnull PlayerConnectEvent event) {

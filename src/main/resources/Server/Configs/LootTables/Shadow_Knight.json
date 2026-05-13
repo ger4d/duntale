@@ -1,46 +1,45 @@
 {
   "Rolls": 1,
-  "DropChance": 0.42,
+  "DropChance": 0.9,
   "Entries": [
     {
       "Type": "LEVELED",
-      "ItemId": "Weapon_Sword_Iron",
-      "Weight": 2.5,
+      "ItemId": "Weapon_Sword_Doomed",
+      "Weight": 1.4,
       "GearType": "WEAPON",
-      "GearLevelMin": 18,
-      "GearLevelMax": 26
+      "GearLevelMin": 28,
+      "GearLevelMax": 34
     },
     {
       "Type": "LEVELED",
-      "ItemId": "Weapon_Daggers_Iron",
-      "Weight": 2.0,
+      "ItemId": "Weapon_Daggers_Bone",
+      "Weight": 1.0,
       "GearType": "WEAPON",
-      "GearLevelMin": 18,
-      "GearLevelMax": 24
+      "GearLevelMin": 24,
+      "GearLevelMax": 30
     },
     {
       "Type": "LEVELED",
-      "ItemId": "Armor_Iron_Head",
-      "Weight": 0.8,
+      "ItemId": "Armor_Thorium_Head",
+      "Weight": 0.6,
       "GearType": "ARMOR",
-      "GearLevelMin": 18,
-      "GearLevelMax": 26
+      "GearLevelMin": 28,
+      "GearLevelMax": 34
     },
     {
       "Type": "LEVELED",
-      "ItemId": "Armor_Iron_Chest",
-      "Weight": 0.5,
+      "ItemId": "Armor_Bronze_Chest",
+      "Weight": 0.7,
       "GearType": "ARMOR",
-      "GearLevelMin": 18,
-      "GearLevelMax": 26,
-      "MinNpcLevel": 18
+      "GearLevelMin": 24,
+      "GearLevelMax": 30
     },
     {
       "Type": "SIMPLE",
       "ItemId": "Gold_Coin",
-      "Weight": 5.0,
-      "QuantityMin": 3,
-      "QuantityMax": 8
+      "Weight": 6.0,
+      "QuantityMin": 10,
+      "QuantityMax": 24
     }
   ]
 }

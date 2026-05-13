@@ -1,14 +1,14 @@
 {
   "Rolls": 1,
-  "DropChance": 0.35,
+  "DropChance": 0.4,
   "Entries": [
     {
       "Type": "LEVELED",
       "ItemId": "Weapon_Axe_Crude",
-      "Weight": 2.5,
+      "Weight": 2.4,
       "GearType": "WEAPON",
       "GearLevelMin": 5,
-      "GearLevelMax": 12
+      "GearLevelMax": 10
     },
     {
       "Type": "LEVELED",
@@ -16,20 +16,28 @@
       "Weight": 2.0,
       "GearType": "WEAPON",
       "GearLevelMin": 5,
-      "GearLevelMax": 12
+      "GearLevelMax": 10
     },
     {
       "Type": "LEVELED",
       "ItemId": "Armor_Leather_Soft_Head",
-      "Weight": 0.5,
+      "Weight": 1.0,
+      "GearType": "ARMOR",
+      "GearLevelMin": 8,
+      "GearLevelMax": 10
+    },
+    {
+      "Type": "LEVELED",
+      "ItemId": "Armor_Wood_Hands",
+      "Weight": 0.8,
       "GearType": "ARMOR",
       "GearLevelMin": 5,
-      "GearLevelMax": 12
+      "GearLevelMax": 8
     },
     {
       "Type": "SIMPLE",
       "ItemId": "Gold_Coin",
-      "Weight": 5.0,
+      "Weight": 6.0,
       "QuantityMin": 1,
       "QuantityMax": 3
     }

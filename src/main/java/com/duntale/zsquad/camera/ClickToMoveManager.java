@@ -17,6 +17,7 @@ import com.hypixel.hytale.server.core.asset.type.model.config.Model;
 import com.hypixel.hytale.server.core.asset.type.model.config.camera.CameraAxis;
 import com.hypixel.hytale.server.core.asset.type.model.config.camera.CameraSettings;
 import com.hypixel.hytale.server.core.modules.entity.component.ModelComponent;
+import com.hypixel.hytale.server.core.modules.entity.component.Intangible;
 import com.hypixel.hytale.server.core.modules.entity.component.TransformComponent;
 import com.hypixel.hytale.server.core.modules.entity.tracker.NetworkId;
 import com.hypixel.hytale.server.core.modules.entity.player.PlayerSkinComponent;
@@ -878,6 +879,21 @@ public class ClickToMoveManager {
                             MathUtil.floor(cPos.x),
                             MathUtil.floor(cPos.y) - 1,
                             MathUtil.floor(cPos.z));
+                }
+                targetEntityRef = null;
+            }
+        }
+
+        if (targetEntityRef != null) {
+            if (store.getComponent(targetEntityRef, Intangible.getComponentType()) != null) {
+                TransformComponent targetTransform = store.getComponent(
+                        targetEntityRef, TransformComponent.getComponentType());
+                if (targetTransform != null) {
+                    Vector3d targetPosition = targetTransform.getPosition();
+                    targetBlock = new Vector3i(
+                            MathUtil.floor(targetPosition.x),
+                            MathUtil.floor(targetPosition.y) - 1,
+                            MathUtil.floor(targetPosition.z));
                 }
                 targetEntityRef = null;
             }

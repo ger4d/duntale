@@ -9,6 +9,7 @@ import org.joml.Vector3i;
 import com.hypixel.hytale.protocol.InteractionType;
 import com.hypixel.hytale.server.core.asset.type.blocktype.config.BlockType;
 import com.hypixel.hytale.server.core.modules.entity.component.BoundingBox;
+import com.hypixel.hytale.server.core.modules.entity.component.Intangible;
 import com.hypixel.hytale.server.core.modules.entity.component.TransformComponent;
 import com.hypixel.hytale.server.core.util.TargetUtil;
 import com.hypixel.hytale.server.core.universe.world.World;
@@ -90,6 +91,7 @@ final class TargetResolver {
             if (entityRef == null || !entityRef.isValid()) continue;
             if (entityRef.equals(playerRef)) continue;
             if (store.getComponent(entityRef, CompanionComponent.getComponentType()) != null) continue;
+            if (store.getComponent(entityRef, Intangible.getComponentType()) != null) continue;
 
             BoundingBox bb = store.getComponent(entityRef, BoundingBox.getComponentType());
             if (bb == null) continue;

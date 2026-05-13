@@ -1,46 +1,45 @@
 {
   "Rolls": 1,
-  "DropChance": 0.47,
+  "DropChance": 0.78,
   "Entries": [
     {
       "Type": "LEVELED",
       "ItemId": "Weapon_Axe_Iron",
-      "Weight": 2.5,
+      "Weight": 1.6,
       "GearType": "WEAPON",
-      "GearLevelMin": 18,
+      "GearLevelMin": 22,
       "GearLevelMax": 30
     },
     {
       "Type": "LEVELED",
-      "ItemId": "Weapon_Mace_Iron",
-      "Weight": 2.0,
+      "ItemId": "Weapon_Club_Iron",
+      "Weight": 1.4,
       "GearType": "WEAPON",
-      "GearLevelMin": 18,
-      "GearLevelMax": 28
+      "GearLevelMin": 22,
+      "GearLevelMax": 30
     },
     {
       "Type": "LEVELED",
       "ItemId": "Armor_Iron_Chest",
-      "Weight": 1.0,
+      "Weight": 0.6,
       "GearType": "ARMOR",
-      "GearLevelMin": 18,
+      "GearLevelMin": 22,
       "GearLevelMax": 30
     },
     {
       "Type": "LEVELED",
-      "ItemId": "Armor_Cobalt_Head",
-      "Weight": 0.5,
+      "ItemId": "Armor_Thorium_Head",
+      "Weight": 0.4,
       "GearType": "ARMOR",
-      "GearLevelMin": 34,
-      "GearLevelMax": 44,
-      "MinNpcLevel": 34
+      "GearLevelMin": 28,
+      "GearLevelMax": 34
     },
     {
       "Type": "SIMPLE",
       "ItemId": "Gold_Coin",
-      "Weight": 5.0,
-      "QuantityMin": 5,
-      "QuantityMax": 15
+      "Weight": 6.0,
+      "QuantityMin": 8,
+      "QuantityMax": 18
     }
   ]
 }

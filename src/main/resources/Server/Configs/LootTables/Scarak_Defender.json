@@ -5,40 +5,39 @@
     {
       "Type": "LEVELED",
       "ItemId": "Weapon_Axe_Copper",
-      "Weight": 2.5,
+      "Weight": 2.0,
       "GearType": "WEAPON",
       "GearLevelMin": 10,
-      "GearLevelMax": 20
+      "GearLevelMax": 16
     },
     {
       "Type": "LEVELED",
-      "ItemId": "Weapon_Mace_Crude",
-      "Weight": 2.0,
+      "ItemId": "Weapon_Spear_Copper",
+      "Weight": 1.6,
       "GearType": "WEAPON",
-      "GearLevelMin": 8,
-      "GearLevelMax": 18
+      "GearLevelMin": 10,
+      "GearLevelMax": 16
+    },
+    {
+      "Type": "LEVELED",
+      "ItemId": "Armor_Copper_Head",
+      "Weight": 1.0,
+      "GearType": "ARMOR",
+      "GearLevelMin": 10,
+      "GearLevelMax": 16
     },
     {
       "Type": "LEVELED",
       "ItemId": "Armor_Copper_Chest",
-      "Weight": 0.8,
-      "GearType": "ARMOR",
-      "GearLevelMin": 10,
-      "GearLevelMax": 20
-    },
-    {
-      "Type": "LEVELED",
-      "ItemId": "Armor_Iron_Legs",
       "Weight": 0.5,
       "GearType": "ARMOR",
-      "GearLevelMin": 18,
-      "GearLevelMax": 28,
-      "MinNpcLevel": 18
+      "GearLevelMin": 10,
+      "GearLevelMax": 16
     },
     {
       "Type": "SIMPLE",
       "ItemId": "Gold_Coin",
-      "Weight": 5.0,
+      "Weight": 6.0,
       "QuantityMin": 2,
       "QuantityMax": 6
     }

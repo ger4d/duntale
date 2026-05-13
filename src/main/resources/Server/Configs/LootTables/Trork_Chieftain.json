@@ -1,55 +1,53 @@
 {
   "Rolls": 1,
-  "DropChance": 0.9,
+  "DropChance": 0.86,
   "Entries": [
     {
       "Type": "LEVELED",
       "ItemId": "Weapon_Axe_Stone_Trork",
-      "Weight": 2.0,
+      "Weight": 1.6,
       "GearType": "WEAPON",
-      "GearLevelMin": 22,
-      "GearLevelMax": 34
+      "GearLevelMin": 24,
+      "GearLevelMax": 32
     },
     {
       "Type": "LEVELED",
       "ItemId": "Weapon_Club_Stone_Trork",
-      "Weight": 1.5,
+      "Weight": 1.4,
       "GearType": "WEAPON",
-      "GearLevelMin": 22,
-      "GearLevelMax": 34
+      "GearLevelMin": 24,
+      "GearLevelMax": 32
     },
     {
       "Type": "LEVELED",
       "ItemId": "Weapon_Axe_Iron",
-      "Weight": 1.0,
+      "Weight": 1.1,
       "GearType": "WEAPON",
-      "GearLevelMin": 18,
-      "GearLevelMax": 30,
-      "MinNpcLevel": 18
+      "GearLevelMin": 24,
+      "GearLevelMax": 32
     },
     {
       "Type": "LEVELED",
       "ItemId": "Armor_Trork_Chest",
-      "Weight": 0.5,
+      "Weight": 1.0,
       "GearType": "ARMOR",
-      "GearLevelMin": 24,
+      "GearLevelMin": 26,
       "GearLevelMax": 34
     },
     {
       "Type": "LEVELED",
-      "ItemId": "Armor_Bronze_Chest",
-      "Weight": 0.4,
+      "ItemId": "Armor_Bronze_Head",
+      "Weight": 0.5,
       "GearType": "ARMOR",
-      "GearLevelMin": 25,
-      "GearLevelMax": 36,
-      "MinNpcLevel": 25
+      "GearLevelMin": 26,
+      "GearLevelMax": 34
     },
     {
       "Type": "SIMPLE",
       "ItemId": "Gold_Coin",
-      "Weight": 5.0,
-      "QuantityMin": 15,
-      "QuantityMax": 35
+      "Weight": 6.5,
+      "QuantityMin": 10,
+      "QuantityMax": 22
     }
   ]
 }
