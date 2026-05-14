@@ -1,14 +1,14 @@
 {
     "Group": "com.duntale",
-    "Name": "ZSquad",
+    "Name": "Duntale",
     "Version": "1.0.0-SNAPSHOT",
-    "Description": "Z Land Escape Prototype",
+    "Description": "Duntale is a dungeon-crawling RPG mod for Hytale, featuring procedurally generated floors, dynamic difficulty scaling, and a wide variety of loot and enemies.",
     "Authors": [
         {
             "Name": "Duntale Team"
         }
     ],
-    "Main": "com.duntale.zsquad.ZSquadPlugin",
+    "Main": "com.duntale.DuntalePlugin",
     "ServerVersion": "2026.05.07-5efa15f6d",
     "Dependencies": {
         "com.duntale:DungeonGen": ">=1.0.0-SNAPSHOT"

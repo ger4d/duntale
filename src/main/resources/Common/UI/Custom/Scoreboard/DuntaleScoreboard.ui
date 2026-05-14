@@ -1,0 +1,236 @@
+// DuntaleScoreboard.ui — Dungeon crawl HUD overlay showing gold, level, XP.
+// Uses simple flat styling to avoid visual noise during gameplay.
+
+@HeaderStyle = (FontSize: 13, TextColor: #ffb347, RenderBold: true, Alignment: Center);
+@ValueStyle = (FontSize: 14, TextColor: #ffffff, Alignment: Center);
+@GoldStyle = (FontSize: 16, TextColor: #FFD700, RenderBold: true, Alignment: Center);
+@LabelStyle = (FontSize: 11, TextColor: #96a9be, Alignment: Center);
+@StatStyle = (FontSize: 11, TextColor: #cccccc, Alignment: Center);
+@StatValueStyle = (FontSize: 11, TextColor: #ffffff, Alignment: Center);
+
+Group #ScoreboardRoot {
+  Anchor: (Width: 185, Height: 290, Right: 18, Top: 180);
+  LayoutMode: Top;
+
+  // Main Panel
+  Group #Panel {
+    Background: #0d0d0d(0.82);
+    OutlineSize: 1;
+    OutlineColor: #ff8c00(0.5);
+    LayoutMode: Top;
+    Padding: (Full: 10);
+
+    // Title
+    Label #Title {
+      Anchor: (Height: 18);
+      Text: "DUNTALE";
+      Style: @HeaderStyle;
+    }
+
+    // Separator
+    Group {
+      Anchor: (Height: 1, Top: 6, Bottom: 6);
+      Background: #ff8c00(0.3);
+    }
+
+    // Gold row
+    Group #GoldRow {
+      LayoutMode: Left;
+      Anchor: (Height: 22);
+
+      Label #GoldIcon {
+        Anchor: (Width: 45, Height: 22);
+        Text: "Gold:";
+        Style: (FontSize: 12, TextColor: #ffb347, Alignment: Center);
+      }
+
+      Label #GoldValue {
+        Anchor: (Height: 22);
+        Text: "0";
+        Style: @GoldStyle;
+      }
+    }
+
+    // Separator
+    Group {
+      Anchor: (Height: 1, Top: 5, Bottom: 4);
+      Background: #ff8c00(0.15);
+    }
+
+    // Level + XP
+    Group #LevelRow {
+      LayoutMode: Left;
+      Anchor: (Height: 18);
+
+      Label #LevelLabel {
+        Anchor: (Width: 70, Height: 18);
+        Text: "Level";
+        Style: @LabelStyle;
+      }
+
+      Label #LevelValue {
+        Anchor: (Height: 18);
+        Text: "1";
+        Style: @ValueStyle;
+      }
+    }
+
+    // XP text
+    Label #XPText {
+      Anchor: (Height: 14, Top: 2);
+      Text: "0 / 100 XP";
+      Style: (FontSize: 10, TextColor: #ff8c00, Alignment: Center);
+    }
+
+    // XP bar background
+    Group #XPBar {
+      LayoutMode: Left;
+      Anchor: (Width: 160, Height: 4, Top: 3, Bottom: 6);
+      Background: #333333(0.55);
+
+      Group #XPBarFill {
+        Anchor: (Width: 0, Height: 4);
+        Background: #ff8c00(0.85);
+      }
+    }
+
+    // Separator
+    Group {
+      Anchor: (Height: 1, Top: 2, Bottom: 4);
+      Background: #ff8c00(0.15);
+    }
+
+    // Stats section header
+    Label #StatsHeader {
+      Anchor: (Height: 16);
+      Text: "Stats";
+      Style: (FontSize: 11, TextColor: #ffb347, RenderBold: true, Alignment: Center);
+    }
+
+    // STR
+    Group #StrRow {
+      LayoutMode: Left;
+      Anchor: (Height: 15);
+
+      Label #StrLabel {
+        Anchor: (Width: 90, Height: 15);
+        Text: "Strength";
+        Style: @StatStyle;
+      }
+
+      Label #StrValue {
+        Anchor: (Width: 70, Height: 15);
+        Text: "0";
+        Style: @StatValueStyle;
+      }
+    }
+
+    // SPD
+    Group #SpdRow {
+      LayoutMode: Left;
+      Anchor: (Height: 15);
+
+      Label #SpdLabel {
+        Anchor: (Width: 90, Height: 15);
+        Text: "Speed";
+        Style: @StatStyle;
+      }
+
+      Label #SpdValue {
+        Anchor: (Width: 70, Height: 15);
+        Text: "0";
+        Style: @StatValueStyle;
+      }
+    }
+
+    // AGI
+    Group #AgiRow {
+      LayoutMode: Left;
+      Anchor: (Height: 15);
+
+      Label #AgiLabel {
+        Anchor: (Width: 90, Height: 15);
+        Text: "Agility";
+        Style: @StatStyle;
+      }
+
+      Label #AgiValue {
+        Anchor: (Width: 70, Height: 15);
+        Text: "0";
+        Style: @StatValueStyle;
+      }
+    }
+
+    // RES
+    Group #ResRow {
+      LayoutMode: Left;
+      Anchor: (Height: 15);
+
+      Label #ResLabel {
+        Anchor: (Width: 90, Height: 15);
+        Text: "Resistance";
+        Style: @StatStyle;
+      }
+
+      Label #ResValue {
+        Anchor: (Width: 70, Height: 15);
+        Text: "0";
+        Style: @StatValueStyle;
+      }
+    }
+
+    // LCK
+    Group #LckRow {
+      LayoutMode: Left;
+      Anchor: (Height: 15);
+
+      Label #LckLabel {
+        Anchor: (Width: 90, Height: 15);
+        Text: "Luck";
+        Style: @StatStyle;
+      }
+
+      Label #LckValue {
+        Anchor: (Width: 70, Height: 15);
+        Text: "0";
+        Style: @StatValueStyle;
+      }
+    }
+
+    // VIT
+    Group #VitRow {
+      LayoutMode: Left;
+      Anchor: (Height: 15);
+
+      Label #VitLabel {
+        Anchor: (Width: 90, Height: 15);
+        Text: "Vitality";
+        Style: @StatStyle;
+      }
+
+      Label #VitValue {
+        Anchor: (Width: 70, Height: 15);
+        Text: "0";
+        Style: @StatValueStyle;
+      }
+    }
+
+    // STA
+    Group #StaRow {
+      LayoutMode: Left;
+      Anchor: (Height: 15);
+
+      Label #StaLabel {
+        Anchor: (Width: 90, Height: 15);
+        Text: "Stamina";
+        Style: @StatStyle;
+      }
+
+      Label #StaValue {
+        Anchor: (Width: 70, Height: 15);
+        Text: "0";
+        Style: @StatValueStyle;
+      }
+    }
+  }
+}

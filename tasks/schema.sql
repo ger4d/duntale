@@ -1,4 +1,4 @@
--- Task tracking schema for v3-zsquad development workflow
+-- Task tracking schema for duntale development workflow
 
 CREATE TABLE IF NOT EXISTS tasks (
     id              INTEGER PRIMARY KEY AUTOINCREMENT,

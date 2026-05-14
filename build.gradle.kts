@@ -48,7 +48,7 @@ tasks {
     }
 
     shadowJar {
-        archiveBaseName.set("ZSquad")
+        archiveBaseName.set("Duntale")
         archiveClassifier.set("")
         mergeServiceFiles()
     }

@@ -719,7 +719,7 @@ def main():
     parser.add_argument(
         "--assets-root",
         default=str(Path(__file__).resolve().parent.parent.parent.parent / "HytaleAssets"),
-        help="Path to HytaleAssets root (default: ../../HytaleAssets relative to v3-zsquad)",
+        help="Path to HytaleAssets root (default: ../../HytaleAssets relative to this module)",
     )
     parser.add_argument(
         "--db",

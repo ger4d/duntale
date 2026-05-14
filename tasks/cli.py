@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Task management CLI for v3-zsquad development workflow.
+Task management CLI for duntale development workflow.
 
 Usage:
     python cli.py create   --name <slug> --desc <description> [--priority <low|medium|high|critical>]
@@ -349,7 +349,7 @@ def cmd_delete(args):
 # ── Argument Parser ───────────────────────────────────────────────────────────
 
 def build_parser():
-    parser = argparse.ArgumentParser(description="v3-zsquad task management CLI")
+    parser = argparse.ArgumentParser(description="duntale task management CLI")
     sub = parser.add_subparsers(dest="command", required=True)
 
     # shared --rich parent so each subcommand accepts: <cmd> --rich [...]

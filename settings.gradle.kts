@@ -1,1 +1,1 @@
-rootProject.name = "ZSquad"
+rootProject.name = "Duntale"

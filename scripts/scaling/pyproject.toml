@@ -1,7 +1,7 @@
 [project]
-name = "zsquad-scaling"
+name = "duntale-scaling"
 version = "0.1.0"
-description = "Asset parser and scaling generator for v3-zsquad dungeon progression"
+description = "Asset parser and scaling generator for Duntale dungeon progression"
 requires-python = ">=3.11"
 # No external dependencies — uses only stdlib (json, sqlite3, pathlib, math)
 dependencies = [

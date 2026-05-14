@@ -46,7 +46,7 @@ wheels = [
 ]
 
 [[package]]
-name = "zsquad-scaling"
+name = "duntale-scaling"
 version = "0.1.0"
 source = { virtual = "." }
 dependencies = [

@@ -91,7 +91,7 @@ def extract_structural_blocks(themes_dir: Path) -> set[str]:
 def main():
     # Resolve paths relative to this script
     script_dir = Path(__file__).resolve().parent
-    # Navigate from v3-zsquad/scripts/ to dungeon-gen/assets/...
+    # Navigate from this module's scripts directory to dungeon-gen/assets/...
     themes_dir = script_dir.parent.parent / "dungeon-gen" / "assets" / "Server" / "Configs" / "DungeonGen" / "Themes"
 
     if not themes_dir.is_dir():
