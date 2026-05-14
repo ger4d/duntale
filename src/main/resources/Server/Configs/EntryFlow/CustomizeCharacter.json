@@ -10,13 +10,13 @@
     }
   ],
   "Camera": {
-    "Distance": 8.5,
+    "Distance": 3.5,
     "Pitch": -0.12,
-    "HeightOffset": 5
+    "HeightOffset": 1.0
   },
   "CompanionOffset": {
-    "X": 1.25,
+    "X": -2,
     "Y": 0.0,
-    "Z": 0.75
+    "Z": 0.0
   }
 }

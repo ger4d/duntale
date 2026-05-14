@@ -1,41 +1,35 @@
 $C = "../../Common.ui";
 
-$C.@PageOverlay {}
 
 $C.@Container {
-  Anchor: (Width: 620, Height: 440, Top: 250);
+  Anchor: (Width: 350, Height: 400, Left: 44, Top: 320);
 
   #Title {
     Group {
-      $C.@Title { @Text = "Create Your Companion"; }
+      $C.@Title { @Text = "Customize Your Companion"; }
     }
   }
 
   #Content {
+    
     LayoutMode: Top;
-    Padding: (Horizontal: 24, Top: 10, Bottom: 20);
+    Padding: (Horizontal: 12, Top: 18, Bottom: 20);
 
     Label {
       Anchor: (Height: 22, Bottom: 4);
-      Text: "Choose your Wolf companion's name to finish setup.";
+      Text: "Choose your companion's name to finish setup.";
       Style: (FontSize: 15, TextColor: #ffffff, Alignment: Center);
-    }
-
-    Label {
-      Anchor: (Height: 18, Bottom: 16);
-      Text: "Only the Wolf companion is available currently";
-      Style: (FontSize: 13, TextColor: #96a9be, Alignment: Center);
     }
 
     Group {
       LayoutMode: Top;
       Background: (TexturePath: "../../Common/ContainerPanelPatch.png", Border: 4);
-      Padding: (Horizontal: 18, Top: 16, Bottom: 16);
+      Padding: (Horizontal: 12, Top: 12, Bottom: 12);
       Anchor: (Bottom: 12);
 
       Label {
         Anchor: (Height: 20, Bottom: 8);
-        Text: "Companion Name";
+        Text: "Name";
         Style: (FontSize: 14, TextColor: #96a9be, Alignment: Center);
       }
 
@@ -48,12 +42,12 @@ $C.@Container {
     Group {
       LayoutMode: Top;
       Background: (TexturePath: "../../Common/ContainerPanelPatch.png", Border: 4);
-      Padding: (Horizontal: 18, Top: 16, Bottom: 16);
+      Padding: (Horizontal: 12, Bottom: 10);
       Anchor: (Bottom: 18);
 
       Label {
         Anchor: (Height: 20, Bottom: 8);
-        Text: "Companion";
+        Text: "Type";
         Style: (FontSize: 14, TextColor: #96a9be, Alignment: Center);
       }
 
@@ -64,11 +58,18 @@ $C.@Container {
         Padding: (Horizontal: 14);
         Style: (FontSize: 16, TextColor: #6f7f91, Alignment: Center, RenderBold: true);
       }
+
+      Label {
+        Anchor: (Height: 18, Bottom: 10);
+        Padding: (Top: 4);
+        Text: "Only Wolf companion is currently available";
+        Style: (FontSize: 13, TextColor: #ec6060, Alignment: Center);
+      }
     }
 
     $C.@TextButton #ConfirmButton {
       Anchor: (Width: 240, Height: 42);
-      Text: "Confirm Companion";
+      Text: "Confirm";
     }
   }
 }

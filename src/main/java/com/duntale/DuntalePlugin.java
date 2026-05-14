@@ -1057,7 +1057,7 @@ public class DuntalePlugin extends JavaPlugin {
         LOGGER.atFine().log("Evicted RPG + progression data for %s", uuid);
     }
 
-    void handleCustomizeCharacterConfirm(
+    boolean handleCustomizeCharacterConfirm(
             @Nonnull Ref<EntityStore> ref,
             @Nonnull Store<EntityStore> store,
             @Nonnull PlayerRef playerRef,
@@ -1066,10 +1066,10 @@ public class DuntalePlugin extends JavaPlugin {
     ) {
         if (customizeCharacterService == null) {
             playerRef.sendMessage(Message.raw("Character setup is currently unavailable.").color("#FF5555"));
-            return;
+            return false;
         }
 
-        customizeCharacterService.complete(ref, store, playerRef, roleName, companionName);
+        return customizeCharacterService.complete(ref, store, playerRef, roleName, companionName);
     }
 
     void handleCustomizeCharacterPreviewName(

@@ -63,6 +63,9 @@ final class CustomizeCharacterPage extends InteractiveCustomUIPage<CustomizeChar
         DuntalePlugin plugin = DuntalePlugin.get();
         if (plugin == null) {
             LOGGER.at(Level.WARNING).log("Unable to handle character setup because DuntalePlugin is unavailable");
+            if (ACTION_CONFIRM.equals(data.action)) {
+                sendUpdate(null, null, false);
+            }
             return;
         }
 
@@ -73,7 +76,9 @@ final class CustomizeCharacterPage extends InteractiveCustomUIPage<CustomizeChar
             return;
         }
 
-        plugin.handleCustomizeCharacterConfirm(ref, store, playerRef, data.roleName, data.companionName);
+        if (!plugin.handleCustomizeCharacterConfirm(ref, store, playerRef, data.roleName, data.companionName)) {
+            sendUpdate(null, null, false);
+        }
     }
 
     static final class CustomizeEventData {

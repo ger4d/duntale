@@ -1,7 +1,9 @@
 package com.duntale;
 
+import com.hypixel.hytale.math.vector.Transform;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.joml.Vector3d;
 
 import java.util.List;
 import java.util.UUID;
@@ -81,6 +83,48 @@ class CustomizeCharacterServiceTest {
         CustomizeCharacterService.SlotReservation reservation = service.reserveSlot(UUID.randomUUID(), slots);
 
         assertEquals(0, reservation.slotIndex());
+    }
+
+    @Test
+    @DisplayName("Should place the preview companion to the player's right")
+    void shouldPlaceThePreviewCompanionToThePlayersRight() {
+        CustomizeCharacterService service = new CustomizeCharacterService(null, null, null, null);
+
+        Vector3d position = service.computeCompanionPosition(
+                new Transform(4.0D, 67.0D, 192.0D, 0.0F, 0.0F, 0.0F),
+                new CustomizeCharacterConfig.CompanionOffset(1.6D, 0.0D, 0.0D)
+        );
+
+        assertEquals(new Vector3d(5.6D, 67.0D, 192.0D), position);
+    }
+
+    @Test
+    @DisplayName("Should center the preview camera between player and companion")
+    void shouldCenterThePreviewCameraBetweenPlayerAndCompanion() {
+        CustomizeCharacterService service = new CustomizeCharacterService(null, null, null, null);
+
+        Vector3d focus = service.computePreviewFocusPosition(
+                new Vector3d(4.0D, 67.0D, 192.0D),
+                new Vector3d(5.6D, 67.0D, 192.0D)
+        );
+
+        assertEquals(new Vector3d(4.8D, 67.0D, 192.0D), focus);
+    }
+
+    @Test
+    @DisplayName("Should reject blank companion names")
+    void shouldRejectBlankCompanionNames() {
+        CustomizeCharacterService service = new CustomizeCharacterService(null, null, null, null);
+
+        assertNull(service.validateName("   "));
+    }
+
+    @Test
+    @DisplayName("Should trim valid companion names")
+    void shouldTrimValidCompanionNames() {
+        CustomizeCharacterService service = new CustomizeCharacterService(null, null, null, null);
+
+        assertEquals("Scout Wolf", service.validateName("  Scout Wolf  "));
     }
 
     private static CustomizeCharacterConfig.SetupSlot slot(double x) {

@@ -30,6 +30,17 @@ except ImportError:
 _console = None
 
 
+def _resolve_db_path() -> Path:
+    env_path = os.environ.get("TASKS_DB_PATH")
+    if not env_path:
+        return Path(__file__).parent / "tasks.db"
+
+    db_path = Path(env_path).expanduser()
+    if not db_path.is_absolute():
+        db_path = Path.cwd() / db_path
+    return db_path.resolve()
+
+
 def _get_console():
     global _console
     if _console is None:
@@ -37,7 +48,7 @@ def _get_console():
         _console = Console()
     return _console
 
-DB_PATH = Path(__file__).parent / "tasks.db"
+DB_PATH = _resolve_db_path()
 SCHEMA_PATH = Path(__file__).parent / "schema.sql"
 
 VALID_STATES = ("created", "planned", "in-progress", "testing", "completed")

@@ -18,7 +18,7 @@ repositories {
 }
 
 dependencies {
-    compileOnly("com.hypixel.hytale:Server:2026.05.07-5efa15f6d")
+    compileOnly("com.hypixel.hytale:Server:0.5.0-pre.8")
     compileOnly(files("../DynamicTooltipsLib/build/libs/DynamicTooltipsLib-1.5.1.jar"))
     compileOnly(files("../dungeon-gen/build/libs/dungeon-gen-1.0.0-SNAPSHOT.jar"))
     
@@ -31,7 +31,7 @@ dependencies {
 
     testImplementation("org.junit.jupiter:junit-jupiter:5.10.1")
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")
-    testImplementation("com.hypixel.hytale:Server:2026.05.07-5efa15f6d")
+    testImplementation("com.hypixel.hytale:Server:0.5.0-pre.8")
     testImplementation(files("../dungeon-gen/build/libs/dungeon-gen-1.0.0-SNAPSHOT.jar"))
 }
 

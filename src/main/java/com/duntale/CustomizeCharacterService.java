@@ -8,6 +8,7 @@ import com.duntale.progression.ProgressionService;
 import com.hypixel.hytale.component.Ref;
 import com.hypixel.hytale.component.RemoveReason;
 import com.hypixel.hytale.component.Store;
+import com.hypixel.hytale.server.core.entity.Frozen;
 import com.hypixel.hytale.server.core.entity.nameplate.Nameplate;
 import com.hypixel.hytale.logger.HytaleLogger;
 import com.hypixel.hytale.math.vector.Transform;
@@ -102,7 +103,8 @@ final class CustomizeCharacterService {
         store.addComponent(ref, Teleport.getComponentType(), Teleport.createForPlayer(world, playerTransform));
 
         String selectedRoleName = config.defaultCompanionRole();
-        Ref<EntityStore> previewRef = spawnPreviewCompanion(store, playerId, selectedRoleName, config, playerTransform);
+        Vector3d previewPosition = computeCompanionPosition(playerTransform, config.companionOffset());
+        Ref<EntityStore> previewRef = spawnPreviewCompanion(store, playerId, selectedRoleName, previewPosition);
         activeCustomizations.put(playerId, new ActiveCustomization(
                 playerId,
                 reservation.slotIndex(),
@@ -111,7 +113,13 @@ final class CustomizeCharacterService {
                 world
         ));
 
-        applySetupCamera(playerRef, config, reservation.slot(), playerTransform);
+        applySetupCamera(
+                playerRef,
+                config,
+                reservation.slot(),
+                playerTransform,
+                previewRef != null ? previewPosition : null
+        );
     }
 
     boolean complete(
@@ -129,6 +137,11 @@ final class CustomizeCharacterService {
         }
 
         CustomizeCharacterConfig config = loadConfig();
+        if (companionName == null || companionName.trim().isEmpty()) {
+            playerRef.sendMessage(Message.raw("Please enter a companion name.").color(COLOR_RED));
+            return false;
+        }
+
         String normalizedName = validateName(companionName);
         if (normalizedName == null) {
             playerRef.sendMessage(Message.raw("Companion names must be 1-24 characters using letters, digits, spaces, underscores, apostrophes, or hyphens.")
@@ -243,14 +256,12 @@ final class CustomizeCharacterService {
             @Nonnull Store<EntityStore> store,
             @Nonnull UUID playerId,
             @Nonnull String roleName,
-            @Nonnull CustomizeCharacterConfig config,
-            @Nonnull Transform playerTransform
+            @Nonnull Vector3d previewPosition
     ) {
         if (companionSpawner == null) {
             return null;
         }
 
-        Vector3d previewPosition = computeCompanionPosition(playerTransform, config.companionOffset());
         int level = progressionService != null ? Math.max(1, progressionService.getLevel(playerId)) : 1;
         Pair<Ref<EntityStore>, ?> spawnResult = companionSpawner.spawn(store, roleName, null, previewPosition, level);
         if (spawnResult == null || spawnResult.first() == null || !spawnResult.first().isValid()) {
@@ -259,11 +270,12 @@ final class CustomizeCharacterService {
         }
 
         Ref<EntityStore> previewRef = spawnResult.first();
+        store.ensureComponent(previewRef, Frozen.getComponentType());
         return previewRef;
     }
 
     @Nonnull
-    private Vector3d computeCompanionPosition(
+    Vector3d computeCompanionPosition(
             @Nonnull Transform playerTransform,
             @Nonnull CustomizeCharacterConfig.CompanionOffset companionOffset
     ) {
@@ -280,13 +292,29 @@ final class CustomizeCharacterService {
         );
     }
 
+            @Nonnull
+            Vector3d computePreviewFocusPosition(
+                @Nonnull Vector3d playerPosition,
+                @Nonnull Vector3d companionPosition
+            ) {
+            return new Vector3d(
+                (playerPosition.x + companionPosition.x) * 0.5D,
+                (playerPosition.y + companionPosition.y) * 0.5D,
+                (playerPosition.z + companionPosition.z) * 0.5D
+            );
+                }
+
     private void applySetupCamera(
             @Nonnull PlayerRef playerRef,
             @Nonnull CustomizeCharacterConfig config,
             @Nullable CustomizeCharacterConfig.SetupSlot slot,
-            @Nonnull Transform playerTransform
+            @Nonnull Transform playerTransform,
+            @Nullable Vector3d previewPosition
     ) {
         float yaw = slot != null ? slot.resolvedCameraYaw() : playerTransform.getRotation().yaw();
+        Vector3d cameraFocusPosition = previewPosition != null
+                ? computePreviewFocusPosition(playerTransform.getPosition(), previewPosition)
+                : playerTransform.getPosition();
 
         ServerCameraSettings settings = new ServerCameraSettings();
         settings.positionLerpSpeed = 0.2F;
@@ -301,9 +329,9 @@ final class CustomizeCharacterService {
         settings.eyeOffset = false;
         settings.positionDistanceOffsetType = PositionDistanceOffsetType.DistanceOffset;
         settings.positionOffset = new Position(
-            playerTransform.getPosition().x,
-            playerTransform.getPosition().y + config.camera().heightOffset(),
-            playerTransform.getPosition().z
+            cameraFocusPosition.x,
+            cameraFocusPosition.y + config.camera().heightOffset(),
+            cameraFocusPosition.z
         );
         settings.rotationType = RotationType.Custom;
         settings.movementForceRotationType = MovementForceRotationType.Custom;
@@ -338,6 +366,7 @@ final class CustomizeCharacterService {
         }
 
         if (store != null && store.isInThread()) {
+            thawPreviewCompanion(store, previewRef);
             store.removeEntity(previewRef, RemoveReason.REMOVE);
             return;
         }
@@ -345,9 +374,19 @@ final class CustomizeCharacterService {
         activeCustomization.world().execute(() -> {
             Store<EntityStore> worldStore = activeCustomization.world().getEntityStore().getStore();
             if (previewRef.isValid()) {
+                thawPreviewCompanion(worldStore, previewRef);
                 worldStore.removeEntity(previewRef, RemoveReason.REMOVE);
             }
         });
+    }
+
+    private void thawPreviewCompanion(
+            @Nonnull Store<EntityStore> store,
+            @Nonnull Ref<EntityStore> previewRef
+    ) {
+        if (previewRef.isValid()) {
+            store.tryRemoveComponent(previewRef, Frozen.getComponentType());
+        }
     }
 
     @Nonnull
@@ -357,7 +396,7 @@ final class CustomizeCharacterService {
     }
 
     @Nullable
-    private String validateName(@Nullable String companionName) {
+    String validateName(@Nullable String companionName) {
         if (companionName == null) {
             return null;
         }
