@@ -9,65 +9,62 @@ import com.duntale.dungeongen.config.asset.DungeonThemeConfig;
 import com.duntale.dungeongen.util.JsonParser;
 import com.duntale.dungeon.config.asset.FloorConfigDefaultAsset;
 import com.hypixel.hytale.assetstore.AssetRegistry;
-import com.hypixel.hytale.logger.HytaleLogger;
 import org.bson.BsonArray;
+import org.bson.BsonBoolean;
 import org.bson.BsonDocument;
+import org.bson.BsonDouble;
+import org.bson.BsonInt32;
+import org.bson.BsonNull;
+import org.bson.BsonString;
 import org.bson.BsonType;
 import org.bson.BsonValue;
 
 import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
-import java.sql.SQLException;
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
-import java.util.HashMap;
-import java.util.LinkedHashSet;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
-import java.util.NavigableMap;
 import java.util.Objects;
 import java.util.Set;
 import java.util.TreeMap;
 import java.util.function.Supplier;
-import java.util.Locale;
-import java.util.logging.Level;
 
 /**
- * Resolves per-floor generation config using layered code defaults, shipped asset defaults,
- * and local SQL overrides.
+ * Resolves per-floor generation config using code defaults plus the active floor-config asset
+ * snapshot selected by the Hytale asset registry.
  *
  * <p>The effective config for floor {@code N} is resolved in this order:
  *
  * <ol>
  *     <li>code defaults from {@link LayoutConfig#defaults()}, {@link ThemeConfig#defaults()},
  *     and {@link PacingConfig#defaults()},</li>
- *     <li>the shipped asset snapshot from the highest configured asset floor {@code ≤ N},</li>
- *     <li>the local SQL snapshot from the highest configured SQL floor in the current shipped
- *     asset segment, if one exists.</li>
+ *     <li>the active asset snapshot from the highest configured floor asset {@code ≤ N}.</li>
  * </ol>
  *
- * <p>Local SQL state remains the only mutable layer. A SQL row rebases only within the current
- * shipped asset segment, so a floor-2 override affects floors 2-4, then floor 5 resets to the
- * shipped 005 asset baseline. UI save/reset behavior continues to edit and clear SQL rows only,
- * revealing the inherited asset-backed baseline when no local override exists.
+ * <p>Editable overrides are persisted as full asset-pack snapshots via
+ * {@link FloorConfigAssetRepository}. The service itself keeps no SQL cache and always re-reads
+ * the active asset registry so file-watch reloads are reflected without a service restart.
  *
  * @since 1.6.0
  */
 public class FloorConfigService {
 
-    private static final HytaleLogger LOGGER = HytaleLogger.forEnclosingClass();
     private static final List<String> DEFAULT_THEME_VARIANTS = List.of("crypt");
     private static final Map<String, String> CANONICAL_THEME_IDS_BY_ALIAS = Map.of(
-        "arcane", "arcane",
-        "crypt", "crypt",
-        "hive", "hive",
-        "mine", "mine",
-        "mushroom", "mushroom",
-        "temple_dark", "temple_dark",
-        "volcanic", "volcanic"
+            "arcane", "arcane",
+            "crypt", "crypt",
+            "hive", "hive",
+            "mine", "mine",
+            "mushroom", "mushroom",
+            "temple_dark", "temple_dark",
+            "volcanic", "volcanic"
     );
 
     // ============================================
@@ -137,25 +134,24 @@ public class FloorConfigService {
     // Fields
     // ============================================
 
-    private final FloorConfigRepository repository;
+    private final FloorConfigAssetRepository repository;
     private final Supplier<TreeMap<Integer, Map<String, Object>>> assetDefaultSupplier;
-    private volatile TreeMap<Integer, Map<String, Object>> cache = new TreeMap<>();
 
     // ============================================
     // Constructor
     // ============================================
 
     /**
-     * Creates a new floor config service backed by the given repository.
+     * Creates a new floor config service backed by the given asset repository.
      *
-     * @param repository the floor config repository
+     * @param repository the asset-backed floor config repository
      */
-    public FloorConfigService(@Nonnull FloorConfigRepository repository) {
-        this(repository, FloorConfigService::loadAssetDefaultsFromRegistry);
+    public FloorConfigService(@Nonnull FloorConfigAssetRepository repository) {
+        this(repository, FloorConfigService::loadActiveAssetsFromRegistry);
     }
 
     FloorConfigService(
-            @Nonnull FloorConfigRepository repository,
+            @Nonnull FloorConfigAssetRepository repository,
             @Nonnull Supplier<TreeMap<Integer, Map<String, Object>>> assetDefaultSupplier
     ) {
         this.repository = Objects.requireNonNull(repository, "repository");
@@ -167,17 +163,10 @@ public class FloorConfigService {
     // ============================================
 
     /**
-     * Loads all floor overrides from SQLite into the in-memory cache.
-     * Called once during plugin startup.
+     * No-op retained for callers that still invoke the old startup warmup hook.
      */
     public void loadOnStartup() {
-        try {
-            normalizeStoredOverrides();
-            refreshCache();
-            LOGGER.at(Level.INFO).log("Floor config loaded: %d override floor(s) defined", cache.size());
-        } catch (SQLException | IllegalArgumentException e) {
-            LOGGER.at(Level.SEVERE).log("Failed to load floor config overrides: %s", e.getMessage());
-        }
+        // Asset-backed floor config resolution reads the live registry directly.
     }
 
     // ============================================
@@ -187,9 +176,9 @@ public class FloorConfigService {
     /**
      * Resolves the effective generation config for a given floor and theme.
      *
-     * <p>Starts from {@link DungeonConfig#withDefaults()}, finds the highest defined override
-     * floor {@code ≤ floorLevel}, and merges those sparse overrides. The theme palette is
-     * always the provided {@code theme} argument, not from floor overrides.
+     * <p>Starts from code defaults, then applies the active floor-config asset snapshot from the
+     * highest configured floor {@code ≤ floorLevel}. The theme palette is always the provided
+     * {@code theme} argument, not from floor overrides.
      *
      * <p>The returned config has placeholder values for instance-specific fields
      * ({@code worldName}, {@code origin}, {@code assemble}, {@code floorLevel}) — the caller
@@ -231,156 +220,60 @@ public class FloorConfigService {
     // ============================================
 
     /**
-     * Sets a single field override for a floor level.
+     * Saves a full floor-config snapshot into the selected asset pack.
      *
-     * @param floorLevel the floor level
-     * @param fieldPath  the dot-path field key (e.g. {@code "layout.maxRooms"})
-     * @param value      the override value (must match the field's expected type)
-     * @throws SQLException             if persistence fails
-     * @throws IllegalArgumentException if the field path is not a recognized overridable field
+     * @param floorLevel the floor level to save
+     * @param packName   the target asset-pack name
+     * @param allValues  field values gathered from the editor UI
+     * @throws IOException              if the asset file cannot be written
+     * @throws IllegalArgumentException if the values or pack selection are invalid
      */
-    public void setOverride(int floorLevel, @Nonnull String fieldPath, @Nonnull Object value) throws SQLException {
-        validateField(fieldPath);
-        Objects.requireNonNull(value, "value");
-        Map<String, Object> overrides = loadOverridesForFloor(floorLevel);
-        overrides.put(fieldPath, convertToFieldType(fieldPath, value));
-        repository.save(floorLevel, toJson(overrides));
-        refreshCache();
-    }
+    public void saveAssetOverride(int floorLevel, @Nonnull String packName, @Nonnull Map<String, Object> allValues)
+            throws IOException {
+        Objects.requireNonNull(packName, "packName");
+        Objects.requireNonNull(allValues, "allValues");
 
-    /**
-     * Removes a single field override for a floor level.
-     *
-     * <p>If removing the field leaves the floor with no overrides, the entire floor row
-     * is deleted from the database.
-     *
-     * @param floorLevel the floor level
-     * @param fieldPath  the dot-path field key
-     * @throws SQLException             if persistence fails
-     * @throws IllegalArgumentException if the field path is not a recognized overridable field
-     */
-    public void clearOverride(int floorLevel, @Nonnull String fieldPath) throws SQLException {
-        validateField(fieldPath);
-        Map<String, Object> overrides = loadOverridesForFloor(floorLevel);
-        if (!overrides.containsKey(fieldPath)) {
-            return;
+        Map<String, Object> snapshot = buildFullSnapshot(floorLevel, allValues);
+        @SuppressWarnings("unchecked")
+        List<String> themeVariants = (List<String>) snapshot.get("theme.variants");
+        if (themeVariants == null || themeVariants.isEmpty()) {
+            throw new IllegalArgumentException("At least one theme variant must be selected");
         }
-        overrides.remove(fieldPath);
-        if (overrides.isEmpty()) {
-            repository.delete(floorLevel);
-        } else {
-            repository.save(floorLevel, toJson(overrides));
-        }
-        refreshCache();
+        repository.saveAssetOverride(floorLevel, packName, toBsonDocument(snapshot));
     }
 
     /**
-     * Removes all overrides for a floor level.
+     * Deletes the selected floor-config snapshot from a target asset pack.
      *
-     * @param floorLevel the floor level
-     * @throws SQLException if persistence fails
+     * @param floorLevel the floor level to reset
+     * @param packName   the target asset-pack name
+     * @return {@code true} if a pack-local override file existed and was removed
+     * @throws IOException              if the asset file cannot be deleted
+     * @throws IllegalArgumentException if the pack selection is invalid
      */
-    public void clearFloor(int floorLevel) throws SQLException {
-        repository.delete(floorLevel);
-        refreshCache();
+    public boolean deleteAssetOverride(int floorLevel, @Nonnull String packName) throws IOException {
+        return repository.deleteAssetOverride(floorLevel, packName);
     }
 
-    // ============================================
-    // Bulk save (for UI page)
-    // ============================================
-
     /**
-     * Returns the sparse overrides inherited from the nearest lower-defined floor,
-     * ignoring the specified floor's own overrides. Returns an empty map if no
-     * parent floor is defined.
+     * Returns whether the selected asset pack already contains a persisted floor-config snapshot.
      *
-     * @param floorLevel the floor level
-     * @return unmodifiable map of inherited overrides
+     * @param floorLevel the floor level to inspect
+     * @param packName   the target asset-pack name
+     * @return {@code true} if the floor asset file already exists in the selected pack
+     * @throws IllegalArgumentException if the pack selection is invalid
+     */
+    public boolean hasAssetOverride(int floorLevel, @Nonnull String packName) {
+        return repository.hasAssetOverride(floorLevel, packName);
+    }
+    /**
+     * Lists the currently loaded asset packs that may be used for floor-config editing.
+     *
+     * @return ordered pack choices in runtime load order
      */
     @Nonnull
-    public Map<String, Object> getParentOverrides(int floorLevel) {
-        Integer parentFloor = cache.lowerKey(floorLevel);
-        if (parentFloor == null) {
-            return Map.of();
-        }
-        return Map.copyOf(cache.get(parentFloor));
-    }
-
-    /**
-     * Replaces all overrides for a floor level based on the provided full field values.
-     *
-        * <p>Compares each value against defaults and only persists fields that differ.
-        * This keeps the save path aligned with the rebase resolution model, where each
-        * defined floor stores a sparse snapshot applied directly over defaults. Saving a
-        * floor therefore materializes any visible inherited non-default values as
-        * explicit overrides for that floor.
-     *
-     * <p>Float-precision comparison is used for {@link FieldType#DOUBLE} fields to
-     * avoid false positives caused by {@code float → double} round-trip loss from
-     * UI slider controls.
-     *
-     * @param floorLevel the floor level to save overrides for
-     * @param allValues  map of field path → value for every field shown in the UI
-     * @throws SQLException if persistence fails
-     */
-    public void bulkSaveOverrides(int floorLevel, @Nonnull Map<String, Object> allValues) throws SQLException {
-        LayoutConfig defaultLayout = LayoutConfig.defaults();
-        ThemeConfig defaultTheme = ThemeConfig.defaults();
-        PacingConfig defaultPacing = PacingConfig.defaults();
-        Map<String, Object> inheritedOverrides = resolveInheritedOverrides(floorLevel);
-
-        Map<String, Object> newOverrides = new LinkedHashMap<>();
-
-        for (Map.Entry<String, Object> entry : allValues.entrySet()) {
-            String path = entry.getKey();
-            Object uiValue = entry.getValue();
-            if (uiValue == null || !FIELD_TYPES.containsKey(path)) {
-                continue;
-            }
-
-            Object inheritedValue = inheritedOverrides.containsKey(path)
-                    ? convertToFieldType(path, inheritedOverrides.get(path))
-                    : getDefaultValue(path, defaultLayout, defaultTheme, defaultPacing);
-
-            if (!valuesEqual(path, uiValue, inheritedValue)) {
-                newOverrides.put(path, convertToFieldType(path, uiValue));
-            }
-        }
-
-        if (newOverrides.isEmpty()) {
-            repository.delete(floorLevel);
-        } else {
-            repository.save(floorLevel, toJson(newOverrides));
-        }
-        refreshCache();
-    }
-
-    /**
-     * Compares two field values for equality, using float-precision comparison for
-     * {@link FieldType#DOUBLE} fields to handle {@code float → double} round-trip loss.
-     */
-    private static boolean valuesEqual(@Nonnull String fieldPath, @Nullable Object a, @Nullable Object b) {
-        if (Objects.equals(a, b)) {
-            return true;
-        }
-        if (a == null || b == null) {
-            return false;
-        }
-        FieldType type = FIELD_TYPES.get(fieldPath);
-        if (type == null) {
-            return a.equals(b);
-        }
-        return switch (type) {
-            case INT -> (a instanceof Number na) && (b instanceof Number nb)
-                    && na.intValue() == nb.intValue();
-            case DOUBLE -> (a instanceof Number na) && (b instanceof Number nb)
-                    && Float.compare(na.floatValue(), nb.floatValue()) == 0;
-            case BOOLEAN -> a.equals(b);
-            case STRING -> a.toString().equals(b.toString());
-            case STRING_LIST -> Objects.equals(
-                convertToFieldType(fieldPath, a),
-                convertToFieldType(fieldPath, b));
-        };
+    public List<FloorConfigAssetRepository.PackChoice> listPackChoices() {
+        return repository.listPackChoices();
     }
 
     // ============================================
@@ -396,9 +289,11 @@ public class FloorConfigService {
      */
     @Nonnull
     public EffectiveConfig getEffectiveConfig(int floorLevel) {
-        Map<String, Object> baseOverrides = resolveEffectiveOverrides(floorLevel);
-        Map<String, Object> exactOverrides = cache.get(floorLevel);
-        Integer baseFloor = resolveDisplayBaseFloor(floorLevel);
+        TreeMap<Integer, Map<String, Object>> activeAssets = resolveActiveAssets();
+        Map.Entry<Integer, Map<String, Object>> baseEntry = activeAssets.floorEntry(floorLevel);
+        Map<String, Object> baseOverrides = baseEntry != null ? baseEntry.getValue() : Map.of();
+        Map<String, Object> exactOverrides = activeAssets.get(floorLevel);
+        Integer baseFloor = baseEntry != null ? baseEntry.getKey() : null;
 
         LayoutConfig defaultLayout = LayoutConfig.defaults();
         ThemeConfig defaultTheme = ThemeConfig.defaults();
@@ -420,14 +315,13 @@ public class FloorConfigService {
     }
 
     /**
-     * Returns the floor levels that have defined overrides.
+     * Returns the floor levels that currently have active floor-config assets.
      *
-     * @return immutable list of floor levels with defined overrides
-     * @throws SQLException if the query fails
+     * @return immutable list of active floor-config breakpoints
      */
     @Nonnull
-    public List<Integer> listDefinedFloors() throws SQLException {
-        return repository.listDefinedFloors();
+    public List<Integer> listDefinedFloors() {
+        return List.copyOf(resolveActiveAssets().keySet());
     }
 
     // ============================================
@@ -517,7 +411,7 @@ public class FloorConfigService {
      * A single field's resolved value and whether it was explicitly set or inherited.
      *
      * @param value    the resolved value
-     * @param explicit {@code true} if the value comes from an explicit override
+     * @param explicit {@code true} if the value comes from an exact-floor active asset
      */
     public record FieldStatus(
             @Nonnull Object value,
@@ -530,94 +424,31 @@ public class FloorConfigService {
 
     @Nonnull
     private Map<String, Object> resolveEffectiveOverrides(int floorLevel) {
-        LinkedHashMap<String, Object> resolved = new LinkedHashMap<>(resolveInheritedOverrides(floorLevel));
-
-        return resolved.isEmpty() ? Map.of() : Map.copyOf(resolved);
+        Map.Entry<Integer, Map<String, Object>> baseEntry = resolveActiveAssets().floorEntry(floorLevel);
+        if (baseEntry == null) {
+            return Map.of();
+        }
+        return Map.copyOf(baseEntry.getValue());
     }
 
     @Nonnull
-    private Map<String, Object> resolveInheritedOverrides(int floorLevel) {
-        TreeMap<Integer, Map<String, Object>> assetDefaults = resolveAssetDefaults();
-        LinkedHashMap<String, Object> resolved = new LinkedHashMap<>();
-
-        Integer assetFloor = assetDefaults.floorKey(floorLevel);
-        if (assetFloor != null) {
-            resolved.putAll(assetDefaults.get(assetFloor));
-        }
-
-        Integer sqlFloor = resolveSegmentSqlFloor(assetFloor, floorLevel, true);
-        if (sqlFloor != null) {
-            resolved.putAll(cache.get(sqlFloor));
-        }
-
-        return resolved.isEmpty() ? Map.of() : Map.copyOf(resolved);
-    }
-
-    @Nullable
-    private Integer resolveInheritedSqlFloor(int floorLevel) {
-        return resolveSegmentSqlFloor(resolveAssetDefaults().floorKey(floorLevel), floorLevel, false);
-    }
-
-    @Nullable
-    private Integer resolveSegmentSqlFloor(@Nullable Integer assetFloor, int floorLevel, boolean includeExactFloor) {
-        NavigableMap<Integer, Map<String, Object>> scopedSql = cache;
-        if (assetFloor != null) {
-            scopedSql = scopedSql.tailMap(assetFloor, true);
-        }
-        scopedSql = includeExactFloor ? scopedSql.headMap(floorLevel, true) : scopedSql.headMap(floorLevel, false);
-        return scopedSql.isEmpty() ? null : scopedSql.lastKey();
-    }
-
-    @Nonnull
-    private Map<String, Object> loadOverridesForFloor(int floorLevel) throws SQLException {
-        return repository.load(floorLevel)
-                .map(json -> {
-                    Map<String, Object> parsed = JsonParser.parseObject(json);
-                    return parsed != null
-                            ? new HashMap<>(normalizeOverrides(parsed, "SQL floor " + floorLevel))
-                            : new HashMap<String, Object>();
-                })
-                .orElseGet(HashMap::new);
-    }
-
-    private void refreshCache() throws SQLException {
-        TreeMap<Integer, String> raw = repository.loadAll();
-        TreeMap<Integer, Map<String, Object>> newCache = new TreeMap<>();
-        for (Map.Entry<Integer, String> entry : raw.entrySet()) {
-            Map<String, Object> parsed = JsonParser.parseObject(entry.getValue());
-            if (parsed != null) {
-                newCache.put(entry.getKey(), normalizeOverrides(parsed, "SQL floor " + entry.getKey()));
-            }
-        }
-        this.cache = newCache;
-    }
-
-    private void normalizeStoredOverrides() throws SQLException {
-        TreeMap<Integer, String> raw = repository.loadAll();
-        for (Map.Entry<Integer, String> entry : raw.entrySet()) {
-            Map<String, Object> parsed = JsonParser.parseObject(entry.getValue());
-            if (parsed == null) {
+    private Map<String, Object> buildFullSnapshot(int floorLevel, @Nonnull Map<String, Object> allValues) {
+        EffectiveConfig current = getEffectiveConfig(floorLevel);
+        LinkedHashMap<String, Object> snapshot = new LinkedHashMap<>();
+        for (String path : FIELD_TYPES.keySet()) {
+            Object rawValue = allValues.containsKey(path)
+                    ? allValues.get(path)
+                    : current.fields().get(path).value();
+            if (rawValue == null) {
                 continue;
             }
-            String normalizedJson = toJson(normalizeOverrides(parsed, "SQL floor " + entry.getKey()));
-            if (!normalizedJson.equals(entry.getValue())) {
-                repository.save(entry.getKey(), normalizedJson);
-            }
+            snapshot.put(path, convertToFieldType(path, rawValue));
         }
-    }
-
-    @Nullable
-    private Integer resolveDisplayBaseFloor(int floorLevel) {
-        Integer assetFloor = resolveAssetDefaults().floorKey(floorLevel);
-        Integer sqlFloor = resolveSegmentSqlFloor(assetFloor, floorLevel, true);
-        if (sqlFloor != null) {
-            return sqlFloor;
-        }
-        return assetFloor;
+        return Map.copyOf(snapshot);
     }
 
     @Nonnull
-    private TreeMap<Integer, Map<String, Object>> resolveAssetDefaults() {
+    private TreeMap<Integer, Map<String, Object>> resolveActiveAssets() {
         TreeMap<Integer, Map<String, Object>> assetDefaults = assetDefaultSupplier.get();
         if (assetDefaults == null || assetDefaults.isEmpty()) {
             return new TreeMap<>();
@@ -732,16 +563,23 @@ public class FloorConfigService {
     }
 
     @Nonnull
-    private static TreeMap<Integer, Map<String, Object>> loadAssetDefaultsFromRegistry() {
+    private static TreeMap<Integer, Map<String, Object>> loadActiveAssetsFromRegistry() {
         TreeMap<Integer, Map<String, Object>> resolved = new TreeMap<>();
+        TreeMap<Integer, String> activeAssetIds = new TreeMap<>();
         for (FloorConfigDefaultAsset asset : FloorConfigDefaultAsset.getAll()) {
             int floorLevel = asset.getFloorLevel();
-            Map<String, Object> overrides = normalizeOverrides(
-                    bsonDocumentToMap(asset.getOverridesDocument()),
-                    "asset floor " + asset.getId());
-            if (resolved.putIfAbsent(floorLevel, overrides) != null) {
-                throw new IllegalArgumentException("Duplicate floor config default asset floor: " + floorLevel);
+            String previousAssetId = activeAssetIds.putIfAbsent(floorLevel, asset.getId());
+            if (previousAssetId != null) {
+                throw new IllegalArgumentException(
+                        "Duplicate active floor config assets for floor " + floorLevel
+                                + ": " + previousAssetId + " and " + asset.getId());
             }
+
+            resolved.put(
+                    floorLevel,
+                    normalizeOverrides(
+                            bsonDocumentToMap(asset.getOverridesDocument()),
+                            "asset floor " + asset.getId()));
         }
         return resolved;
     }
@@ -856,24 +694,20 @@ public class FloorConfigService {
             @Nonnull PacingConfig pacing
     ) {
         return switch (path) {
-            // Layout — size
             case "layout.width" -> layout.width();
             case "layout.depth" -> layout.depth();
             case "layout.height" -> layout.height();
-            // Layout — rooms
             case "layout.roomDensity" -> layout.roomDensity();
             case "layout.minRoomSize" -> layout.minRoomSize();
             case "layout.maxRoomSize" -> layout.maxRoomSize();
             case "layout.maxRooms" -> layout.maxRooms();
             case "layout.roomShape" -> layout.roomShape();
             case "layout.irregularity" -> layout.irregularity();
-            // Layout — corridors
             case "layout.corridorWidth" -> layout.corridorWidth();
             case "layout.branchChance" -> layout.branchChance();
             case "layout.loopChance" -> layout.loopChance();
             case "layout.windingCorridors" -> layout.windingCorridors();
             case "layout.windingFactor" -> layout.windingFactor();
-            // Layout — features
             case "layout.pillarFrequency" -> layout.pillarFrequency();
             case "layout.waterFrequency" -> layout.waterFrequency();
             case "layout.lavaFrequency" -> layout.lavaFrequency();
@@ -881,82 +715,65 @@ public class FloorConfigService {
             case "layout.floorTraps" -> layout.floorTraps();
             case "layout.secretWallChance" -> layout.secretWallChance();
             case "layout.merchantSpawnChance" -> layout.merchantSpawnChance();
-            // Layout — entrance / exit
             case "layout.entrancePlacement" -> layout.entrancePlacement();
             case "layout.exitDistance" -> layout.exitDistance();
-            // Layout — enemies
             case "layout.enemyDensity" -> layout.enemyDensity();
             case "layout.maxEnemiesPerRoom" -> layout.maxEnemiesPerRoom();
             case "layout.bossRoom" -> layout.bossRoom();
             case "layout.ambushChance" -> layout.ambushChance();
-            // Layout — architecture
             case "layout.erosion" -> layout.erosion();
-            // Layout — view
             case "layout.removeCeiling" -> layout.removeCeiling();
             case "layout.flatFloor" -> layout.flatFloor();
             case "layout.solidFill" -> layout.solidFill();
-            // Layout — generation
             case "layout.complexity" -> layout.complexity();
-            // Theme
             case "theme.variants" -> DEFAULT_THEME_VARIANTS;
             case "theme.decayFactor" -> theme.decayFactor();
             case "theme.overgrowthFactor" -> theme.overgrowthFactor();
             case "theme.floodingFactor" -> theme.floodingFactor();
-            // Pacing
             case "pacing.breatheRoomFrequency" -> pacing.breatheRoomFrequency();
             case "pacing.difficultyRamp" -> pacing.difficultyRamp();
             default -> throw new IllegalArgumentException("Unknown field: " + path);
         };
     }
 
-    // ── JSON serialization ───────────────────────────────────────────
+    // ── BSON serialization ───────────────────────────────────────────
 
     /**
-     * Serializes a flat key-value map to a JSON object string.
-     * Package-private for testing.
+     * Serializes a flat key-value map to the BSON document format used by floor-config assets.
      */
     @Nonnull
-    static String toJson(@Nonnull Map<String, Object> map) {
-        StringBuilder sb = new StringBuilder();
-        sb.append('{');
-        boolean first = true;
+    static BsonDocument toBsonDocument(@Nonnull Map<String, Object> map) {
+        BsonDocument document = new BsonDocument();
         for (Map.Entry<String, Object> entry : new TreeMap<>(map).entrySet()) {
-            if (!first) {
-                sb.append(", ");
-            }
-            first = false;
-            sb.append('"').append(escapeJsonString(entry.getKey())).append("\": ");
-            appendJsonValue(sb, entry.getValue());
+            document.put(entry.getKey(), toBsonValue(entry.getValue()));
         }
-        sb.append('}');
-        return sb.toString();
-    }
-
-    private static void appendJsonValue(@Nonnull StringBuilder sb, @Nullable Object value) {
-        if (value == null) {
-            sb.append("null");
-        } else if (value instanceof Collection<?> collection) {
-            sb.append('[');
-            boolean first = true;
-            for (Object item : collection) {
-                if (!first) {
-                    sb.append(", ");
-                }
-                first = false;
-                appendJsonValue(sb, item);
-            }
-            sb.append(']');
-        } else if (value instanceof String s) {
-            sb.append('"').append(escapeJsonString(s)).append('"');
-        } else if (value instanceof Boolean || value instanceof Number) {
-            sb.append(value);
-        } else {
-            sb.append('"').append(escapeJsonString(value.toString())).append('"');
-        }
+        return document;
     }
 
     @Nonnull
-    private static String escapeJsonString(@Nonnull String s) {
-        return s.replace("\\", "\\\\").replace("\"", "\\\"");
+    private static BsonValue toBsonValue(@Nullable Object value) {
+        if (value == null) {
+            return BsonNull.VALUE;
+        }
+        if (value instanceof Collection<?> collection) {
+            BsonArray array = new BsonArray();
+            for (Object item : collection) {
+                array.add(toBsonValue(item));
+            }
+            return array;
+        }
+        if (value instanceof String s) {
+            return new BsonString(s);
+        }
+        if (value instanceof Boolean bool) {
+            return BsonBoolean.valueOf(bool);
+        }
+        if (value instanceof Integer || value instanceof Long || value instanceof Short || value instanceof Byte) {
+            return new BsonInt32(((Number) value).intValue());
+        }
+        if (value instanceof Number number) {
+            return new BsonDouble(number.doubleValue());
+        }
+        return new BsonString(value.toString());
     }
 }

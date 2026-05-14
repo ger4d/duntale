@@ -4,7 +4,7 @@ import com.duntale.db.DatabaseProvider;
 import com.duntale.dungeon.DungeonInstanceRepository;
 import com.duntale.dungeon.DungeonInstanceService;
 import com.duntale.dungeon.DungeonMembershipRepository;
-import com.duntale.dungeon.FloorConfigRepository;
+import com.duntale.dungeon.FloorConfigAssetRepository;
 import com.duntale.dungeon.FloorConfigService;
 import com.duntale.dungeon.PartyService;
 import com.duntale.economy.GoldRepository;
@@ -42,15 +42,12 @@ class DungeonDeathScreenSystemTest {
         instanceRepository.initialize();
         DungeonMembershipRepository membershipRepository = new DungeonMembershipRepository(database);
         membershipRepository.initialize();
-        FloorConfigRepository floorConfigRepository = new FloorConfigRepository(database);
-        floorConfigRepository.initialize();
-
         DungeonInstanceService dungeonInstanceService = new DungeonInstanceService(
                 database,
                 instanceRepository,
                 membershipRepository,
                 new PartyService(),
-                new FloorConfigService(floorConfigRepository)
+            new FloorConfigService(new FloorConfigAssetRepository())
         );
 
         GoldRepository goldRepository = new GoldRepository(database);

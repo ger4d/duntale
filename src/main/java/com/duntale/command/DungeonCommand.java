@@ -4,10 +4,12 @@ import com.duntale.dungeongen.config.Vec3i;
 import com.duntale.dungeon.DungeonInstance;
 import com.duntale.dungeon.DungeonInstanceService;
 import com.duntale.dungeon.DungeonInstanceState;
+import com.duntale.dungeon.FloorConfigAssetRepository;
 import com.duntale.dungeon.FloorConfigService;
 import com.hypixel.hytale.math.vector.Transform;
 import com.hypixel.hytale.server.core.Message;
 import com.hypixel.hytale.server.core.command.system.CommandContext;
+import com.hypixel.hytale.server.core.command.system.arguments.system.OptionalArg;
 import com.hypixel.hytale.server.core.command.system.arguments.system.RequiredArg;
 import com.hypixel.hytale.server.core.command.system.arguments.types.ArgTypes;
 import com.hypixel.hytale.server.core.command.system.basecommands.AbstractPlayerCommand;
@@ -45,8 +47,9 @@ import java.util.concurrent.CompletionException;
  * /dungeon start
  * /dungeon tpout
  * /dungeon transition <instanceId>
- * /dungeon floorconfig <floor>
+ * /dungeon floorconfig [floor]
  * /dungeon floorconfig list
+ * /dungeon floorconfig packs
  * }</pre>
  *
  * @since 1.6.0
@@ -126,12 +129,16 @@ public class DungeonCommand extends CommandBase {
                         .insert(Message.raw(" — advance instance to next floor").color(GRAY))
         );
         context.sendMessage(
-                Message.raw("  floorconfig <floor>").color(GOLD)
-                        .insert(Message.raw(" — open floor config UI for a floor level").color(GRAY))
+            Message.raw("  floorconfig [floor]").color(GOLD)
+                .insert(Message.raw(" — open floor config UI; pack selection happens in-page").color(GRAY))
         );
         context.sendMessage(
                 Message.raw("  floorconfig list").color(GOLD)
-                        .insert(Message.raw(" — list all defined override floors").color(GRAY))
+                .insert(Message.raw(" — list active floor config asset breakpoints").color(GRAY))
+        );
+        context.sendMessage(
+            Message.raw("  floorconfig packs").color(GOLD)
+                .insert(Message.raw(" — list asset packs that can store floor config overrides").color(GRAY))
         );
     }
 
@@ -575,12 +582,13 @@ public class DungeonCommand extends CommandBase {
 
     private class FloorConfigSubCommand extends AbstractPlayerCommand {
 
-        private final RequiredArg<String> floorArg =
-                this.withRequiredArg("floor", "Floor level", ArgTypes.STRING);
+        private final OptionalArg<Integer> floorArg =
+            this.withOptionalArg("floor", "Floor level (default 1)", ArgTypes.INTEGER);
 
         FloorConfigSubCommand() {
             super("floorconfig", "Manage per-floor generation overrides");
             this.addSubCommand(new FCListSubCommand());
+            this.addSubCommand(new FCPacksSubCommand());
         }
 
         @Override
@@ -591,20 +599,9 @@ public class DungeonCommand extends CommandBase {
                 @Nonnull PlayerRef playerRef,
                 @Nonnull World world
         ) {
-            String floorStr = floorArg.get(context);
-
-            int floorLevel;
-            try {
-                floorLevel = Integer.parseInt(floorStr);
-            } catch (NumberFormatException e) {
-                context.sendMessage(
-                        Message.raw("Usage: /dungeon floorconfig <floor> or /dungeon floorconfig list").color(YELLOW)
-                );
-                return;
-            }
-
-            if (floorLevel < 1) {
-                context.sendMessage(Message.raw("Floor level must be >= 1.").color(RED));
+            int floorLevel = floorArg.provided(context) ? floorArg.get(context) : 1;
+            if (floorLevel < 1 || floorLevel > 60) {
+                context.sendMessage(Message.raw("Floor level must be between 1 and 60.").color(RED));
                 return;
             }
 
@@ -622,32 +619,56 @@ public class DungeonCommand extends CommandBase {
         private class FCListSubCommand extends CommandBase {
 
             FCListSubCommand() {
-                super("list", "List all defined override floors");
+                super("list", "List active floor config asset breakpoints");
             }
 
             @Override
             protected void executeSync(@Nonnull CommandContext context) {
-                List<Integer> floors;
-                try {
-                    floors = floorConfigService.listDefinedFloors();
-                } catch (SQLException e) {
-                    context.sendMessage(Message.raw("Failed to list floors: " + e.getMessage()).color(RED));
-                    return;
-                }
+                List<Integer> floors = floorConfigService.listDefinedFloors();
 
                 if (floors.isEmpty()) {
                     context.sendMessage(
-                            Message.raw("No floor config overrides defined. All floors use defaults.").color(GRAY)
+                            Message.raw("No floor config assets are active. All floors use code defaults.").color(GRAY)
                     );
                     return;
                 }
 
                 context.sendMessage(
-                        Message.raw("Defined Floor Overrides (" + floors.size() + "):").color(GOLD).bold(true)
+                        Message.raw("Active Floor Config Assets (" + floors.size() + "):").color(GOLD).bold(true)
                 );
                 for (int floor : floors) {
                     context.sendMessage(
                             Message.raw("  Floor " + floor).color(AQUA)
+                    );
+                }
+            }
+        }
+
+        // ── packs ────────────────────────────────────────────────────
+
+        private class FCPacksSubCommand extends CommandBase {
+
+            FCPacksSubCommand() {
+                super("packs", "List asset pack floor-config targets");
+            }
+
+            @Override
+            protected void executeSync(@Nonnull CommandContext context) {
+                List<FloorConfigAssetRepository.PackChoice> choices = floorConfigService.listPackChoices();
+                if (choices.isEmpty()) {
+                    context.sendMessage(Message.raw("No asset packs are currently loaded.").color(GRAY));
+                    return;
+                }
+
+                context.sendMessage(
+                        Message.raw("Floor Config Asset Packs (" + choices.size() + "):").color(GOLD).bold(true)
+                );
+
+                for (FloorConfigAssetRepository.PackChoice choice : choices) {
+                    String color = choice.isValidTarget() ? GREEN : (choice.writable() ? YELLOW : RED);
+                    context.sendMessage(
+                            Message.raw("  " + choice.name()).color(color).monospace(true)
+                                    .insert(Message.raw(" — " + choice.status()).color(GRAY))
                     );
                 }
             }

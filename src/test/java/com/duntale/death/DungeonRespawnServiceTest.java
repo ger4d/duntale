@@ -7,7 +7,7 @@ import com.duntale.dungeon.DungeonInstanceRepository;
 import com.duntale.dungeon.DungeonInstanceService;
 import com.duntale.dungeon.DungeonInstanceState;
 import com.duntale.dungeon.DungeonMembershipRepository;
-import com.duntale.dungeon.FloorConfigRepository;
+import com.duntale.dungeon.FloorConfigAssetRepository;
 import com.duntale.dungeon.FloorConfigService;
 import com.duntale.dungeon.PartyService;
 import com.duntale.economy.GoldRepository;
@@ -53,9 +53,7 @@ class DungeonRespawnServiceTest {
         DungeonMembershipRepository membershipRepository = new DungeonMembershipRepository(database);
         membershipRepository.initialize();
 
-        FloorConfigRepository floorConfigRepository = new FloorConfigRepository(database);
-        floorConfigRepository.initialize();
-        FloorConfigService floorConfigService = new FloorConfigService(floorConfigRepository);
+        FloorConfigService floorConfigService = new FloorConfigService(new FloorConfigAssetRepository());
 
         dungeonInstanceService = new DungeonInstanceService(
                 database,

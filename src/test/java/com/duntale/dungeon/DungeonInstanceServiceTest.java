@@ -19,6 +19,7 @@ import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.TreeMap;
@@ -64,9 +65,7 @@ class DungeonInstanceServiceTest {
         membershipRepository = new DungeonMembershipRepository(database);
         membershipRepository.initialize();
 
-        FloorConfigRepository floorConfigRepository = new FloorConfigRepository(database);
-        floorConfigRepository.initialize();
-        floorConfigService = new FloorConfigService(floorConfigRepository, TreeMap::new);
+        floorConfigService = new FloorConfigService(new FloorConfigAssetRepository(), TreeMap::new);
 
         service = new DungeonInstanceService(database, instanceRepository, membershipRepository, new PartyService(), floorConfigService);
     }
@@ -74,6 +73,15 @@ class DungeonInstanceServiceTest {
     @AfterEach
     void tearDown() {
         database.close();
+    }
+
+    @SafeVarargs
+    private final FloorConfigService floorConfigServiceWithAssets(Map.Entry<Integer, Map<String, Object>>... entries) {
+        TreeMap<Integer, Map<String, Object>> assets = new TreeMap<>();
+        for (Map.Entry<Integer, Map<String, Object>> entry : entries) {
+            assets.put(entry.getKey(), entry.getValue());
+        }
+        return new FloorConfigService(new FloorConfigAssetRepository(), () -> assets);
     }
 
     // ============================================
@@ -368,7 +376,8 @@ class DungeonInstanceServiceTest {
         @DisplayName("Should pick the active floor theme from resolved theme variants on creation")
         void shouldPickTheActiveFloorThemeFromResolvedThemeVariantsOnCreation() throws SQLException {
             FakeRuntime runtime = new FakeRuntime();
-            floorConfigService.setOverride(1, "theme.variants", List.of("arcane", "hive"));
+            floorConfigService = floorConfigServiceWithAssets(
+                Map.entry(1, Map.of("theme.variants", List.of("arcane", "hive"))));
             service = new DungeonInstanceService(
                     database,
                     instanceRepository,
@@ -390,7 +399,8 @@ class DungeonInstanceServiceTest {
         @DisplayName("Should fall back to crypt when resolved themes are unavailable")
         void shouldFallBackToCryptWhenResolvedThemesAreUnavailable() throws SQLException {
             FakeRuntime runtime = new FakeRuntime();
-            floorConfigService.setOverride(1, "theme.variants", List.of("arcane", "hive"));
+            floorConfigService = floorConfigServiceWithAssets(
+                Map.entry(1, Map.of("theme.variants", List.of("arcane", "hive"))));
             service = new DungeonInstanceService(
                     database,
                     instanceRepository,
@@ -812,8 +822,9 @@ class DungeonInstanceServiceTest {
         @DisplayName("Should pick the next floor theme from resolved variants during transition")
         void shouldPickTheNextFloorThemeFromResolvedVariantsDuringTransition() throws SQLException {
             FakeRuntime runtime = new FakeRuntime();
-            floorConfigService.setOverride(1, "theme.variants", List.of("crypt"));
-            floorConfigService.setOverride(2, "theme.variants", List.of("arcane", "hive"));
+            floorConfigService = floorConfigServiceWithAssets(
+                Map.entry(1, Map.of("theme.variants", List.of("crypt"))),
+                Map.entry(2, Map.of("theme.variants", List.of("arcane", "hive"))));
             service = new DungeonInstanceService(
                     database,
                     instanceRepository,

@@ -3,7 +3,7 @@ package com.duntale.dungeon.config.asset;
 import com.hypixel.hytale.assetstore.AssetExtraInfo;
 import com.hypixel.hytale.assetstore.AssetRegistry;
 import com.hypixel.hytale.assetstore.AssetStore;
-import com.hypixel.hytale.assetstore.map.IndexedLookupTableAssetMap;
+import com.hypixel.hytale.assetstore.map.DefaultAssetMap;
 import com.hypixel.hytale.assetstore.map.JsonAssetWithMap;
 import com.hypixel.hytale.codec.Codec;
 import com.hypixel.hytale.codec.KeyedCodec;
@@ -26,13 +26,13 @@ import java.util.Objects;
  * @since 1.8.0
  */
 public class FloorConfigDefaultAsset
-        implements JsonAssetWithMap<String, IndexedLookupTableAssetMap<String, FloorConfigDefaultAsset>> {
+    implements JsonAssetWithMap<String, DefaultAssetMap<String, FloorConfigDefaultAsset>> {
 
     public static final String ASSET_PATH = "Configs/FloorConfig";
 
     public static AssetBuilderCodec<String, FloorConfigDefaultAsset> CODEC;
     private static AssetStore<String, FloorConfigDefaultAsset,
-            IndexedLookupTableAssetMap<String, FloorConfigDefaultAsset>> ASSET_STORE;
+            DefaultAssetMap<String, FloorConfigDefaultAsset>> ASSET_STORE;
 
     protected String id;
     protected AssetExtraInfo.Data data;
@@ -60,24 +60,23 @@ public class FloorConfigDefaultAsset
 
     @Nonnull
     public static HytaleAssetStore.Builder<String, FloorConfigDefaultAsset,
-            IndexedLookupTableAssetMap<String, FloorConfigDefaultAsset>> assetStoreBuilder() {
+            DefaultAssetMap<String, FloorConfigDefaultAsset>> assetStoreBuilder() {
         return HytaleAssetStore.builder(
                         FloorConfigDefaultAsset.class,
-                        new IndexedLookupTableAssetMap<>(FloorConfigDefaultAsset[]::new))
+                        new DefaultAssetMap<>())
                 .setPath(ASSET_PATH)
                 .setCodec(CODEC)
-                .setKeyFunction(FloorConfigDefaultAsset::getId)
-                .setReplaceOnRemove(id -> null);
+                .setKeyFunction(FloorConfigDefaultAsset::getId);
     }
 
     @Nullable
     public static FloorConfigDefaultAsset get(@Nonnull String id) {
-        return ((IndexedLookupTableAssetMap<String, FloorConfigDefaultAsset>) getAssetStore().getAssetMap()).getAsset(id);
+        return getAssetMap().getAsset(id);
     }
 
     @Nonnull
     public static AssetStore<String, FloorConfigDefaultAsset,
-            IndexedLookupTableAssetMap<String, FloorConfigDefaultAsset>> getAssetStore() {
+            DefaultAssetMap<String, FloorConfigDefaultAsset>> getAssetStore() {
         if (ASSET_STORE == null) {
             ASSET_STORE = AssetRegistry.getAssetStore(FloorConfigDefaultAsset.class);
         }
@@ -85,11 +84,28 @@ public class FloorConfigDefaultAsset
     }
 
     @Nonnull
-    @SuppressWarnings("unchecked")
+    public static DefaultAssetMap<String, FloorConfigDefaultAsset> getAssetMap() {
+        return (DefaultAssetMap<String, FloorConfigDefaultAsset>) getAssetStore().getAssetMap();
+    }
+
+    @Nonnull
     public static Collection<FloorConfigDefaultAsset> getAll() {
-        return ((IndexedLookupTableAssetMap<String, FloorConfigDefaultAsset>) getAssetStore().getAssetMap())
-                .getAssetMap()
-                .values();
+        return getAssetMap().getAssetMap().values();
+    }
+
+    /**
+     * Creates a writable floor-config asset snapshot for the provided floor asset ID.
+     *
+     * @param id        the canonical floor asset ID, for example {@code "005"}
+     * @param overrides the full overrides document to persist
+     * @return a new floor-config asset ready for {@link AssetStore#writeAssetToDisk}
+     */
+    @Nonnull
+    public static FloorConfigDefaultAsset fromOverrides(@Nonnull String id, @Nonnull BsonDocument overrides) {
+        FloorConfigDefaultAsset asset = new FloorConfigDefaultAsset();
+        asset.id = Objects.requireNonNull(id, "id");
+        asset.overrides = Objects.requireNonNull(overrides, "overrides");
+        return asset;
     }
 
     @Override

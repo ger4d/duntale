@@ -55,12 +55,12 @@ import com.duntale.progression.LeveledNpcSpawner;
 import com.duntale.progression.ProgressionRepository;
 import com.duntale.progression.ProgressionService;
 import com.duntale.companion.CompanionSpawner;
+import com.duntale.dungeon.FloorConfigAssetRepository;
 import com.duntale.dungeon.DungeonInstanceRepository;
 import com.duntale.dungeon.DungeonInstance;
 import com.duntale.dungeon.DungeonInstanceState;
 import com.duntale.dungeon.DungeonInstanceService;
 import com.duntale.dungeon.DungeonMembershipRepository;
-import com.duntale.dungeon.FloorConfigRepository;
 import com.duntale.dungeon.FloorConfigService;
 import com.duntale.dungeon.PartyService;
 import com.duntale.dungeon.config.asset.FloorConfigDefaultAsset;
@@ -416,7 +416,6 @@ public class DuntalePlugin extends JavaPlugin {
         this.partyService = new PartyService();
         DungeonInstanceRepository dungeonInstanceRepository;
         DungeonMembershipRepository dungeonMembershipRepository;
-        FloorConfigRepository floorConfigRepository;
         try {
             Path dbPath = getDataDirectory().resolve("duntale.db");
             databaseProvider.initialize(dbPath);
@@ -442,9 +441,6 @@ public class DuntalePlugin extends JavaPlugin {
 
             dungeonMembershipRepository = new DungeonMembershipRepository(databaseProvider);
             dungeonMembershipRepository.initialize();
-
-            floorConfigRepository = new FloorConfigRepository(databaseProvider);
-            floorConfigRepository.initialize();
         } catch (SQLException e) {
             LOGGER.atSevere().log("Failed to initialize RPG database: %s", e.getMessage());
             this.rpgService = new RpgService(new RpgRepository(databaseProvider));
@@ -453,9 +449,8 @@ public class DuntalePlugin extends JavaPlugin {
             this.companionRepository = new CompanionRepository(databaseProvider);
             dungeonInstanceRepository = new DungeonInstanceRepository(databaseProvider);
             dungeonMembershipRepository = new DungeonMembershipRepository(databaseProvider);
-            floorConfigRepository = new FloorConfigRepository(databaseProvider);
         }
-        this.floorConfigService = new FloorConfigService(floorConfigRepository);
+        this.floorConfigService = new FloorConfigService(new FloorConfigAssetRepository());
         this.floorConfigService.loadOnStartup();
         this.villageWorldBootstrapService = new VillageWorldBootstrapService();
         this.dungeonInstanceService = new DungeonInstanceService(
