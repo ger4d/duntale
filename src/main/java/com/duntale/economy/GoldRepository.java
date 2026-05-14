@@ -5,6 +5,7 @@ import com.duntale.rpg.RpgConstants;
 import com.hypixel.hytale.logger.HytaleLogger;
 
 import javax.annotation.Nonnull;
+import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
@@ -15,16 +16,20 @@ import java.util.logging.Level;
  * SQL CRUD repository for player gold balances.
  *
  * <p>All operations use {@link PreparedStatement} with try-with-resources.
- * The backing table is {@code player_gold} keyed by player UUID.
+ * The backing table is {@code player_gold} keyed by player UUID. Missing rows
+ * are treated as a fresh wallet with {@link #STARTING_BALANCE} gold.
  */
 public class GoldRepository {
 
     private static final HytaleLogger LOGGER = HytaleLogger.forEnclosingClass();
 
+    /** Starting gold balance for players without a persisted wallet row. */
+    public static final long STARTING_BALANCE = 1_000L;
+
     private static final String CREATE_TABLE_SQL =
             "CREATE TABLE IF NOT EXISTS player_gold ("
                     + "uuid    TEXT PRIMARY KEY, "
-                    + "balance BIGINT NOT NULL DEFAULT 0"
+                    + "balance BIGINT NOT NULL DEFAULT " + STARTING_BALANCE
                     + ")";
 
     private static final String SELECT_BALANCE_SQL =
@@ -67,18 +72,11 @@ public class GoldRepository {
      * Returns the gold balance for the given player.
      *
      * @param playerId the player's UUID
-     * @return the player's balance, or {@code 0} if no row exists
+     * @return the player's balance, or {@link #STARTING_BALANCE} if no row exists
      * @throws SQLException if the query fails
      */
     public long getBalance(@Nonnull UUID playerId) throws SQLException {
-        return database.read(conn -> {
-            try (PreparedStatement ps = conn.prepareStatement(SELECT_BALANCE_SQL)) {
-                ps.setString(1, playerId.toString());
-                try (ResultSet rs = ps.executeQuery()) {
-                    return rs.next() ? rs.getLong("balance") : 0L;
-                }
-            }
-        });
+        return database.read(conn -> readBalance(conn, playerId));
     }
 
     /**
@@ -101,7 +99,7 @@ public class GoldRepository {
     /**
      * Atomically adds a delta to the player's gold balance.
      *
-     * <p>If no row exists, inserts the delta as the initial balance.
+    * <p>If no row exists, inserts {@link #STARTING_BALANCE} plus the delta as the initial balance.
      * If a row exists, increments the balance by the given delta.
      *
      * @param playerId the player's UUID
@@ -112,7 +110,7 @@ public class GoldRepository {
         database.write(conn -> {
             try (PreparedStatement ps = conn.prepareStatement(ADD_BALANCE_SQL)) {
                 ps.setString(1, playerId.toString());
-                ps.setLong(2, delta);
+                ps.setLong(2, STARTING_BALANCE + delta);
                 ps.setLong(3, delta);
                 ps.executeUpdate();
             }
@@ -135,25 +133,13 @@ public class GoldRepository {
     @Nonnull
     public TransferResult transfer(@Nonnull UUID from, @Nonnull UUID to, long amount) throws SQLException {
         return database.transaction(conn -> {
-            long fromBalance;
-            try (PreparedStatement ps = conn.prepareStatement(SELECT_BALANCE_SQL)) {
-                ps.setString(1, from.toString());
-                try (ResultSet rs = ps.executeQuery()) {
-                    fromBalance = rs.next() ? rs.getLong("balance") : 0L;
-                }
-            }
+            long fromBalance = readBalance(conn, from);
 
             if (fromBalance < amount) {
                 return TransferResult.INSUFFICIENT_FUNDS;
             }
 
-            long toBalance;
-            try (PreparedStatement ps = conn.prepareStatement(SELECT_BALANCE_SQL)) {
-                ps.setString(1, to.toString());
-                try (ResultSet rs = ps.executeQuery()) {
-                    toBalance = rs.next() ? rs.getLong("balance") : 0L;
-                }
-            }
+            long toBalance = readBalance(conn, to);
 
             long newFromBalance = fromBalance - amount;
             long newToBalance = Math.min(toBalance + amount, RpgConstants.MAX_GOLD_BALANCE);
@@ -171,6 +157,15 @@ public class GoldRepository {
 
             return new TransferResult(true, fromBalance, newFromBalance, toBalance, newToBalance);
         });
+    }
+
+    private static long readBalance(@Nonnull Connection connection, @Nonnull UUID playerId) throws SQLException {
+        try (PreparedStatement ps = connection.prepareStatement(SELECT_BALANCE_SQL)) {
+            ps.setString(1, playerId.toString());
+            try (ResultSet rs = ps.executeQuery()) {
+                return rs.next() ? rs.getLong("balance") : STARTING_BALANCE;
+            }
+        }
     }
 
     /**

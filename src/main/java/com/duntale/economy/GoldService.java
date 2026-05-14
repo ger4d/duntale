@@ -46,7 +46,8 @@ public class GoldService {
      * Returns the gold balance for the given player.
      *
      * @param playerId the player's UUID
-     * @return the player's balance, or {@code 0} if unavailable
+    * @return the player's balance, including the starting balance for new players,
+    *         or {@code 0} if unavailable
      */
     public long getBalance(@Nonnull UUID playerId) {
         try {

@@ -103,7 +103,7 @@ class DungeonRespawnServiceTest {
         UUID player = UUID.randomUUID();
         DungeonInstance instance = testInstance("inst-1", "world-1", 3, DungeonInstanceState.ACTIVE);
         dungeonInstanceService.createInstance(instance, List.of(player));
-        goldService.addGold(player, 2500L);
+        goldService.addGold(player, 1500L);
         Message deathReason = Message.raw("fell to a trap");
 
         Optional<DungeonDeathContext> result = service.resolveContext(player, "world-1", deathReason);
@@ -138,7 +138,6 @@ class DungeonRespawnServiceTest {
     @DisplayName("Should deduct paid option cost only when balance is sufficient")
     void shouldChargeOnlyWithSufficientBalance() {
         UUID player = UUID.randomUUID();
-        goldService.addGold(player, 1000L);
 
         assertTrue(service.chargeGold(player, 900L));
         assertEquals(100L, goldService.getBalance(player));
@@ -150,7 +149,6 @@ class DungeonRespawnServiceTest {
     @DisplayName("Should refund a failed paid option")
     void shouldRefundFailedPaidOption() {
         UUID player = UUID.randomUUID();
-        goldService.addGold(player, 1000L);
 
         assertTrue(service.chargeGold(player, 900L));
         assertTrue(service.refundGold(player, 900L));
