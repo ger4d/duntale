@@ -4,7 +4,14 @@ import com.duntale.db.DatabaseProvider;
 import com.hypixel.hytale.logger.HytaleLogger;
 
 import javax.annotation.Nonnull;
+import java.io.BufferedReader;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.InputStreamReader;
+import java.nio.charset.StandardCharsets;
 import java.sql.*;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
 import java.util.NavigableMap;
 import java.util.TreeMap;
@@ -19,6 +26,7 @@ import java.util.UUID;
  * <h2>Schema:</h2>
  * <ul>
  *   <li>{@code levels} — level thresholds (level, xp_required)</li>
+ *   <li>{@code data_versions} — project-owned bootstrap data versions</li>
  *   <li>{@code player_progression} — player data (uuid, level, xp, season)</li>
  * </ul>
  *
@@ -29,6 +37,9 @@ import java.util.UUID;
 public class ProgressionRepository {
 
     private static final HytaleLogger LOGGER = HytaleLogger.forEnclosingClass();
+    private static final String LEVELS_DATASET = "levels";
+    private static final String LEVELS_RESOURCE = "levels.csv";
+    private static final String LEVELS_HEADER = "level,xp_required";
 
     private final DatabaseProvider database;
 
@@ -51,6 +62,7 @@ public class ProgressionRepository {
      */
     public void initialize() throws SQLException {
         createSchema();
+        applyBundledLevelsIfNeeded();
         reloadLevelThresholds();
     }
 
@@ -62,6 +74,13 @@ public class ProgressionRepository {
                 CREATE TABLE IF NOT EXISTS levels (
                     level INTEGER PRIMARY KEY,
                     xp_required INTEGER NOT NULL
+                )
+                """,
+                """
+                CREATE TABLE IF NOT EXISTS data_versions (
+                    dataset TEXT PRIMARY KEY,
+                    version INTEGER NOT NULL,
+                    applied_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 )
                 """,
                 """
@@ -83,6 +102,119 @@ public class ProgressionRepository {
             }
         });
         LOGGER.atInfo().log("Progression schema created/verified");
+    }
+
+    private void applyBundledLevelsIfNeeded() throws SQLException {
+        BundledLevels bundledLevels = loadBundledLevels();
+        Integer currentVersion = getDataVersion(LEVELS_DATASET);
+        if (currentVersion != null && currentVersion >= bundledLevels.version()) {
+            LOGGER.atInfo().log("Levels dataset already at version %d", currentVersion);
+            return;
+        }
+
+        database.transaction(conn -> {
+            try (PreparedStatement stmt = conn.prepareStatement("DELETE FROM levels")) {
+                stmt.executeUpdate();
+            }
+
+            String insertLevelSql = "INSERT INTO levels (level, xp_required) VALUES (?, ?)";
+            try (PreparedStatement stmt = conn.prepareStatement(insertLevelSql)) {
+                for (LevelThreshold threshold : bundledLevels.thresholds()) {
+                    stmt.setInt(1, threshold.level());
+                    stmt.setLong(2, threshold.xpRequired());
+                    stmt.addBatch();
+                }
+                stmt.executeBatch();
+            }
+
+            String upsertVersionSql = """
+                    INSERT INTO data_versions (dataset, version, applied_at)
+                    VALUES (?, ?, CURRENT_TIMESTAMP)
+                    ON CONFLICT (dataset)
+                    DO UPDATE SET version = ?, applied_at = CURRENT_TIMESTAMP
+                    """;
+            try (PreparedStatement stmt = conn.prepareStatement(upsertVersionSql)) {
+                stmt.setString(1, LEVELS_DATASET);
+                stmt.setInt(2, bundledLevels.version());
+                stmt.setInt(3, bundledLevels.version());
+                stmt.executeUpdate();
+            }
+        });
+
+        LOGGER.atInfo().log(
+                "Applied bundled levels dataset version %d with %d thresholds",
+                bundledLevels.version(),
+                bundledLevels.thresholds().size()
+        );
+    }
+
+    private Integer getDataVersion(@Nonnull String dataset) throws SQLException {
+        String sql = "SELECT version FROM data_versions WHERE dataset = ?";
+        return database.read(conn -> {
+            try (PreparedStatement stmt = conn.prepareStatement(sql)) {
+                stmt.setString(1, dataset);
+                try (ResultSet rs = stmt.executeQuery()) {
+                    return rs.next() ? rs.getInt("version") : null;
+                }
+            }
+        });
+    }
+
+    @Nonnull
+    private BundledLevels loadBundledLevels() throws SQLException {
+        try (InputStream stream = ProgressionRepository.class.getResourceAsStream(LEVELS_RESOURCE)) {
+            if (stream == null) {
+                throw new SQLException("Missing bundled levels resource: " + LEVELS_RESOURCE);
+            }
+
+            try (BufferedReader reader = new BufferedReader(new InputStreamReader(stream, StandardCharsets.UTF_8))) {
+                int version = parseVersion(reader.readLine());
+                String header = reader.readLine();
+                if (!LEVELS_HEADER.equals(header)) {
+                    throw new SQLException("Invalid bundled levels header: " + header);
+                }
+
+                List<LevelThreshold> thresholds = new ArrayList<>();
+                String line;
+                while ((line = reader.readLine()) != null) {
+                    if (line.isBlank()) {
+                        continue;
+                    }
+                    thresholds.add(parseThreshold(line));
+                }
+
+                if (thresholds.isEmpty()) {
+                    throw new SQLException("Bundled levels resource contains no thresholds");
+                }
+                return new BundledLevels(version, List.copyOf(thresholds));
+            }
+        } catch (IOException e) {
+            throw new SQLException("Failed to read bundled levels resource", e);
+        }
+    }
+
+    private int parseVersion(String line) throws SQLException {
+        if (line == null || !line.startsWith("# version=")) {
+            throw new SQLException("Missing bundled levels version header");
+        }
+        try {
+            return Integer.parseInt(line.substring("# version=".length()).trim());
+        } catch (NumberFormatException e) {
+            throw new SQLException("Invalid bundled levels version: " + line, e);
+        }
+    }
+
+    @Nonnull
+    private LevelThreshold parseThreshold(@Nonnull String line) throws SQLException {
+        String[] parts = line.split(",", -1);
+        if (parts.length != 2) {
+            throw new SQLException("Invalid bundled levels row: " + line);
+        }
+        try {
+            return new LevelThreshold(Integer.parseInt(parts[0]), Long.parseLong(parts[1]));
+        } catch (NumberFormatException e) {
+            throw new SQLException("Invalid bundled levels row: " + line, e);
+        }
     }
 
     /**
@@ -288,5 +420,11 @@ public class ProgressionRepository {
         } catch (SQLException e) {
             LOGGER.atWarning().log("Failed to save progress for %s: %s", playerId, e.getMessage());
         }
+    }
+
+    private record BundledLevels(int version, @Nonnull List<LevelThreshold> thresholds) {
+    }
+
+    private record LevelThreshold(int level, long xpRequired) {
     }
 }
