@@ -7,6 +7,7 @@ import com.duntale.dungeon.DungeonInstanceState;
 import com.duntale.dungeon.FloorConfigAssetRepository;
 import com.duntale.dungeon.FloorConfigService;
 import com.hypixel.hytale.math.vector.Transform;
+import com.hypixel.hytale.protocol.GameMode;
 import com.hypixel.hytale.server.core.Message;
 import com.hypixel.hytale.server.core.command.system.CommandContext;
 import com.hypixel.hytale.server.core.command.system.arguments.system.OptionalArg;
@@ -607,6 +608,13 @@ public class DungeonCommand extends CommandBase {
 
             Player player = store.getComponent(ref, Player.getComponentType());
             if (player == null) {
+                return;
+            }
+
+            if (player.getGameMode() != GameMode.Creative) {
+                context.sendMessage(Message.raw(
+                        "/dungeon floorconfig requires Creative mode")
+                        .color(RED));
                 return;
             }
 

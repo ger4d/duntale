@@ -1,7 +1,14 @@
 package com.duntale.command;
 
+import com.duntale.DuntalePlugin;
+import com.duntale.dungeon.preview.DungeonPreviewPacketFactory;
 import com.duntale.dungeon.FloorConfigAssetRepository;
 import com.duntale.dungeon.FloorConfigService;
+import com.duntale.dungeongen.config.DungeonConfig;
+import com.duntale.dungeongen.config.LayoutConfig;
+import com.duntale.dungeongen.config.PacingConfig;
+import com.duntale.dungeongen.config.ThemeConfig;
+import com.duntale.dungeongen.config.Vec3i;
 import com.hypixel.hytale.assetstore.AssetPack;
 import com.hypixel.hytale.codec.Codec;
 import com.hypixel.hytale.codec.KeyedCodec;
@@ -9,6 +16,7 @@ import com.hypixel.hytale.codec.builder.BuilderCodec;
 import com.hypixel.hytale.component.Ref;
 import com.hypixel.hytale.component.Store;
 import com.hypixel.hytale.logger.HytaleLogger;
+import com.hypixel.hytale.protocol.packets.buildertools.BuilderToolPrefabPreview;
 import com.hypixel.hytale.protocol.packets.interface_.CustomPage;
 import com.hypixel.hytale.protocol.packets.interface_.CustomPageLifetime;
 import com.hypixel.hytale.protocol.packets.interface_.CustomUIEventBindingType;
@@ -25,16 +33,22 @@ import com.hypixel.hytale.server.core.ui.builder.EventData;
 import com.hypixel.hytale.server.core.ui.builder.UICommandBuilder;
 import com.hypixel.hytale.server.core.ui.builder.UIEventBuilder;
 import com.hypixel.hytale.server.core.universe.PlayerRef;
+import com.hypixel.hytale.server.core.universe.world.World;
 import com.hypixel.hytale.server.core.universe.world.storage.EntityStore;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 
 import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
 import java.io.IOException;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.logging.Level;
+import java.util.concurrent.CompletionException;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.Executor;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
 
 /**
@@ -60,6 +74,8 @@ public class FloorConfigPage extends InteractiveCustomUIPage<FloorConfigPage.Flo
     private static final String GREEN = "#55FF55";
     private static final String RED = "#FF5555";
     private static final String SET_INDICATOR = "*";
+        private static final long PREVIEW_DEBOUNCE_MS = 750L;
+        private static final String PREVIEW_WORLD_NAME = "floor_preview";
     private static final List<String> THEME_VARIANT_ORDER = List.of(
             "crypt",
             "arcane",
@@ -67,11 +83,28 @@ public class FloorConfigPage extends InteractiveCustomUIPage<FloorConfigPage.Flo
             "temple_dark",
             "volcanic"
     );
+        private static final List<String> PREVIEW_VALUE_BINDING_SELECTORS = List.of(
+            "#Width", "#Depth", "#Height",
+            "#MaxRooms", "#RoomDensity", "#Complexity", "#MinRoomSize", "#MaxRoomSize", "#RoomShape", "#Irregularity",
+            "#CorridorWidth", "#BranchChance", "#LoopChance", "#WindingCheck #CheckBox", "#WindingFactor",
+            "#PillarFreq", "#WaterFreq", "#LavaFreq", "#TrapDensity", "#FloorTrapsCheck #CheckBox", "#SecretWallChance", "#MerchantChance",
+            "#EntrancePlacement", "#ExitDistance",
+            "#EnemyDensity", "#MaxEnemiesPerRoom", "#AmbushChance", "#BossRoomCheck #CheckBox",
+            "#Erosion", "#RemoveCeilingCheck #CheckBox", "#FlatFloorCheck #CheckBox", "#SolidFillCheck #CheckBox",
+            "#ThemeCryptCheck #CheckBox", "#ThemeArcaneCheck #CheckBox", "#ThemeHiveCheck #CheckBox", "#ThemeTempleDarkCheck #CheckBox", "#ThemeVolcanicCheck #CheckBox",
+            "#DecayFactor", "#OvergrowthFactor", "#FloodingFactor",
+            "#BreatheRoomFreq", "#DifficultyRamp", "#PreviewTheme"
+        );
 
     private final AssetPackSaveBrowser packBrowser = new AssetPackSaveBrowser(AssetPackSaveBrowserConfig.defaults());
     private final FloorConfigService floorConfigService;
+        private final DungeonPreviewPacketFactory previewPacketFactory = new DungeonPreviewPacketFactory();
+        private final AtomicLong previewRequestSequence = new AtomicLong();
     private boolean initialized = false;
     private int selectedFloorLevel;
+        private long lastAppliedPreviewRequestSequence = 0L;
+        private String selectedPreviewTheme = "crypt";
+        private List<String> enabledPreviewThemes = List.of("crypt");
     @Nullable
     private DestructiveAction pendingDestructiveAction;
 
@@ -118,6 +151,8 @@ public class FloorConfigPage extends InteractiveCustomUIPage<FloorConfigPage.Flo
         updateConfirmationDialog(cmd);
 
         populateFields(cmd, effective);
+        Map<String, Object> initialPreviewValues = buildValuesMap(effective);
+        updatePreviewControls(cmd, getThemeVariants(initialPreviewValues), selectedPreviewTheme, "Generating preview...");
 
         events.addEventBinding(
             CustomUIEventBindingType.ValueChanged,
@@ -136,9 +171,11 @@ public class FloorConfigPage extends InteractiveCustomUIPage<FloorConfigPage.Flo
             new EventData().append("Action", "ConfirmDestructive").append("@SelectedFloor", "#FloorSelector.Value"));
         events.addEventBinding(CustomUIEventBindingType.Activating, "#ConfirmDialogCancelButton",
             new EventData().append("Action", "CancelDestructive"));
+        addPreviewEventBindings(events);
 
         packBrowser.buildEventBindings(events, "#BrowsePackButton");
         packBrowser.buildUI(cmd, events);
+        schedulePreview(traceId(), ref, store, initialPreviewValues, false);
     }
 
     // ============================================
@@ -188,8 +225,14 @@ public class FloorConfigPage extends InteractiveCustomUIPage<FloorConfigPage.Flo
         switch (data.action) {
             case "SelectFloor" -> {
                 pendingDestructiveAction = null;
-                sendEventUpdate(traceId, "select-floor", ref, store, buildRefreshCommands(null), null, false);
+                FloorConfigService.EffectiveConfig effective = floorConfigService.getEffectiveConfig(selectedFloorLevel);
+                Map<String, Object> previewValues = buildValuesMap(effective);
+                UICommandBuilder cmd = buildRefreshCommands(effective, null);
+                updatePreviewControls(cmd, getThemeVariants(previewValues), selectedPreviewTheme, "Generating preview...");
+                sendEventUpdate(traceId, "select-floor", ref, store, cmd, null, false);
+                schedulePreview(traceId, ref, store, previewValues, false);
             }
+            case "Preview" -> handlePreviewChange(traceId, ref, store, data);
             case "Save" -> handleSave(traceId, ref, store, data);
             case "RequestResetAll" -> requestConfirmation(traceId, ref, store, DestructiveAction.RESET_ALL);
             case "RequestDeletePersisted" -> requestConfirmation(traceId, ref, store, DestructiveAction.DELETE_PERSISTED);
@@ -250,6 +293,27 @@ public class FloorConfigPage extends InteractiveCustomUIPage<FloorConfigPage.Flo
         }
     }
 
+    private void handlePreviewChange(
+            long traceId,
+            @Nonnull Ref<EntityStore> ref,
+            @Nonnull Store<EntityStore> store,
+            @Nonnull FloorConfigEventData data
+    ) {
+        Map<String, Object> previewValues = buildValuesMap(data);
+        List<String> themeVariants = getThemeVariants(previewValues);
+        UICommandBuilder cmd = new UICommandBuilder();
+        if (themeVariants.isEmpty()) {
+            previewRequestSequence.incrementAndGet();
+            updatePreviewControls(cmd, themeVariants, data.previewTheme, "Preview unavailable: enable a theme");
+            sendEventUpdate(traceId, "preview-no-theme", ref, store, cmd, null, false);
+            return;
+        }
+
+        updatePreviewControls(cmd, themeVariants, data.previewTheme, "Generating preview...");
+        sendEventUpdate(traceId, "preview-start", ref, store, cmd, null, false);
+        schedulePreview(traceId, ref, store, previewValues, true);
+    }
+
     private void handleDeletePersistedOverride(long traceId, @Nonnull Ref<EntityStore> ref, @Nonnull Store<EntityStore> store) {
         FloorConfigAssetRepository.PackChoice packChoice = requireSelectedPackChoice(traceId, ref, store);
         if (packChoice == null) {
@@ -293,7 +357,112 @@ public class FloorConfigPage extends InteractiveCustomUIPage<FloorConfigPage.Flo
     private void handleResetAll(long traceId, @Nonnull Ref<EntityStore> ref, @Nonnull Store<EntityStore> store) {
         pendingDestructiveAction = null;
         LOGGER.atInfo().log("FloorConfigPage[%d] resetting visible fields for floor=%d", traceId, selectedFloorLevel);
-        sendEventUpdate(traceId, "reset-all", ref, store, buildRefreshCommands("Reset current edits"), null, false);
+        FloorConfigService.EffectiveConfig effective = floorConfigService.getEffectiveConfig(selectedFloorLevel);
+        Map<String, Object> previewValues = buildValuesMap(effective);
+        UICommandBuilder cmd = buildRefreshCommands(effective, "Reset current edits");
+        updatePreviewControls(cmd, getThemeVariants(previewValues), selectedPreviewTheme, "Generating preview...");
+        sendEventUpdate(traceId, "reset-all", ref, store, cmd, null, false);
+        schedulePreview(traceId, ref, store, previewValues, false);
+    }
+
+    private void schedulePreview(
+            long traceId,
+            @Nonnull Ref<EntityStore> ref,
+            @Nonnull Store<EntityStore> store,
+            @Nonnull Map<String, Object> previewValues,
+            boolean debounce
+    ) {
+        long requestSequence = previewRequestSequence.incrementAndGet();
+        DungeonConfig previewConfig;
+        try {
+            previewConfig = buildPreviewConfig(previewValues, selectedPreviewTheme);
+        } catch (RuntimeException e) {
+            updatePreviewStatus(traceId, ref, store, "Preview unavailable: " + e.getMessage());
+            return;
+        }
+
+        World world = store.getExternalData().getWorld();
+        long delayMs = debounce ? PREVIEW_DEBOUNCE_MS : 0L;
+        Executor delayedExecutor = CompletableFuture.delayedExecutor(delayMs, TimeUnit.MILLISECONDS);
+        delayedExecutor.execute(() -> {
+            if (requestSequence != previewRequestSequence.get()) {
+                return;
+            }
+            DuntalePlugin plugin = DuntalePlugin.get();
+            if (plugin == null) {
+                world.execute(() -> applyPreviewFailure(traceId, requestSequence, ref, store,
+                        new IllegalStateException("plugin unavailable")));
+                return;
+            }
+
+            try {
+                plugin.getDungeonOrchestrator().generateArtifacts(previewConfig)
+                        .thenApply(previewPacketFactory::createPacket)
+                        .whenComplete((packet, error) -> world.execute(() ->
+                                applyPreviewResult(traceId, requestSequence, ref, store, packet, error)));
+            } catch (RuntimeException e) {
+                world.execute(() -> applyPreviewFailure(traceId, requestSequence, ref, store, e));
+            }
+        });
+    }
+
+    private void applyPreviewResult(
+            long traceId,
+            long requestSequence,
+            @Nonnull Ref<EntityStore> ref,
+            @Nonnull Store<EntityStore> store,
+            @Nullable BuilderToolPrefabPreview packet,
+            @Nullable Throwable error
+    ) {
+        if (requestSequence != previewRequestSequence.get()) {
+            return;
+        }
+        if (error != null) {
+            applyPreviewFailure(traceId, requestSequence, ref, store, error);
+            return;
+        }
+        if (packet == null || !ref.isValid() || playerRef.getReference() == null) {
+            return;
+        }
+
+        DungeonPreviewPacketFactory.applyTintFromPlayerPosition(packet, playerRef);
+        int blockChanges = packet.blocksChange == null ? 0 : packet.blocksChange.length;
+        int fluidChanges = packet.fluidsChange == null ? 0 : packet.fluidsChange.length;
+        int markerChanges = packet.entityChanges == null ? 0 : packet.entityChanges.length;
+        LOGGER.atInfo().log(
+                "FloorConfigPage[%d] preview packet blocks=%d fluids=%d markers=%d",
+                traceId,
+                blockChanges,
+                fluidChanges,
+                markerChanges
+        );
+        writePreviewPacket(packet);
+        lastAppliedPreviewRequestSequence = requestSequence;
+        if (blockChanges == 0 && fluidChanges == 0 && markerChanges == 0) {
+            updatePreviewStatus(traceId, ref, store, "Preview empty: no renderable blocks");
+            return;
+        }
+        updatePreviewStatus(traceId, ref, store, "Preview updated");
+    }
+
+    private void applyPreviewFailure(
+            long traceId,
+            long requestSequence,
+            @Nonnull Ref<EntityStore> ref,
+            @Nonnull Store<EntityStore> store,
+            @Nonnull Throwable error
+    ) {
+        if (requestSequence != previewRequestSequence.get()) {
+            return;
+        }
+        updatePreviewStatus(traceId, ref, store, "Preview unavailable: " + extractErrorMessage(error));
+    }
+
+    private void writePreviewPacket(@Nonnull BuilderToolPrefabPreview packet) {
+        if (lastAppliedPreviewRequestSequence != 0L) {
+            playerRef.getPacketHandler().write(new BuilderToolPrefabPreview());
+        }
+        playerRef.getPacketHandler().write(packet);
     }
 
     private void requestConfirmation(
@@ -649,6 +818,14 @@ public class FloorConfigPage extends InteractiveCustomUIPage<FloorConfigPage.Flo
     @Nonnull
     private UICommandBuilder buildRefreshCommands(@Nullable String statusText) {
         FloorConfigService.EffectiveConfig effective = floorConfigService.getEffectiveConfig(selectedFloorLevel);
+        return buildRefreshCommands(effective, statusText);
+        }
+
+        @Nonnull
+        private UICommandBuilder buildRefreshCommands(
+            @Nonnull FloorConfigService.EffectiveConfig effective,
+            @Nullable String statusText
+        ) {
         UICommandBuilder cmd = new UICommandBuilder();
 
         refreshHeader(cmd, effective);
@@ -662,6 +839,48 @@ public class FloorConfigPage extends InteractiveCustomUIPage<FloorConfigPage.Flo
         }
 
         return cmd;
+    }
+
+    private void updatePreviewControls(
+            @Nonnull UICommandBuilder cmd,
+            @Nonnull List<String> themeVariants,
+            @Nullable String requestedTheme,
+            @Nullable String statusText
+    ) {
+        List<String> orderedThemes = orderedPreviewThemes(themeVariants);
+        enabledPreviewThemes = orderedThemes;
+
+        ObjectArrayList<DropdownEntryInfo> entries = new ObjectArrayList<>();
+        for (String themeId : orderedThemes) {
+            entries.add(new DropdownEntryInfo(LocalizableString.fromString(displayThemeName(themeId)), themeId));
+        }
+        cmd.set("#PreviewTheme.Entries", entries);
+
+        if (!orderedThemes.isEmpty()) {
+            String nextTheme = requestedTheme != null && orderedThemes.contains(requestedTheme)
+                    ? requestedTheme
+                    : selectedPreviewTheme;
+            if (!orderedThemes.contains(nextTheme)) {
+                nextTheme = orderedThemes.getFirst();
+            }
+            selectedPreviewTheme = nextTheme;
+            cmd.set("#PreviewTheme.Value", nextTheme);
+        }
+
+        if (statusText != null) {
+            cmd.set("#PreviewStatusLabel.Text", statusText);
+        }
+    }
+
+    private void updatePreviewStatus(
+            long traceId,
+            @Nonnull Ref<EntityStore> ref,
+            @Nonnull Store<EntityStore> store,
+            @Nonnull String text
+    ) {
+        UICommandBuilder cmd = new UICommandBuilder();
+        cmd.set("#PreviewStatusLabel.Text", text);
+        sendEventUpdate(traceId, "preview-status", ref, store, cmd, null, false);
     }
 
     private void updateStatus(long traceId, @Nonnull Ref<EntityStore> ref, @Nonnull Store<EntityStore> store, @Nonnull String text) {
@@ -717,6 +936,13 @@ public class FloorConfigPage extends InteractiveCustomUIPage<FloorConfigPage.Flo
         LOGGER.atInfo().log("FloorConfigPage[%d] page update sent reason=%s", traceId, reason);
     }
 
+    @Override
+    public void onDismiss(@Nonnull Ref<EntityStore> ref, @Nonnull Store<EntityStore> store) {
+        previewRequestSequence.incrementAndGet();
+        playerRef.getPacketHandler().write(new BuilderToolPrefabPreview());
+        lastAppliedPreviewRequestSequence = 0L;
+    }
+
     // ============================================
     // Values map (event data → field paths)
     // ============================================
@@ -765,6 +991,87 @@ public class FloorConfigPage extends InteractiveCustomUIPage<FloorConfigPage.Flo
         return map;
     }
 
+    @Nonnull
+    private static Map<String, Object> buildValuesMap(@Nonnull FloorConfigService.EffectiveConfig effective) {
+        Map<String, Object> map = new LinkedHashMap<>();
+        for (Map.Entry<String, FloorConfigService.FieldStatus> entry : effective.fields().entrySet()) {
+            map.put(entry.getKey(), entry.getValue().value());
+        }
+        return map;
+    }
+
+    @Nonnull
+    private DungeonConfig buildPreviewConfig(
+            @Nonnull Map<String, Object> values,
+            @Nonnull String previewTheme
+    ) {
+        for (String fieldPath : FloorConfigService.getSupportedFields()) {
+            if (!values.containsKey(fieldPath)) {
+                throw new IllegalArgumentException("waiting for valid input");
+            }
+        }
+
+        LayoutConfig defaultLayout = LayoutConfig.defaults();
+        ThemeConfig defaultTheme = ThemeConfig.defaults();
+        PacingConfig defaultPacing = PacingConfig.defaults();
+
+        LayoutConfig layout = new LayoutConfig(
+                getInt(values, "layout.width", defaultLayout.width()),
+                getInt(values, "layout.depth", defaultLayout.depth()),
+                getInt(values, "layout.height", defaultLayout.height()),
+                getDouble(values, "layout.roomDensity", defaultLayout.roomDensity()),
+                getInt(values, "layout.minRoomSize", defaultLayout.minRoomSize()),
+                getInt(values, "layout.maxRoomSize", defaultLayout.maxRoomSize()),
+                getInt(values, "layout.maxRooms", defaultLayout.maxRooms()),
+                getString(values, "layout.roomShape", defaultLayout.roomShape()),
+                getDouble(values, "layout.irregularity", defaultLayout.irregularity()),
+                getInt(values, "layout.corridorWidth", defaultLayout.corridorWidth()),
+                getDouble(values, "layout.branchChance", defaultLayout.branchChance()),
+                getDouble(values, "layout.loopChance", defaultLayout.loopChance()),
+                getBoolean(values, "layout.windingCorridors", defaultLayout.windingCorridors()),
+                getDouble(values, "layout.windingFactor", defaultLayout.windingFactor()),
+                getDouble(values, "layout.pillarFrequency", defaultLayout.pillarFrequency()),
+                getDouble(values, "layout.waterFrequency", defaultLayout.waterFrequency()),
+                getDouble(values, "layout.lavaFrequency", defaultLayout.lavaFrequency()),
+                getDouble(values, "layout.trapDensity", defaultLayout.trapDensity()),
+                getBoolean(values, "layout.floorTraps", defaultLayout.floorTraps()),
+                getDouble(values, "layout.secretWallChance", defaultLayout.secretWallChance()),
+                getDouble(values, "layout.merchantSpawnChance", defaultLayout.merchantSpawnChance()),
+                getString(values, "layout.entrancePlacement", defaultLayout.entrancePlacement()),
+                getDouble(values, "layout.exitDistance", defaultLayout.exitDistance()),
+                getDouble(values, "layout.enemyDensity", defaultLayout.enemyDensity()),
+                getInt(values, "layout.maxEnemiesPerRoom", defaultLayout.maxEnemiesPerRoom()),
+                getBoolean(values, "layout.bossRoom", defaultLayout.bossRoom()),
+                getDouble(values, "layout.ambushChance", defaultLayout.ambushChance()),
+                getDouble(values, "layout.erosion", defaultLayout.erosion()),
+                getBoolean(values, "layout.removeCeiling", defaultLayout.removeCeiling()),
+                getBoolean(values, "layout.flatFloor", defaultLayout.flatFloor()),
+                getBoolean(values, "layout.solidFill", defaultLayout.solidFill()),
+                getDouble(values, "layout.complexity", defaultLayout.complexity())
+        );
+        ThemeConfig theme = new ThemeConfig(
+                previewTheme,
+                getDouble(values, "theme.decayFactor", defaultTheme.decayFactor()),
+                getDouble(values, "theme.overgrowthFactor", defaultTheme.overgrowthFactor()),
+                getDouble(values, "theme.floodingFactor", defaultTheme.floodingFactor())
+        );
+        PacingConfig pacing = new PacingConfig(
+                getDouble(values, "pacing.breatheRoomFrequency", defaultPacing.breatheRoomFrequency()),
+                getDouble(values, "pacing.difficultyRamp", defaultPacing.difficultyRamp())
+        );
+        return new DungeonConfig(
+                "floor-preview-" + selectedFloorLevel + "-" + previewTheme,
+                null,
+                PREVIEW_WORLD_NAME,
+                Vec3i.ZERO,
+                layout,
+                theme,
+                pacing,
+                false,
+                selectedFloorLevel
+        );
+    }
+
     private static void putIfNotNull(@Nonnull Map<String, Object> map, @Nonnull String key,
                                      @Nullable Object value) {
         if (value != null) {
@@ -782,6 +1089,75 @@ public class FloorConfigPage extends InteractiveCustomUIPage<FloorConfigPage.Flo
 
     private static float toFloat(@Nonnull Object value) {
         return ((Number) value).floatValue();
+    }
+
+    private static int getInt(@Nonnull Map<String, Object> values, @Nonnull String key, int fallback) {
+        Object value = values.get(key);
+        return value instanceof Number number ? number.intValue() : fallback;
+    }
+
+    private static double getDouble(@Nonnull Map<String, Object> values, @Nonnull String key, double fallback) {
+        Object value = values.get(key);
+        return value instanceof Number number ? number.doubleValue() : fallback;
+    }
+
+    private static boolean getBoolean(@Nonnull Map<String, Object> values, @Nonnull String key, boolean fallback) {
+        Object value = values.get(key);
+        return value instanceof Boolean booleanValue ? booleanValue : fallback;
+    }
+
+    @Nonnull
+    private static String getString(@Nonnull Map<String, Object> values, @Nonnull String key, @Nonnull String fallback) {
+        Object value = values.get(key);
+        return value != null ? value.toString() : fallback;
+    }
+
+    @Nonnull
+    @SuppressWarnings("unchecked")
+    private static List<String> getThemeVariants(@Nonnull Map<String, Object> values) {
+        Object value = values.get("theme.variants");
+        if (value instanceof List<?> list) {
+            return (List<String>) list.stream().map(Object::toString).toList();
+        }
+        return List.of();
+    }
+
+    @Nonnull
+    private static List<String> orderedPreviewThemes(@Nonnull List<String> themeVariants) {
+        List<String> ordered = new ArrayList<>();
+        for (String themeId : THEME_VARIANT_ORDER) {
+            if (themeVariants.contains(themeId)) {
+                ordered.add(themeId);
+            }
+        }
+        return List.copyOf(ordered);
+    }
+
+    @Nonnull
+    private static String displayThemeName(@Nonnull String themeId) {
+        return switch (themeId) {
+            case "temple_dark" -> "Temple Dark";
+            default -> {
+                String normalized = themeId.replace('_', ' ');
+                yield normalized.substring(0, 1).toUpperCase() + normalized.substring(1);
+            }
+        };
+    }
+
+    @Nonnull
+    private static String extractErrorMessage(@Nonnull Throwable throwable) {
+        Throwable current = throwable instanceof CompletionException && throwable.getCause() != null
+                ? throwable.getCause()
+                : throwable;
+        while (current.getCause() != null && current.getMessage() == null) {
+            current = current.getCause();
+        }
+        String message = current.getMessage();
+        return message == null || message.isBlank() ? current.getClass().getSimpleName() : message;
+    }
+
+    private static long traceId() {
+        return EVENT_SEQUENCE.incrementAndGet();
     }
 
     private static void setThemeVariantValues(@Nonnull UICommandBuilder cmd, @Nonnull Object value) {
@@ -813,10 +1189,27 @@ public class FloorConfigPage extends InteractiveCustomUIPage<FloorConfigPage.Flo
     // Event Binding
     // ============================================
 
+    private static void addPreviewEventBindings(@Nonnull UIEventBuilder events) {
+        for (String selector : PREVIEW_VALUE_BINDING_SELECTORS) {
+            events.addEventBinding(CustomUIEventBindingType.ValueChanged, selector, buildPreviewBinding(), false);
+        }
+    }
+
     @Nonnull
     private static EventData buildSaveBinding() {
+        return buildFieldBinding("Save");
+    }
+
+    @Nonnull
+    private static EventData buildPreviewBinding() {
+        return buildFieldBinding("Preview")
+                .append("@PreviewTheme", "#PreviewTheme.Value");
+    }
+
+    @Nonnull
+    private static EventData buildFieldBinding(@Nonnull String action) {
         return new EventData()
-            .append("Action", "Save")
+            .append("Action", action)
             .append("@SelectedFloor", "#FloorSelector.Value")
                 // Size
                 .append("@Width", "#Width.Value")
@@ -887,6 +1280,8 @@ public class FloorConfigPage extends InteractiveCustomUIPage<FloorConfigPage.Flo
                 .append(new KeyedCodec<>("Action", Codec.STRING), (e, v) -> e.action = v, e -> e.action)
                 .add()
                 .append(new KeyedCodec<>("@SelectedFloor", Codec.STRING), (e, v) -> e.selectedFloor = v, e -> e.selectedFloor)
+                .add()
+                .append(new KeyedCodec<>("@PreviewTheme", Codec.STRING), (e, v) -> e.previewTheme = v, e -> e.previewTheme)
                 .add()
                 // Size
                 .append(new KeyedCodec<>("@Width", Codec.INTEGER), (e, v) -> e.width = v, e -> e.width)
@@ -1008,6 +1403,7 @@ public class FloorConfigPage extends InteractiveCustomUIPage<FloorConfigPage.Flo
         // Actions
             String action;
             String selectedFloor;
+            String previewTheme;
         // Size
         Integer width, depth, height;
         // Rooms
