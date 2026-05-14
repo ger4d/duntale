@@ -46,6 +46,7 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ThreadLocalRandom;
+import java.util.concurrent.TimeUnit;
 import java.util.function.Function;
 import java.util.function.Predicate;
 import java.util.function.Supplier;
@@ -73,6 +74,7 @@ public class DungeonInstanceService {
     private static final String SHARED_WORLD_NAME = "village";
     // Hytale filler cleanup scans 15 blocks below non-unit block hitboxes.
     private static final int DEFAULT_INSTANCE_ORIGIN_Y = 20;
+    private static final long POST_FINALIZE_TELEPORT_DELAY_MS = 150L;
 
     // ============================================
     // Fields
@@ -789,53 +791,66 @@ public class DungeonInstanceService {
         }
 
         Vec3i entrancePosition = translateGeneratedPosition(
-                origin,
-                requireGeneratedPosition("entrancePosition", result.entrancePosition())
+            origin,
+            requireGeneratedPosition("entrancePosition", result.entrancePosition())
         );
         Vec3i exitPosition = translateGeneratedPosition(
-                origin,
-                requireGeneratedPosition("exitPosition", result.exitPosition())
+            origin,
+            requireGeneratedPosition("exitPosition", result.exitPosition())
         );
 
         DungeonInstance updatedInstance = new DungeonInstance(
-                previousFloor.instanceId(),
-                newWorld.worldName(),
-                nextFloor,
-                origin.y(),
-                entrancePosition,
-                exitPosition,
-                DungeonInstanceState.TRANSITIONING,
+            previousFloor.instanceId(),
+            newWorld.worldName(),
+            nextFloor,
+            origin.y(),
+            entrancePosition,
+            exitPosition,
+            DungeonInstanceState.TRANSITIONING,
             nextTheme,
-                previousFloor.seed(),
-                previousFloor.createdAt()
+            previousFloor.seed(),
+            previousFloor.createdAt()
         );
 
         DungeonInstance activeInstance = new DungeonInstance(
-                previousFloor.instanceId(),
-                newWorld.worldName(),
-                nextFloor,
-                origin.y(),
-                entrancePosition,
-                exitPosition,
-                DungeonInstanceState.ACTIVE,
+            previousFloor.instanceId(),
+            newWorld.worldName(),
+            nextFloor,
+            origin.y(),
+            entrancePosition,
+            exitPosition,
+            DungeonInstanceState.ACTIVE,
             nextTheme,
-                previousFloor.seed(),
-                previousFloor.createdAt()
+            previousFloor.seed(),
+            previousFloor.createdAt()
+        );
+
+        LOGGER.atInfo().log(
+            "Generated floor %d for instance %s, preparing to transition from world %s to %s",
+            nextFloor,
+            previousFloor.instanceId(),
+            oldWorldName,
+            newWorld.worldName()
         );
 
         return ensureTransitionNotForceEnded(previousFloor.instanceId(), transitionState)
             .thenCompose(unused -> runtimeAdapter.finalizeWorld(newWorld, origin, updatedInstance, result))
                 .thenCompose(unused -> updatePersistedInstanceWhileTransitioning(
-                        updatedInstance,
-                        transitionState,
-                        "persist transition metadata"
+                    updatedInstance,
+                    transitionState,
+                    "persist transition metadata"
                 ))
                 .thenCompose(unused -> ensureTransitionNotForceEnded(previousFloor.instanceId(), transitionState))
+                .thenCompose(unused -> CompletableFuture.runAsync(
+                    () -> {},
+                    CompletableFuture.delayedExecutor(POST_FINALIZE_TELEPORT_DELAY_MS, TimeUnit.MILLISECONDS)
+                ))
                 .thenCompose(unused -> runtimeAdapter.teleportRoster(roster, newWorld, entrancePosition))
                 .thenCompose(unused -> ensureTransitionNotForceEnded(previousFloor.instanceId(), transitionState))
                 // === Transfer boundary: past this point, new world metadata is authoritative ===
                 .thenCompose(unused -> completePostTransferTransition(
-                        activeInstance, oldWorldName, nextFloor, newWorld.worldName(), transitionState));
+                    activeInstance, oldWorldName, nextFloor, newWorld.worldName(), transitionState
+                ));
     }
 
     @Nonnull

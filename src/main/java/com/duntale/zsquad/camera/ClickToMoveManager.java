@@ -44,9 +44,16 @@ import com.duntale.zsquad.ZSquadPlugin;
 import com.hypixel.hytale.protocol.SoundCategory;
 import com.hypixel.hytale.protocol.ClientCameraView;
 import com.hypixel.hytale.protocol.Direction;
+import com.hypixel.hytale.protocol.ApplyLookType;
+import com.hypixel.hytale.protocol.ApplyMovementType;
+import com.hypixel.hytale.protocol.AttachedToType;
+import com.hypixel.hytale.protocol.CanMoveType;
 import com.hypixel.hytale.protocol.MouseInputType;
+import com.hypixel.hytale.protocol.MouseInputTargetType;
 import com.hypixel.hytale.protocol.MovementForceRotationType;
+import com.hypixel.hytale.protocol.Position;
 import com.hypixel.hytale.protocol.PositionDistanceOffsetType;
+import com.hypixel.hytale.protocol.PositionType;
 import com.hypixel.hytale.protocol.RotationType;
 import com.hypixel.hytale.protocol.ServerCameraSettings;
 import com.hypixel.hytale.protocol.packets.camera.SetServerCamera;
@@ -69,6 +76,7 @@ import java.util.Objects;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
+import org.joml.Vector2f;
 import org.joml.Vector3f;
 
 /**
@@ -323,17 +331,13 @@ public class ClickToMoveManager {
                                  float yaw,
                                  float distance,
                                  float elevation) {
-        // Compute adjusted pitch and distance for the elevation offset
-        double horizDist = distance * Math.cos(-ISO_BASE_PITCH);
-        double vertDist  = distance * Math.sin(-ISO_BASE_PITCH) + elevation;
-        float pitch = (float) -Math.atan2(vertDist, horizDist);
-        float effectiveDistance = (float) Math.sqrt(horizDist * horizDist + vertDist * vertDist);
+        IsoCameraGeometry cameraGeometry = isoCameraGeometry(distance, elevation);
 
         // Build and send camera packet
         ServerCameraSettings settings = new ServerCameraSettings();
         settings.positionLerpSpeed = 0.2F;
         settings.rotationLerpSpeed = 0.2F;
-        settings.distance = effectiveDistance;
+        settings.distance = cameraGeometry.effectiveDistance();
         settings.displayCursor = true;
         settings.sendMouseMotion = true;
         settings.isFirstPerson = false;
@@ -343,7 +347,7 @@ public class ClickToMoveManager {
         settings.mouseInputType = MouseInputType.LookAtPlane;
         settings.planeNormal = new Vector3f(0.0F, 1.0F, 0.0F);
         settings.movementForceRotationType = MovementForceRotationType.Custom;
-        settings.rotation = new Direction(yaw, pitch, 0.0F);
+        settings.rotation = new Direction(yaw, cameraGeometry.pitch(), 0.0F);
 
         playerRef.getPacketHandler().writeNoCache(
                 new SetServerCamera(ClientCameraView.Custom, true, settings)
@@ -398,6 +402,83 @@ public class ClickToMoveManager {
     }
 
     /**
+     * Stops CTM and switches to a transition camera that does not depend on the local player entity.
+     *
+     * @param uuid the player UUID
+     * @param store the entity store
+     * @param ref the player entity reference
+     * @param playerRef the player ref used to send the camera packet
+     */
+    public void prepareForWorldTransition(@Nonnull UUID uuid,
+                                          @Nonnull Store<EntityStore> store,
+                                          @Nonnull Ref<EntityStore> ref,
+                                          @Nonnull PlayerRef playerRef) {
+        disable(uuid, store, ref);
+        TransformComponent transform = store.getComponent(ref, TransformComponent.getComponentType());
+        Vector3d playerPosition = transform != null ? transform.getPosition() : new Vector3d();
+        IsoCameraGeometry cameraGeometry = isoCameraGeometry(DEFAULT_ISO_DISTANCE, DEFAULT_ISO_ELEVATION);
+
+        ServerCameraSettings settings = new ServerCameraSettings();
+        settings.positionLerpSpeed = 0.0F;
+        settings.rotationLerpSpeed = 0.0F;
+        settings.distance = 0.0F;
+        settings.displayCursor = false;
+        settings.sendMouseMotion = false;
+        settings.skipCharacterPhysics = true;
+        settings.isFirstPerson = false;
+        settings.eyeOffset = false;
+        settings.mouseInputTargetType = MouseInputTargetType.None;
+        settings.attachedToType = AttachedToType.None;
+        settings.positionType = PositionType.Custom;
+        settings.position = detachedIsoCameraPosition(playerPosition, DEFAULT_ISO_YAW, cameraGeometry);
+        settings.positionDistanceOffsetType = PositionDistanceOffsetType.None;
+        settings.rotationType = RotationType.Custom;
+        settings.rotation = new Direction(DEFAULT_ISO_YAW, cameraGeometry.pitch(), 0.0F);
+        settings.canMoveType = CanMoveType.Always;
+        settings.applyMovementType = ApplyMovementType.Position;
+        settings.movementMultiplier = new Vector3f(0.0F, 0.0F, 0.0F);
+        settings.applyLookType = ApplyLookType.Rotation;
+        settings.lookMultiplier = new Vector2f(0.0F, 0.0F);
+        settings.mouseInputType = MouseInputType.LookAtPlane;
+        settings.planeNormal = new Vector3f(0.0F, 1.0F, 0.0F);
+        settings.movementForceRotationType = MovementForceRotationType.Custom;
+
+        playerRef.getPacketHandler().writeNoCache(
+                new SetServerCamera(ClientCameraView.Custom, true, settings)
+        );
+    }
+
+    @Nonnull
+    private static IsoCameraGeometry isoCameraGeometry(float distance, float elevation) {
+        double horizontalDistance = distance * Math.cos(-ISO_BASE_PITCH);
+        double verticalDistance = distance * Math.sin(-ISO_BASE_PITCH) + elevation;
+        float pitch = (float) -Math.atan2(verticalDistance, horizontalDistance);
+        float effectiveDistance = (float) Math.sqrt(
+                horizontalDistance * horizontalDistance + verticalDistance * verticalDistance
+        );
+        return new IsoCameraGeometry(pitch, (float) horizontalDistance, (float) verticalDistance, effectiveDistance);
+    }
+
+    @Nonnull
+    private static Position detachedIsoCameraPosition(@Nonnull Vector3d playerPosition,
+                                                      float yaw,
+                                                      @Nonnull IsoCameraGeometry cameraGeometry) {
+        double offsetX = Math.sin(yaw) * cameraGeometry.horizontalDistance();
+        double offsetZ = Math.cos(yaw) * cameraGeometry.horizontalDistance();
+        return new Position(
+                playerPosition.x + offsetX,
+                playerPosition.y + cameraGeometry.verticalDistance(),
+                playerPosition.z + offsetZ
+        );
+    }
+
+    private record IsoCameraGeometry(float pitch,
+                                     float horizontalDistance,
+                                     float verticalDistance,
+                                     float effectiveDistance) {
+    }
+
+    /**
      * Disables click-to-move using only the UUID (schedules on world thread).
      */
     public void disable(@Nonnull UUID uuid) {
@@ -419,6 +500,29 @@ public class ClickToMoveManager {
             }
             restoreModelAngleRange(state, uuid, store, ref);
         });
+    }
+
+    /**
+     * Stops active click-to-move movement without disabling the camera or CTM mode.
+     *
+     * @param uuid the player UUID
+     * @param store the entity store
+     * @param ref the player entity reference
+     * @param playerRef the player ref used to send the zero-velocity packet
+     */
+    public void stopActiveMovement(@Nonnull UUID uuid,
+                                   @Nonnull Store<EntityStore> store,
+                                   @Nonnull Ref<EntityStore> ref,
+                                   @Nonnull PlayerRef playerRef) {
+        PlayerState state = players.get(uuid);
+        if (state == null) {
+            return;
+        }
+
+        MovementHelper.stopMovement(state, store, ref, playerRef);
+        state.leftButtonHeld = false;
+        state.targetMerchantEntity = null;
+        state.targetInteractBlock = null;
     }
 
     /**

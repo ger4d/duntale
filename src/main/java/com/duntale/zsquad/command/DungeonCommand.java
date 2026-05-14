@@ -5,6 +5,7 @@ import com.duntale.zsquad.dungeon.DungeonInstance;
 import com.duntale.zsquad.dungeon.DungeonInstanceService;
 import com.duntale.zsquad.dungeon.DungeonInstanceState;
 import com.duntale.zsquad.dungeon.FloorConfigService;
+import com.hypixel.hytale.math.vector.Transform;
 import com.hypixel.hytale.server.core.Message;
 import com.hypixel.hytale.server.core.command.system.CommandContext;
 import com.hypixel.hytale.server.core.command.system.arguments.system.RequiredArg;
@@ -12,6 +13,7 @@ import com.hypixel.hytale.server.core.command.system.arguments.types.ArgTypes;
 import com.hypixel.hytale.server.core.command.system.basecommands.AbstractPlayerCommand;
 import com.hypixel.hytale.server.core.command.system.basecommands.CommandBase;
 import com.hypixel.hytale.server.core.entity.entities.Player;
+import com.hypixel.hytale.server.core.modules.entity.teleport.Teleport;
 import com.hypixel.hytale.server.core.universe.PlayerRef;
 import com.hypixel.hytale.server.core.universe.Universe;
 import com.hypixel.hytale.server.core.universe.world.World;
@@ -28,6 +30,7 @@ import java.time.format.DateTimeFormatter;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 
 /**
@@ -40,6 +43,7 @@ import java.util.concurrent.CompletionException;
  * /dungeon end <instanceId>
  * /dungeon player <uuid>
  * /dungeon start
+ * /dungeon tpout
  * /dungeon transition <instanceId>
  * /dungeon floorconfig <floor>
  * /dungeon floorconfig list
@@ -56,6 +60,7 @@ public class DungeonCommand extends CommandBase {
     private static final String GREEN = "#55FF55";
     private static final String RED = "#FF5555";
     private static final String AQUA = "#55FFFF";
+    private static final int EXIT_APPROACH_OFFSET_BLOCKS = 4;
 
     private static final DateTimeFormatter TIMESTAMP_FORMAT =
             DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss").withZone(ZoneId.systemDefault());
@@ -82,6 +87,7 @@ public class DungeonCommand extends CommandBase {
         this.addSubCommand(new EndSubCommand());
         this.addSubCommand(new PlayerSubCommand());
         this.addSubCommand(new StartSubCommand());
+        this.addSubCommand(new TpOutSubCommand());
         this.addSubCommand(new TransitionSubCommand());
         this.addSubCommand(new FloorConfigSubCommand());
     }
@@ -89,7 +95,7 @@ public class DungeonCommand extends CommandBase {
     @Override
     protected void executeSync(@Nonnull CommandContext context) {
         context.sendMessage(
-                Message.raw("Usage: /dungeon list|info|end|player|start|transition|floorconfig").color(YELLOW)
+            Message.raw("Usage: /dungeon list|info|end|player|start|tpout|transition|floorconfig").color(YELLOW)
         );
         context.sendMessage(
                 Message.raw("  list").color(GOLD)
@@ -110,6 +116,10 @@ public class DungeonCommand extends CommandBase {
         context.sendMessage(
             Message.raw("  start").color(GOLD)
                 .insert(Message.raw(" — start a dungeon instance (uses party or solo; theme comes from floor config)").color(GRAY))
+        );
+        context.sendMessage(
+            Message.raw("  tpout").color(GOLD)
+                .insert(Message.raw(" — teleport near your active dungeon floor exit").color(GRAY))
         );
         context.sendMessage(
                 Message.raw("  transition <instanceId>").color(GOLD)
@@ -398,6 +408,117 @@ public class DungeonCommand extends CommandBase {
     }
 
     // ============================================
+    // tpout
+    // ============================================
+
+    private class TpOutSubCommand extends AbstractPlayerCommand {
+
+        TpOutSubCommand() {
+            super("tpout", "Teleport near your active dungeon floor exit");
+        }
+
+        @Override
+        protected void execute(
+                @Nonnull CommandContext context,
+                @Nonnull Store<EntityStore> store,
+                @Nonnull Ref<EntityStore> ref,
+                @Nonnull PlayerRef playerRef,
+                @Nonnull World world
+        ) {
+            UUID playerId = playerRef.getUuid();
+            CompletableFuture
+                    .supplyAsync(() -> findActiveInstance(playerId))
+                    .thenAccept(instance -> teleportToExit(context, playerRef, instance))
+                    .exceptionally(throwable -> {
+                        context.sendMessage(
+                                Message.raw("Failed to look up dungeon instance: "
+                                        + describeFailure(throwable)).color(RED)
+                        );
+                        return null;
+                    });
+        }
+
+        @Nullable
+        private DungeonInstance findActiveInstance(@Nonnull UUID playerId) {
+            try {
+                return dungeonInstanceService.getActiveInstance(playerId);
+            } catch (SQLException e) {
+                throw new CompletionException(e);
+            }
+        }
+
+        private void teleportToExit(
+                @Nonnull CommandContext context,
+                @Nonnull PlayerRef playerRef,
+                @Nullable DungeonInstance instance
+        ) {
+            if (instance == null) {
+                context.sendMessage(Message.raw("You have no active dungeon instance.").color(RED));
+                return;
+            }
+            if (instance.state() != DungeonInstanceState.ACTIVE) {
+                context.sendMessage(
+                        Message.raw("Cannot teleport to exit while instance is " + instance.state() + ".").color(RED)
+                );
+                return;
+            }
+
+            Ref<EntityStore> currentRef = playerRef.getReference();
+            if (currentRef == null || !currentRef.isValid()) {
+                context.sendMessage(Message.raw("Cannot teleport: player is not currently in a world.").color(RED));
+                return;
+            }
+
+            Store<EntityStore> currentStore = currentRef.getStore();
+            World currentWorld = currentStore.getExternalData().getWorld();
+            if (currentWorld == null) {
+                context.sendMessage(Message.raw("Cannot teleport: current world is unavailable.").color(RED));
+                return;
+            }
+
+            currentWorld.execute(() -> queueExitTeleport(context, currentRef, instance));
+        }
+
+        private void queueExitTeleport(
+                @Nonnull CommandContext context,
+                @Nonnull Ref<EntityStore> ref,
+                @Nonnull DungeonInstance instance
+        ) {
+            if (!ref.isValid()) {
+                context.sendMessage(Message.raw("Cannot teleport: player reference is no longer valid.").color(RED));
+                return;
+            }
+
+            Universe universe = Universe.get();
+            if (universe == null) {
+                context.sendMessage(Message.raw("Cannot teleport: universe is unavailable.").color(RED));
+                return;
+            }
+
+            World targetWorld = universe.getWorld(instance.worldName());
+            if (targetWorld == null) {
+                context.sendMessage(
+                        Message.raw("Cannot teleport: dungeon world " + instance.worldName() + " is not loaded.").color(RED)
+                );
+                return;
+            }
+
+            Store<EntityStore> store = ref.getStore();
+            Vec3i approachPosition = exitApproachPosition(instance);
+            store.addComponent(
+                    ref,
+                    Teleport.getComponentType(),
+                    Teleport.createForPlayer(targetWorld, toPlayerTransform(approachPosition))
+            );
+            context.sendMessage(
+                    Message.raw("Teleported near dungeon exit at ").color(GREEN)
+                        .insert(Message.raw(formatPosition(approachPosition)).color(AQUA))
+                        .insert(Message.raw(". Walk into the portal to trigger it.").color(GRAY))
+            );
+        }
+    }
+
+    // ============================================
     // transition
     // ============================================
 
@@ -555,6 +676,30 @@ public class DungeonCommand extends CommandBase {
     @Nonnull
     private static String formatPosition(@Nonnull Vec3i pos) {
         return pos.x() + ", " + pos.y() + ", " + pos.z();
+    }
+
+    @Nonnull
+    private static Vec3i exitApproachPosition(@Nonnull DungeonInstance instance) {
+        Vec3i exit = instance.exitPosition();
+        Vec3i entrance = instance.entrancePosition();
+        int xDelta = entrance.x() - exit.x();
+        int zDelta = entrance.z() - exit.z();
+
+        if (Math.abs(xDelta) >= Math.abs(zDelta) && xDelta != 0) {
+            return new Vec3i(exit.x() + Integer.signum(xDelta) * EXIT_APPROACH_OFFSET_BLOCKS, exit.y(), exit.z());
+        }
+        if (zDelta != 0) {
+            return new Vec3i(exit.x(), exit.y(), exit.z() + Integer.signum(zDelta) * EXIT_APPROACH_OFFSET_BLOCKS);
+        }
+        if (xDelta != 0) {
+            return new Vec3i(exit.x() + Integer.signum(xDelta) * EXIT_APPROACH_OFFSET_BLOCKS, exit.y(), exit.z());
+        }
+        return new Vec3i(exit.x(), exit.y(), exit.z() - EXIT_APPROACH_OFFSET_BLOCKS);
+    }
+
+    @Nonnull
+    private static Transform toPlayerTransform(@Nonnull Vec3i position) {
+        return new Transform(position.x() + 0.5D, position.y(), position.z() + 0.5D);
     }
 
     private static void sendField(

@@ -881,19 +881,18 @@ public class ZSquadPlugin extends JavaPlugin {
                 activeInstance.floorLevel()
         );
 
-        CompletableFuture<DungeonInstance> transitionFuture;
-        try {
-            transitionFuture = dungeonInstanceService.transitionFloor(activeInstance.instanceId());
-        } catch (SQLException e) {
-            portalTransitionsInFlight.remove(activeInstance.instanceId());
-            LOGGER.atWarning()
-                .withCause(e)
-                .log("Failed to start dungeon end portal transition for instance %s", activeInstance.instanceId());
-            playerRef.sendMessage(
-                Message.raw("Unable to open the next floor right now: " + describeFailure(e)).color(COLOR_RED)
-            );
-            return;
-        }
+        CompletableFuture<DungeonInstance> transitionFuture = runOnPlayerWorld(playerRef, (currentRef, currentStore) -> {
+            World currentWorld = currentStore.getExternalData().getWorld();
+            if (currentWorld != null && activeInstance.worldName().equalsIgnoreCase(currentWorld.getName())) {
+                clickToMoveManager.prepareForWorldTransition(playerRef.getUuid(), currentStore, currentRef, playerRef);
+            }
+        }).thenCompose(unused -> {
+            try {
+                return dungeonInstanceService.transitionFloor(activeInstance.instanceId());
+            } catch (SQLException e) {
+                return CompletableFuture.failedFuture(e);
+            }
+        });
 
         // runOnPlayerWorld(playerRef, this::closeCustomPage);
         // playerRef.sendMessage(Message.raw("Opening the next floor...").color("#FFD700"));
@@ -912,6 +911,7 @@ public class ZSquadPlugin extends JavaPlugin {
                         World currentWorld = currentStore.getExternalData().getWorld();
                         if (currentWorld != null && activeInstance.worldName().equalsIgnoreCase(currentWorld.getName())) {
                             dungeonEndPortalService.ensurePortal(currentWorld, currentStore, activeInstance);
+                            clickToMoveManager.enableWithCamera(playerRef.getUuid(), currentStore, currentRef, playerRef);
                         }
                     });
                     LOGGER.atWarning()
