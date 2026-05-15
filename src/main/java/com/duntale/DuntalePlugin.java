@@ -49,10 +49,12 @@ import com.duntale.merchant.BuilderActionOpenDungeonMerchant;
 import com.duntale.merchant.MerchantTooltipProvider;
 import com.duntale.portal.DungeonEndPortalService;
 import com.duntale.progression.AssetCatalog;
+import com.duntale.progression.BuiltInNpcSpawnScalingSystem;
 import com.duntale.progression.CombatScalingComponent;
 import com.duntale.progression.CombatScalingSystem;
 import com.duntale.progression.GearScalingTooltipProvider;
 import com.duntale.progression.LeveledNpcSpawner;
+import com.duntale.progression.NpcScalingApplicator;
 import com.duntale.progression.ProgressionRepository;
 import com.duntale.progression.ProgressionService;
 import com.duntale.companion.CompanionSpawner;
@@ -491,12 +493,18 @@ public class DuntalePlugin extends JavaPlugin {
         // ── CombatScaling ECS Component ─────────────────────────────
         this.combatScalingComponentType = this.getEntityStoreRegistry().registerComponent(
                 CombatScalingComponent.class, "CombatScalingComponent", CombatScalingComponent.CODEC);
-        this.leveledNpcSpawner = new LeveledNpcSpawner(combatScalingComponentType);
+        NpcScalingApplicator npcScalingApplicator = new NpcScalingApplicator(combatScalingComponentType);
+        this.leveledNpcSpawner = new LeveledNpcSpawner(npcScalingApplicator);
         this.companionSpawner = new CompanionSpawner(combatScalingComponentType);
 
         // Register ECS systems
         this.getEntityStoreRegistry().registerSystem(new ClickToMoveTickSystem(this.clickToMoveManager));
         this.getEntityStoreRegistry().registerSystem(new CombatScalingSystem(combatScalingComponentType));
+        this.getEntityStoreRegistry().registerSystem(new BuiltInNpcSpawnScalingSystem(
+            combatScalingComponentType,
+            dungeonInstanceService,
+            npcScalingApplicator
+        ));
         this.getEntityStoreRegistry().registerSystem(new ClickToMoveKnockbackSystem(this.clickToMoveManager));
         this.getEntityStoreRegistry().registerSystem(new NpcLootSystem(lootRollService, rpgService, progressionService));
         this.getEntityStoreRegistry().registerSystem(new GoldPickupSystem(goldService));

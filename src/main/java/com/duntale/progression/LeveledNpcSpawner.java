@@ -1,25 +1,18 @@
 package com.duntale.progression;
 
-import com.hypixel.hytale.component.ComponentType;
 import com.hypixel.hytale.component.Holder;
 import com.hypixel.hytale.component.Ref;
 import com.hypixel.hytale.component.Store;
 import com.hypixel.hytale.logger.HytaleLogger;
 import org.joml.Vector3d;
-import com.hypixel.hytale.server.core.entity.nameplate.Nameplate;
-import com.hypixel.hytale.server.core.modules.entity.component.EntityScaleComponent;
-import com.hypixel.hytale.server.core.modules.entitystats.EntityStatMap;
-import com.hypixel.hytale.server.core.modules.entitystats.asset.EntityStatType;
-import com.hypixel.hytale.server.core.modules.entitystats.modifier.Modifier;
-import com.hypixel.hytale.server.core.modules.entitystats.modifier.StaticModifier;
 import com.hypixel.hytale.server.core.universe.world.storage.EntityStore;
 import com.hypixel.hytale.server.npc.NPCPlugin;
 import com.hypixel.hytale.server.npc.entities.NPCEntity;
-import com.hypixel.hytale.server.npc.role.Role;
 import it.unimi.dsi.fastutil.Pair;
 
 import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
+import java.util.Objects;
 import java.util.logging.Level;
 
 /**
@@ -37,17 +30,16 @@ import java.util.logging.Level;
 public class LeveledNpcSpawner {
 
     private static final HytaleLogger LOGGER = HytaleLogger.forEnclosingClass();
-    private static final String LEVEL_SCALE_MODIFIER_KEY = "Duntale_LevelScale";
 
-    private final ComponentType<EntityStore, CombatScalingComponent> combatScalingType;
+    private final NpcScalingApplicator scalingApplicator;
 
     /**
      * Creates a new spawner.
      *
-     * @param combatScalingType the registered combat scaling component type
+     * @param scalingApplicator the shared NPC scaling applicator
      */
-    public LeveledNpcSpawner(@Nonnull ComponentType<EntityStore, CombatScalingComponent> combatScalingType) {
-        this.combatScalingType = combatScalingType;
+    public LeveledNpcSpawner(@Nonnull NpcScalingApplicator scalingApplicator) {
+        this.scalingApplicator = Objects.requireNonNull(scalingApplicator, "scalingApplicator");
     }
 
     /**
@@ -80,81 +72,27 @@ public class LeveledNpcSpawner {
             return null;
         }
 
+        NpcScalingProfile profile = scalingApplicator.createProfile(roleName, level, variant);
+
         return npcPlugin.spawnEntity(store, roleIndex, position, null, null,
                 (npcEntity, holder, s) -> {
-                    applyPreAdd(holder, roleName, level, variant);
+                    applyPreAdd(holder, profile);
                 },
                 (npcEntity, ref, s) -> {
-                    applyPostSpawn(npcEntity, ref, s, roleName, level, variant);
+                    applyPostSpawn(npcEntity, ref, s, profile);
                 });
     }
 
-    private void applyPreAdd(
-            @Nonnull Holder<EntityStore> holder,
-            @Nonnull String roleName,
-            int level,
-            @Nonnull CombatScaling.NpcVariant variant
-    ) {
-        String nameplate = switch (variant) {
-            case ELITE -> "[Lv." + level + " *] " + roleName;
-            case BOSS  -> "[Lv." + level + " BOSS] " + roleName;
-            default    -> "[Lv." + level + "] " + roleName;
-        };
-        holder.putComponent(Nameplate.getComponentType(), new Nameplate(nameplate));
-
-        if (variant == CombatScaling.NpcVariant.ELITE) {
-            holder.putComponent(EntityScaleComponent.getComponentType(),
-                    new EntityScaleComponent(CombatScaling.ELITE_VISUAL_SCALE));
-        }
+    private void applyPreAdd(@Nonnull Holder<EntityStore> holder, @Nonnull NpcScalingProfile profile) {
+        scalingApplicator.applyToHolder(holder, profile);
     }
 
     private void applyPostSpawn(
             @Nonnull NPCEntity npcEntity,
             @Nonnull Ref<EntityStore> ref,
             @Nonnull Store<EntityStore> store,
-            @Nonnull String roleName,
-            int level,
-            @Nonnull CombatScaling.NpcVariant variant
+            @Nonnull NpcScalingProfile profile
     ) {
-        Role role = npcEntity.getRole();
-        int baseHp = role != null ? role.getInitialMaxHealth() : 20;
-
-        // Single call handles base curve + variant multipliers
-        int targetHp = CombatScaling.npcScaledHp(baseHp, level, variant);
-        float damageMult = CombatScaling.npcDamageMult(level, variant);
-
-        // Apply +-5% variance
-        targetHp = Math.round(CombatScaling.applyVariance(targetHp));
-        damageMult = CombatScaling.applyVariance(damageMult);
-
-        // Clamp
-        targetHp = Math.max(targetHp, 1);
-        targetHp = Math.min(targetHp, 10_000);
-        damageMult = Math.max(damageMult, 1.0f);
-
-        // Apply HP delta via EntityStatMap
-        int initialMaxHealth = role != null ? role.getInitialMaxHealth() : 20;
-        if (targetHp > initialMaxHealth) {
-            EntityStatMap statMap = store.getComponent(ref, EntityStatMap.getComponentType());
-            if (statMap != null) {
-                int healthIndex = EntityStatType.getAssetMap().getIndex("Health");
-                float delta = targetHp - initialMaxHealth;
-                StaticModifier modifier = new StaticModifier(
-                        Modifier.ModifierTarget.MAX,
-                        StaticModifier.CalculationType.ADDITIVE,
-                        delta
-                );
-                statMap.putModifier(healthIndex, LEVEL_SCALE_MODIFIER_KEY, modifier);
-                statMap.maximizeStatValue(healthIndex);
-            }
-        }
-
-        // Attach ECS component (replaces NpcLevelRegistry.register)
-        store.putComponent(ref, combatScalingType,
-            new CombatScalingComponent(level, damageMult, false, variant));
-
-        LOGGER.atInfo().log("Spawned %s%s Lv.%d — HP: %d, DmgMult: %.2f",
-                variant != CombatScaling.NpcVariant.NORMAL ? variant.name() + " " : "",
-                roleName, level, targetHp, damageMult);
+        scalingApplicator.applyHealthToSpawnedNpc(npcEntity, ref, store, profile);
     }
 }
