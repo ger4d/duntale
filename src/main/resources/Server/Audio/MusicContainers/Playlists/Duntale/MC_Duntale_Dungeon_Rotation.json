@@ -1,0 +1,41 @@
+{
+  "Type": "Random",
+  "AudioCategory": "AudioCat_Music",
+  "Mode": "Random",
+  "LoopCount": 0,
+  "AvoidRepeatCount": 3,
+  "Children": [
+    {
+      "Type": "SingleTrack",
+      "Parent": "Track_Duntale_Dungeon_Dust_And_Amber_Light",
+      "SilenceAfter": {
+        "Min": 60,
+        "Max": 180
+      }
+    },
+    {
+      "Type": "SingleTrack",
+      "Parent": "Track_Duntale_Dungeon_Rootbound_Ruins",
+      "SilenceAfter": {
+        "Min": 60,
+        "Max": 180
+      }
+    },
+    {
+      "Type": "SingleTrack",
+      "Parent": "Track_Duntale_Dungeon_Shadows_In_The_Vault_Loop",
+      "SilenceAfter": {
+        "Min": 60,
+        "Max": 180
+      }
+    },
+    {
+      "Type": "SingleTrack",
+      "Parent": "Track_Duntale_Dungeon_The_Gates_Last_Stand",
+      "SilenceAfter": {
+        "Min": 60,
+        "Max": 180
+      }
+    }
+  ]
+}

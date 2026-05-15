@@ -1,5 +1,6 @@
 package com.duntale;
 
+import com.duntale.audio.BackgroundMusicService;
 import com.duntale.dungeongen.config.Vec3i;
 import com.duntale.camera.BlockOcclusionManager;
 import com.duntale.camera.ClickToMoveKnockbackSystem;
@@ -90,6 +91,7 @@ import com.hypixel.hytale.math.vector.Transform;
 import com.hypixel.hytale.protocol.packets.interface_.Page;
 import com.hypixel.hytale.server.core.Message;
 import com.hypixel.hytale.server.core.entity.entities.Player;
+import com.hypixel.hytale.server.core.event.events.player.AddPlayerToWorldEvent;
 import com.hypixel.hytale.server.core.event.events.player.PlayerConnectEvent;
 import com.hypixel.hytale.server.core.event.events.player.PlayerDisconnectEvent;
 import com.hypixel.hytale.server.core.event.events.player.PlayerReadyEvent;
@@ -173,6 +175,7 @@ public class DuntalePlugin extends JavaPlugin {
     private CompanionService companionService;
     private CustomizeCharacterService customizeCharacterService;
     private PlayerEntryService playerEntryService;
+    private BackgroundMusicService backgroundMusicService;
 
     // Dungeon instance flow
     private PartyService partyService;
@@ -530,6 +533,7 @@ public class DuntalePlugin extends JavaPlugin {
             progressionService
         );
         this.playerEntryService = new PlayerEntryService(companionService, dungeonInstanceService);
+        this.backgroundMusicService = new BackgroundMusicService();
         this.getEntityStoreRegistry().registerSystem(new CompanionRespawnSystem(companionService));
 
         // -- Dungeon Generation ----------------------------------------
@@ -555,6 +559,7 @@ public class DuntalePlugin extends JavaPlugin {
         // ── Player join/leave events ─────────────────────────────────
         this.getEventRegistry().registerGlobal(AllWorldsLoadedEvent.class, this::onAllWorldsLoaded);
         this.getEventRegistry().register(PlayerConnectEvent.class, this::onPlayerConnect);
+        this.getEventRegistry().registerGlobal(AddPlayerToWorldEvent.class, this::onPlayerAddedToWorld);
         this.getEventRegistry().registerGlobal(PlayerReadyEvent.class, this::onPlayerReady);
         this.getEventRegistry().register(PlayerDisconnectEvent.class, this::onPlayerDisconnect);
         this.getEventRegistry().registerGlobal(RemovedPlayerFromWorldEvent.class, this::onPlayerRemovedFromWorld);
@@ -947,6 +952,29 @@ public class DuntalePlugin extends JavaPlugin {
         LOGGER.atFine().log("Pre-loaded RPG profile + ensured progression for %s", uuid);
     }
 
+    private void onPlayerAddedToWorld(@Nonnull AddPlayerToWorldEvent event) {
+        PlayerRef playerRef = event.getHolder().getComponent(PlayerRef.getComponentType());
+        if (playerRef == null) return;
+
+        Ref<EntityStore> ref = playerRef.getReference();
+        if (ref == null || !ref.isValid()) return;
+
+        DungeonInstance dungeonInstance = resolveDungeonInstance(event.getWorld().getName());
+        if (dungeonInstance != null || event.getWorld().getName().startsWith("dungeon-")) {
+            LOGGER.atInfo().log(
+                    "Background music AddPlayerToWorld: player=%s world=%s instance=%s state=%s",
+                    playerRef.getUuid(),
+                    event.getWorld().getName(),
+                    dungeonInstance != null ? dungeonInstance.instanceId() : "<none>",
+                    dungeonInstance != null ? dungeonInstance.state() : "<none>"
+            );
+        }
+
+        // World removal clears forced music immediately, so reapply on world entry
+        // to avoid waiting for the later PlayerReady handshake during teleports.
+        backgroundMusicService.applyForWorld(ref, ref.getStore(), dungeonInstance);
+    }
+
     private void onPlayerReady(@Nonnull PlayerReadyEvent event) {
         Player player = event.getPlayer();
         Ref<EntityStore> ref = event.getPlayerRef();
@@ -966,6 +994,16 @@ public class DuntalePlugin extends JavaPlugin {
         // Players entering a dungeon from a Creative world keep Creative unless we
         // explicitly reapply the dungeon world's configured mode on entry.
         DungeonInstance dungeonInstance = resolveDungeonInstance(world.getName());
+        if (dungeonInstance != null || world.getName().startsWith("dungeon-")) {
+            LOGGER.atInfo().log(
+                    "Background music PlayerReady: player=%s world=%s instance=%s state=%s",
+                    uuid,
+                    world.getName(),
+                    dungeonInstance != null ? dungeonInstance.instanceId() : "<none>",
+                    dungeonInstance != null ? dungeonInstance.state() : "<none>"
+            );
+        }
+        backgroundMusicService.applyForWorld(ref, store, dungeonInstance);
         if (dungeonInstance != null && player.getGameMode() != world.getWorldConfig().getGameMode()) {
             Player.setGameMode(ref, world.getWorldConfig().getGameMode(), store);
         }
@@ -1662,7 +1700,14 @@ public class DuntalePlugin extends JavaPlugin {
     @Nullable
     private DungeonInstance resolveDungeonInstance(@Nonnull String worldName) {
         try {
-            return dungeonInstanceService.getInstanceByWorld(worldName);
+            DungeonInstance dungeonInstance = dungeonInstanceService.getInstanceByWorld(worldName);
+            if (dungeonInstance == null && worldName.startsWith("dungeon-")) {
+                LOGGER.atWarning().log(
+                        "Background music could not resolve a dungeon instance for world %s",
+                        worldName
+                );
+            }
+            return dungeonInstance;
         } catch (SQLException e) {
             LOGGER.atWarning()
                     .withCause(e)
