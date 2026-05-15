@@ -2,8 +2,8 @@ $C = "../../Common.ui";
 
 $C.@PageOverlay {}
 
-$C.@Container {
-  Anchor: (Width: 620, Height: 570);
+$C.@DecoratedContainer {
+  Anchor: (Width: 620, Height: 710);
 
   #Title {
     Group {
@@ -13,35 +13,43 @@ $C.@Container {
 
   #Content {
     LayoutMode: Top;
-    Padding: (Horizontal: 24, Top: 8, Bottom: 18);
+    Padding: (Horizontal: 22, Top: 10, Bottom: 18);
 
     Label #DeathReason {
-      Anchor: (Height: 46, Bottom: 8);
+      Anchor: (Height: 42, Bottom: 6);
       Text: "You died in the dungeon.";
       Style: (FontSize: 15, TextColor: #ffffff, Alignment: Center, VerticalAlignment: Center, ShrinkTextToFit: true, MinShrinkTextToFitFontSize: 11);
     }
 
+    Label {
+      Anchor: (Height: 18, Bottom: 12);
+      Text: "Choose whether to recover this run, fall back, or leave safely.";
+      Style: (FontSize: 12, TextColor: #96a9be, Alignment: Center);
+    }
+
     Group {
       LayoutMode: Left;
-      Anchor: (Height: 30, Bottom: 12);
+      Anchor: (Height: 44, Bottom: 14);
 
       Label #FloorText {
-        Anchor: (Width: 286);
+        Anchor: (Width: 276, Height: 40, Right: 12);
         Text: "Floor 1";
-        Style: (FontSize: 16, TextColor: #55FFFF, RenderBold: true, Alignment: Center, VerticalAlignment: Center);
+        Background: (TexturePath: "../../Common/InputBoxSelected.png", Border: 16);
+        Padding: (Horizontal: 12);
+        Style: (FontSize: 16, TextColor: #a9d7ff, RenderBold: true, Alignment: Center, VerticalAlignment: Center);
       }
 
       Label #BalanceText {
-        Anchor: (Width: 286);
+        Anchor: (Width: 276, Height: 40);
         Text: "0 gold";
-        Style: (FontSize: 16, TextColor: #FFD700, RenderBold: true, Alignment: Center, VerticalAlignment: Center);
+        Background: (TexturePath: "../../Common/InputBoxSelected.png", Border: 16);
+        Padding: (Horizontal: 12);
+        Style: (FontSize: 16, TextColor: #ffe08d, RenderBold: true, Alignment: Center, VerticalAlignment: Center);
+        MaskTexturePath: $C.@TextHighlightGradientMask;
       }
     }
 
-    Group {
-      Anchor: (Height: 1, Bottom: 12);
-      Background: #ffffff(0.12);
-    }
+    $C.@PanelSeparatorFancy { @Anchor = (Bottom: 14); }
 
     Group {
       LayoutMode: Top;
@@ -49,10 +57,22 @@ $C.@Container {
       Padding: (Horizontal: 18, Top: 12, Bottom: 12);
       Anchor: (Bottom: 10);
 
-      Label {
-        Anchor: (Height: 20, Bottom: 4);
-        Text: "Current Floor";
-        Style: (FontSize: 15, TextColor: #FFD700, RenderBold: true, Alignment: Center);
+      Group {
+        LayoutMode: Top;
+        Anchor: (Height: 30, Bottom: 6);
+
+        Group {
+          LayoutMode: Left;
+          Anchor: (Height: 16, Bottom: 6);
+
+          Label {
+            Text: "CURRENT FLOOR";
+            Style: (FontSize: 13, TextColor: #E8A93B, RenderBold: true, RenderUppercase: true, VerticalAlignment: Center);
+            MaskTexturePath: $C.@TextHighlightGradientMask;
+          }
+        }
+
+        $C.@PanelSeparatorFancy {}
       }
 
       Label {
@@ -62,13 +82,15 @@ $C.@Container {
       }
 
       Label #CurrentCostText {
-        Anchor: (Height: 18, Bottom: 8);
+        Anchor: (Width: 140, Height: 32, Bottom: 10);
         Text: "500 gold";
-        Style: (FontSize: 13, TextColor: #ffffff, Alignment: Center, RenderBold: true);
+        Background: (TexturePath: "../../Common/InputBoxSelected.png", Border: 16);
+        Padding: (Horizontal: 10);
+        Style: (FontSize: 13, TextColor: #ffe08d, Alignment: Center, RenderBold: true, VerticalAlignment: Center);
       }
 
       $C.@TextButton #CurrentFloorButton {
-        Anchor: (Width: 260, Height: 38);
+        Anchor: (Width: 260, Height: 40);
         Text: "Respawn";
       }
     }
@@ -79,10 +101,28 @@ $C.@Container {
       Padding: (Horizontal: 18, Top: 12, Bottom: 12);
       Anchor: (Bottom: 10);
 
+      Group {
+        LayoutMode: Top;
+        Anchor: (Height: 30, Bottom: 6);
+
+        Group {
+          LayoutMode: Left;
+          Anchor: (Height: 16, Bottom: 6);
+
+          Label {
+            Text: "LOWER FLOOR";
+            Style: (FontSize: 13, TextColor: #ff9d82, RenderBold: true, RenderUppercase: true, VerticalAlignment: Center);
+            MaskTexturePath: $C.@TextHighlightGradientMask;
+          }
+        }
+
+        $C.@PanelSeparatorFancy {}
+      }
+
       Label #LowerFloorText {
         Anchor: (Height: 20, Bottom: 4);
         Text: "Restart on Floor 1";
-        Style: (FontSize: 15, TextColor: #55FF55, RenderBold: true, Alignment: Center);
+        Style: (FontSize: 15, TextColor: #ffffff, RenderBold: true, Alignment: Center);
       }
 
       Label {
@@ -92,13 +132,15 @@ $C.@Container {
       }
 
       Label #LowerCostText {
-        Anchor: (Height: 18, Bottom: 8);
+        Anchor: (Width: 140, Height: 32, Bottom: 10);
         Text: "300 gold";
-        Style: (FontSize: 13, TextColor: #ffffff, Alignment: Center, RenderBold: true);
+        Background: (TexturePath: "../../Common/InputBoxSelected.png", Border: 16);
+        Padding: (Horizontal: 10);
+        Style: (FontSize: 13, TextColor: #ffcfbf, Alignment: Center, RenderBold: true, VerticalAlignment: Center);
       }
 
-      $C.@TextButton #LowerFloorButton {
-        Anchor: (Width: 260, Height: 38);
+      $C.@CancelTextButton #LowerFloorButton {
+        Anchor: (Width: 260, Height: 40);
         Text: "Lower Floor";
       }
     }
@@ -108,10 +150,22 @@ $C.@Container {
       Background: (TexturePath: "../../Common/ContainerPanelPatch.png", Border: 4);
       Padding: (Horizontal: 18, Top: 12, Bottom: 12);
 
-      Label {
-        Anchor: (Height: 20, Bottom: 4);
-        Text: "Village";
-        Style: (FontSize: 15, TextColor: #55FFFF, RenderBold: true, Alignment: Center);
+      Group {
+        LayoutMode: Top;
+        Anchor: (Height: 30, Bottom: 6);
+
+        Group {
+          LayoutMode: Left;
+          Anchor: (Height: 16, Bottom: 6);
+
+          Label {
+            Text: "RETURN TO VILLAGE";
+            Style: (FontSize: 13, TextColor: #7a9cc6, RenderBold: true, RenderUppercase: true, VerticalAlignment: Center);
+            MaskTexturePath: $C.@TextHighlightGradientMask;
+          }
+        }
+
+        $C.@PanelSeparatorFancy {}
       }
 
       Label {
@@ -121,7 +175,7 @@ $C.@Container {
       }
 
       $C.@SecondaryTextButton #VillageButton {
-        Anchor: (Width: 260, Height: 38);
+        Anchor: (Width: 260, Height: 40);
         Text: "Village";
       }
     }
