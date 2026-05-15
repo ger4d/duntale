@@ -4,7 +4,7 @@
     "layout.bossRoom": true,
     "layout.branchChance": 0.3,
     "layout.complexity": 0.5,
-    "layout.corridorWidth": 2,
+    "layout.corridorWidth": 5,
     "layout.depth": 160,
     "layout.enemyDensity": 0.4,
     "layout.entrancePlacement": "edge",
