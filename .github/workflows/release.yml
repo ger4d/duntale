@@ -67,7 +67,7 @@ jobs:
         shell: bash
         run: |
           expected_version="${{ steps.meta.outputs.version }}"
-          build_version="$(python3 -c 'from pathlib import Path; import re; text = Path("build.gradle.kts").read_text(encoding="utf-8"); match = re.search(r"^version\\s*=\\s*\"([^\"]+)\"", text, re.MULTILINE); print(match.group(1) if match else (_ for _ in ()).throw(SystemExit("Unable to locate version = \"...\" in build.gradle.kts")))')"
+          build_version="$(python3 -c 'from pathlib import Path; import re; text = Path("build.gradle.kts").read_text(encoding="utf-8"); match = re.search("^version\\s*=\\s*\"([^\"]+)\"", text, re.MULTILINE); print(match.group(1) if match else (_ for _ in ()).throw(SystemExit("Unable to locate version = \"...\" in build.gradle.kts")))')"
           manifest_version="$(python3 -c 'import json, pathlib; print(json.loads(pathlib.Path("src/main/resources/manifest.json").read_text(encoding="utf-8"))["Version"])')"
 
           [[ "$build_version" == "$expected_version" ]] || {
