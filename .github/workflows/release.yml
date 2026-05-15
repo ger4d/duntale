@@ -1,0 +1,126 @@
+name: Release Duntale
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing release tag to rebuild and publish
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event.inputs.tag || github.ref }}
+
+      - name: Resolve release metadata
+        id: meta
+        shell: bash
+        run: |
+          if [[ "${GITHUB_EVENT_NAME}" == "workflow_dispatch" ]]; then
+            tag="${{ github.event.inputs.tag }}"
+          else
+            tag="${GITHUB_REF_NAME}"
+          fi
+
+          version="${tag#v}"
+          echo "tag=${tag}" >> "$GITHUB_OUTPUT"
+          echo "version=${version}" >> "$GITHUB_OUTPUT"
+
+      - name: Checkout DungeonGen dependency
+        uses: actions/checkout@v4
+        with:
+          repository: ger4d/hy-dungeon-generator
+          ref: main
+          path: deps/dungeon-gen
+          token: ${{ secrets.DEPENDENCY_REPO_TOKEN || github.token }}
+
+      - name: Checkout DynamicTooltipsLib dependency
+        uses: actions/checkout@v4
+        with:
+          repository: Herolias/DynamicTooltipsLib
+          ref: main
+          path: deps/DynamicTooltipsLib
+
+      - name: Set up Java 25
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '25'
+
+      - name: Set up Gradle caching
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Verify release versions
+        shell: bash
+        run: |
+          expected_version="${{ steps.meta.outputs.version }}"
+          build_version="$(python3 -c 'from pathlib import Path; import re; text = Path("build.gradle.kts").read_text(encoding="utf-8"); match = re.search(r"^version\\s*=\\s*\"([^\"]+)\"", text, re.MULTILINE); print(match.group(1) if match else (_ for _ in ()).throw(SystemExit("Unable to locate version = \"...\" in build.gradle.kts")))')"
+          manifest_version="$(python3 -c 'import json, pathlib; print(json.loads(pathlib.Path("src/main/resources/manifest.json").read_text(encoding="utf-8"))["Version"])')"
+
+          [[ "$build_version" == "$expected_version" ]] || {
+            echo "build.gradle.kts version '$build_version' does not match tag version '$expected_version'" >&2
+            exit 1
+          }
+
+          [[ "$manifest_version" == "$expected_version" ]] || {
+            echo "manifest.json Version '$manifest_version' does not match tag version '$expected_version'" >&2
+            exit 1
+          }
+
+      - name: Build dependency jars
+        shell: bash
+        run: |
+          ./gradlew --no-daemon -p deps/dungeon-gen jar
+          ./gradlew --no-daemon -p deps/DynamicTooltipsLib jar
+
+      - name: Stage dependency jars for local file paths
+        shell: bash
+        run: |
+          mkdir -p ../dungeon-gen/build/libs ../DynamicTooltipsLib/build/libs
+
+          dungeon_gen_jar="$(find deps/dungeon-gen/build/libs -maxdepth 1 -type f -name 'dungeon-gen-*.jar' | sort | head -n 1)"
+          tooltip_jar="$(find deps/DynamicTooltipsLib/build/libs -maxdepth 1 -type f -name 'DynamicTooltipsLib-*.jar' | sort | head -n 1)"
+
+          [[ -n "$dungeon_gen_jar" ]] || {
+            echo "Unable to locate built DungeonGen jar" >&2
+            exit 1
+          }
+
+          [[ -n "$tooltip_jar" ]] || {
+            echo "Unable to locate built DynamicTooltipsLib jar" >&2
+            exit 1
+          }
+
+          cp "$dungeon_gen_jar" ../dungeon-gen/build/libs/dungeon-gen-1.0.0-SNAPSHOT.jar
+          cp "$tooltip_jar" ../DynamicTooltipsLib/build/libs/DynamicTooltipsLib-1.5.1.jar
+
+      - name: Build shadow jar
+        run: ./gradlew --no-daemon shadowJar
+
+      - name: Upload workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Duntale-${{ steps.meta.outputs.version }}
+          path: build/libs/*.jar
+          if-no-files-found: error
+
+      - name: Publish GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.meta.outputs.tag }}
+          name: Duntale v${{ steps.meta.outputs.version }}
+          generate_release_notes: true
+          files: build/libs/*.jar

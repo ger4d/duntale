@@ -1,10 +1,12 @@
+import groovy.json.JsonSlurper
+
 plugins {
     id("java-library")
     id("com.gradleup.shadow") version "9.3.0"
 }
 
 group = "com.duntale"
-version = "1.0.0-SNAPSHOT"
+version = "0.1.0"
 
 java {
     sourceCompatibility = JavaVersion.VERSION_25
@@ -48,7 +50,9 @@ tasks {
     }
 
     shadowJar {
-        archiveBaseName.set("Duntale")
+        val manifest = file("src/main/resources/manifest.json")
+        val pluginName = (JsonSlurper().parse(manifest) as Map<*, *>)["Name"] as String
+        archiveFileName.set("${pluginName}.jar")
         archiveClassifier.set("")
         mergeServiceFiles()
     }
