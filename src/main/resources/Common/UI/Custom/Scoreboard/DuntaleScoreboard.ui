@@ -3,13 +3,13 @@
 
 @HeaderStyle = (FontSize: 13, TextColor: #ffb347, RenderBold: true, Alignment: Center);
 @ValueStyle = (FontSize: 14, TextColor: #ffffff, Alignment: Center);
-@GoldStyle = (FontSize: 16, TextColor: #FFD700, RenderBold: true, Alignment: Center);
+@GoldStyle = (FontSize: 14, TextColor: #FFD700, RenderBold: true, Alignment: Center);
 @LabelStyle = (FontSize: 11, TextColor: #96a9be, Alignment: Center);
 @StatStyle = (FontSize: 11, TextColor: #cccccc, Alignment: Center);
 @StatValueStyle = (FontSize: 11, TextColor: #ffffff, Alignment: Center);
 
 Group #ScoreboardRoot {
-  Anchor: (Width: 185, Height: 290, Right: 18, Top: 180);
+  Anchor: (Width: 250, Height: 290, Right: 18, Top: 320);
   LayoutMode: Top;
 
   // Main Panel

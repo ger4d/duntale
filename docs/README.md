@@ -1,13 +1,10 @@
 # Duntale Documentation
 
-Status: Current
-Last verified: 2026-05-14
-Source docs: root-level Markdown inventory from the Duntale module
-Verified against: repository file inventory and source tree shape
+## Project Brief
 
-## Purpose
+Duntale is a Hytale dungeon-crawling RPG focused on repeatable runs that start in a shared village and branch into procedurally generated dungeon floors. Players choose a companion, head out solo or in parties of up to six, fight floor-scaled enemies, collect loot, earn gold and XP, spend stat points, trade with dungeon merchants, and push deeper floors through a persistent run and re-entry loop.
 
-This directory contains the cleaned, canonical documentation for the Duntale project. Root-level Markdown files are treated as legacy source material and are archived under `docs/archive/legacy-root-md/` after their current claims have been extracted or retired.
+This directory is the canonical reference for how the project currently works. It covers the shipped runtime systems, asset and config ownership, validation checklists, balancing references, and active plans. Older root-level Markdown files are treated as legacy source material and are archived under `docs/archive/legacy-root-md/` after their current claims have been extracted or retired.
 
 ## Documentation Map
 
@@ -17,42 +14,3 @@ This directory contains the cleaned, canonical documentation for the Duntale pro
 - `validation/` - manual validation checklists and test entry points.
 - `plans/` - active roadmaps, refactor plans, and explicitly future work.
 - `research/` - historical research that is useful but not canonical current behavior.
-- `archive/` - legacy root-level Markdown files preserved after migration.
-- `_migration/` - cleanup inventory, claim ownership, and rewrite coordination notes.
-
-## Standard Format
-
-Every canonical document should start with this metadata block:
-
-```markdown
-# Title
-
-Status: Current | Active Plan | Historical
-Last verified: YYYY-MM-DD
-Source docs: source file list
-Verified against: code, resources, config, schema, tests, or "Not verified"
-```
-
-Current system docs should then use these sections unless a section is genuinely irrelevant:
-
-```markdown
-## Purpose
-## Current State
-## Implementation Map
-## Data, Assets, And Config
-## Validation
-## Known Gaps
-## Related Docs
-```
-
-Plans should use `Purpose`, `Current Priority`, `Scope`, `Tasks`, `Dependencies`, `Risks`, and `Related Docs`.
-
-Research/history docs should use `Purpose`, `Historical Context`, `Findings`, `Still Relevant`, `Superseded Or Retired`, and `Related Docs`.
-
-## Verification Rules
-
-- Treat Java source, assets, configs, scripts, schemas, and tests as source of truth.
-- Do not preserve a current-behavior claim unless it has repository evidence.
-- Move unverified or outdated claims into a historical or open-question section.
-- Feature docs own behavior. Validation docs own how to test behavior. Roadmap docs own future work.
-- Avoid copying the same explanation into multiple docs; link to the canonical owner instead.

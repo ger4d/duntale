@@ -1,0 +1,129 @@
+$C = "../../Common.ui";
+
+$C.@PageOverlay {}
+
+$C.@Container {
+  Anchor: (Width: 620, Height: 570);
+
+  #Title {
+    Group {
+      $C.@Title { @Text = "Dungeon Death"; }
+    }
+  }
+
+  #Content {
+    LayoutMode: Top;
+    Padding: (Horizontal: 24, Top: 8, Bottom: 18);
+
+    Label #DeathReason {
+      Anchor: (Height: 46, Bottom: 8);
+      Text: "You died in the dungeon.";
+      Style: (FontSize: 15, TextColor: #ffffff, Alignment: Center, VerticalAlignment: Center, ShrinkTextToFit: true, MinShrinkTextToFitFontSize: 11);
+    }
+
+    Group {
+      LayoutMode: Left;
+      Anchor: (Height: 30, Bottom: 12);
+
+      Label #FloorText {
+        Anchor: (Width: 286);
+        Text: "Floor 1";
+        Style: (FontSize: 16, TextColor: #55FFFF, RenderBold: true, Alignment: Center, VerticalAlignment: Center);
+      }
+
+      Label #BalanceText {
+        Anchor: (Width: 286);
+        Text: "0 gold";
+        Style: (FontSize: 16, TextColor: #FFD700, RenderBold: true, Alignment: Center, VerticalAlignment: Center);
+      }
+    }
+
+    Group {
+      Anchor: (Height: 1, Bottom: 12);
+      Background: #ffffff(0.12);
+    }
+
+    Group {
+      LayoutMode: Top;
+      Background: (TexturePath: "../../Common/ContainerPanelPatch.png", Border: 4);
+      Padding: (Horizontal: 18, Top: 12, Bottom: 12);
+      Anchor: (Bottom: 10);
+
+      Label {
+        Anchor: (Height: 20, Bottom: 4);
+        Text: "Current Floor";
+        Style: (FontSize: 15, TextColor: #FFD700, RenderBold: true, Alignment: Center);
+      }
+
+      Label {
+        Anchor: (Height: 18, Bottom: 6);
+        Text: "Respawn on this floor.";
+        Style: (FontSize: 12, TextColor: #96a9be, Alignment: Center);
+      }
+
+      Label #CurrentCostText {
+        Anchor: (Height: 18, Bottom: 8);
+        Text: "500 gold";
+        Style: (FontSize: 13, TextColor: #ffffff, Alignment: Center, RenderBold: true);
+      }
+
+      $C.@TextButton #CurrentFloorButton {
+        Anchor: (Width: 260, Height: 38);
+        Text: "Respawn";
+      }
+    }
+
+    Group {
+      LayoutMode: Top;
+      Background: (TexturePath: "../../Common/ContainerPanelPatch.png", Border: 4);
+      Padding: (Horizontal: 18, Top: 12, Bottom: 12);
+      Anchor: (Bottom: 10);
+
+      Label #LowerFloorText {
+        Anchor: (Height: 20, Bottom: 4);
+        Text: "Restart on Floor 1";
+        Style: (FontSize: 15, TextColor: #55FF55, RenderBold: true, Alignment: Center);
+      }
+
+      Label {
+        Anchor: (Height: 18, Bottom: 6);
+        Text: "Abandon this run and start one floor lower.";
+        Style: (FontSize: 12, TextColor: #96a9be, Alignment: Center);
+      }
+
+      Label #LowerCostText {
+        Anchor: (Height: 18, Bottom: 8);
+        Text: "300 gold";
+        Style: (FontSize: 13, TextColor: #ffffff, Alignment: Center, RenderBold: true);
+      }
+
+      $C.@TextButton #LowerFloorButton {
+        Anchor: (Width: 260, Height: 38);
+        Text: "Lower Floor";
+      }
+    }
+
+    Group {
+      LayoutMode: Top;
+      Background: (TexturePath: "../../Common/ContainerPanelPatch.png", Border: 4);
+      Padding: (Horizontal: 18, Top: 12, Bottom: 12);
+
+      Label {
+        Anchor: (Height: 20, Bottom: 4);
+        Text: "Village";
+        Style: (FontSize: 15, TextColor: #55FFFF, RenderBold: true, Alignment: Center);
+      }
+
+      Label {
+        Anchor: (Height: 18, Bottom: 8);
+        Text: "Return safely for free.";
+        Style: (FontSize: 12, TextColor: #96a9be, Alignment: Center);
+      }
+
+      $C.@SecondaryTextButton #VillageButton {
+        Anchor: (Width: 260, Height: 38);
+        Text: "Village";
+      }
+    }
+  }
+}
