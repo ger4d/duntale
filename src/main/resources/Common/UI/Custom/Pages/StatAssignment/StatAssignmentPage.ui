@@ -1,12 +1,12 @@
 // StatAssignmentPage.ui — Stat point assignment modal.
-// Displays current stats with "+" buttons to spend unassigned points.
+// Grouped-panel redesign that keeps the existing stat value and button IDs.
 
 $C = "../../Common.ui";
 
 $C.@PageOverlay {}
 
-$C.@Container {
-  Anchor: (Width: 420, Height: 440);
+$C.@DecoratedContainer {
+  Anchor: (Width: 660, Height: 590);
 
   #Title {
     Group {
@@ -16,88 +16,418 @@ $C.@Container {
 
   #Content {
     LayoutMode: Top;
-    Padding: (Horizontal: 20, Top: 8, Bottom: 16);
+    Padding: (Horizontal: 20, Top: 12, Bottom: 18);
 
-    // Unassigned points header
-    Group {
-      LayoutMode: Left;
-      Anchor: (Height: 36, Bottom: 8);
-      Label {
-        Text: "Available Points:";
-        Style: (FontSize: 16, TextColor: #96a9be, VerticalAlignment: Center);
-        Anchor: (Width: 170);
+    Label {
+      Anchor: (Height: 22, Bottom: 4);
+      Text: "Build your character by spending unassigned points.";
+      Style: (FontSize: 15, TextColor: #ffffff, Alignment: Center);
+    }
+
+    Label {
+      Anchor: (Height: 18, Bottom: 14);
+      Text: "Choose a lane: offense and tempo on the left, survival on the right.";
+      Style: (FontSize: 12, TextColor: #96a9be, Alignment: Center);
+    }
+
+    $C.@SimpleContainer {
+      LayoutMode: Top;
+      Padding: (Horizontal: 16, Top: 10, Bottom: 14);
+      Anchor: (Bottom: 14);
+
+      Group {
+        LayoutMode: Top;
+        Anchor: (Height: 30, Bottom: 10);
+
+        Group {
+          LayoutMode: Left;
+          Anchor: (Height: 16, Bottom: 6);
+
+          Label {
+            Text: "POINTS READY";
+            Style: (FontSize: 13, TextColor: #E8A93B, RenderBold: true, RenderUppercase: true, VerticalAlignment: Center);
+            MaskTexturePath: $C.@TextHighlightGradientMask;
+          }
+        }
+
+        $C.@PanelSeparatorFancy {}
       }
-      Label #UnassignedValue {
-        Text: "0";
-        Style: (FontSize: 18, TextColor: #FFD700, RenderBold: true, VerticalAlignment: Center, Alignment: Center);
-        Anchor: (Width: 60);
+
+      Group {
+        LayoutMode: Left;
+        Anchor: (Height: 48);
+
+        Group {
+          LayoutMode: Top;
+          FlexWeight: 1;
+          Anchor: (Right: 14);
+
+          Label {
+            Anchor: (Height: 18, Bottom: 2);
+            Text: "Spend points one at a time to tune your build.";
+            Style: (FontSize: 13, TextColor: #ffffff, VerticalAlignment: Center);
+          }
+
+          Label {
+            Anchor: (Height: 16);
+            Text: "Each click applies a single stat point immediately.";
+            Style: (FontSize: 12, TextColor: #96a9be, VerticalAlignment: Center);
+          }
+        }
+
+        Label #UnassignedValue {
+          Text: "0";
+          Background: (TexturePath: "../../Common/InputBoxSelected.png", Border: 16);
+          Padding: (Horizontal: 14);
+          Style: (FontSize: 24, TextColor: #E8A93B, RenderBold: true, Alignment: Center, VerticalAlignment: Center);
+          MaskTexturePath: $C.@TextHighlightGradientMask;
+          Anchor: (Width: 92, Height: 44);
+        }
       }
     }
 
-    // Separator
-    Group { Anchor: (Height: 1, Bottom: 10); Background: #ffffff(0.15); }
-
-    // -- STRENGTH --
     Group {
       LayoutMode: Left;
-      Anchor: (Height: 34, Bottom: 4);
-      Label { Text: "Strength"; Style: (FontSize: 14, TextColor: #ff6b6b, VerticalAlignment: Center); Anchor: (Width: 120); }
-      Label #StrValue { Text: "0"; Style: (FontSize: 14, TextColor: #ffffff, VerticalAlignment: Center, Alignment: Center); Anchor: (Width: 60, Right: 20); }
-      $C.@TextButton #StrAddBtn { Anchor: (Width: 50, Height: 28); Text: "+"; }
-    }
 
-    // -- SPEED --
-    Group {
-      LayoutMode: Left;
-      Anchor: (Height: 34, Bottom: 4);
-      Label { Text: "Speed"; Style: (FontSize: 14, TextColor: #55ff55, VerticalAlignment: Center); Anchor: (Width: 120); }
-      Label #SpdValue { Text: "0"; Style: (FontSize: 14, TextColor: #ffffff, VerticalAlignment: Center, Alignment: Center); Anchor: (Width: 60, Right: 20); }
-      $C.@TextButton #SpdAddBtn { Anchor: (Width: 50, Height: 28); Text: "+"; }
-    }
+      Group {
+        LayoutMode: Top;
+        Anchor: (Width: 304, Right: 12);
 
-    // -- AGILITY --
-    Group {
-      LayoutMode: Left;
-      Anchor: (Height: 34, Bottom: 4);
-      Label { Text: "Agility"; Style: (FontSize: 14, TextColor: #55ffff, VerticalAlignment: Center); Anchor: (Width: 120); }
-      Label #AgiValue { Text: "0"; Style: (FontSize: 14, TextColor: #ffffff, VerticalAlignment: Center, Alignment: Center); Anchor: (Width: 60, Right: 20); }
-      $C.@TextButton #AgiAddBtn { Anchor: (Width: 50, Height: 28); Text: "+"; }
-    }
+        $C.@SimpleContainer {
+          LayoutMode: Top;
+          Padding: (Horizontal: 14, Top: 10, Bottom: 12);
+          Anchor: (Bottom: 12);
 
-    // -- RESISTANCE --
-    Group {
-      LayoutMode: Left;
-      Anchor: (Height: 34, Bottom: 4);
-      Label { Text: "Resistance"; Style: (FontSize: 14, TextColor: #aaaaff, VerticalAlignment: Center); Anchor: (Width: 120); }
-      Label #ResValue { Text: "0"; Style: (FontSize: 14, TextColor: #ffffff, VerticalAlignment: Center, Alignment: Center); Anchor: (Width: 60, Right: 20); }
-      $C.@TextButton #ResAddBtn { Anchor: (Width: 50, Height: 28); Text: "+"; }
-    }
+          Group {
+            LayoutMode: Top;
+            Anchor: (Height: 30, Bottom: 8);
 
-    // -- LUCK --
-    Group {
-      LayoutMode: Left;
-      Anchor: (Height: 34, Bottom: 4);
-      Label { Text: "Luck"; Style: (FontSize: 14, TextColor: #FFD700, VerticalAlignment: Center); Anchor: (Width: 120); }
-      Label #LckValue { Text: "0"; Style: (FontSize: 14, TextColor: #ffffff, VerticalAlignment: Center, Alignment: Center); Anchor: (Width: 60, Right: 20); }
-      $C.@TextButton #LckAddBtn { Anchor: (Width: 50, Height: 28); Text: "+"; }
-    }
+            Group {
+              LayoutMode: Left;
+              Anchor: (Height: 16, Bottom: 6);
 
-    // -- VITALITY --
-    Group {
-      LayoutMode: Left;
-      Anchor: (Height: 34, Bottom: 4);
-      Label { Text: "Vitality"; Style: (FontSize: 14, TextColor: #ff55ff, VerticalAlignment: Center); Anchor: (Width: 120); }
-      Label #VitValue { Text: "0"; Style: (FontSize: 14, TextColor: #ffffff, VerticalAlignment: Center, Alignment: Center); Anchor: (Width: 60, Right: 20); }
-      $C.@TextButton #VitAddBtn { Anchor: (Width: 50, Height: 28); Text: "+"; }
-    }
+              Label {
+                Text: "COMBAT AND TEMPO";
+                Style: (FontSize: 13, TextColor: #ffb56b, RenderBold: true, RenderUppercase: true, VerticalAlignment: Center);
+                MaskTexturePath: $C.@TextHighlightGradientMask;
+              }
+            }
 
-    // -- STAMINA --
-    Group {
-      LayoutMode: Left;
-      Anchor: (Height: 34, Bottom: 4);
-      Label { Text: "Stamina"; Style: (FontSize: 14, TextColor: #ffaa55, VerticalAlignment: Center); Anchor: (Width: 120); }
-      Label #StaValue { Text: "0"; Style: (FontSize: 14, TextColor: #ffffff, VerticalAlignment: Center, Alignment: Center); Anchor: (Width: 60, Right: 20); }
-      $C.@TextButton #StaAddBtn { Anchor: (Width: 50, Height: 28); Text: "+"; }
+            $C.@PanelSeparatorFancy {}
+          }
+
+          Group {
+            LayoutMode: Left;
+            Anchor: (Height: 46, Bottom: 6);
+
+            Group {
+              LayoutMode: Top;
+              FlexWeight: 1;
+              Anchor: (Right: 10);
+
+              Label {
+                Anchor: (Height: 18, Bottom: 2);
+                Text: "Strength";
+                Style: (FontSize: 15, TextColor: #ffffff, RenderBold: true, VerticalAlignment: Center);
+              }
+
+              Label {
+                Anchor: (Height: 16);
+                Text: "Increase weapon damage output.";
+                Style: (FontSize: 12, TextColor: #96a9be, VerticalAlignment: Center);
+              }
+            }
+
+            Label #StrValue {
+              Text: "0";
+              Background: (TexturePath: "../../Common/InputBoxSelected.png", Border: 16);
+              Padding: (Horizontal: 10);
+              Style: (FontSize: 14, TextColor: #ffcf97, RenderBold: true, Alignment: Center, VerticalAlignment: Center);
+              Anchor: (Width: 54, Height: 34, Right: 10);
+            }
+
+            $C.@SmallSecondaryTextButton #StrAddBtn {
+              @Anchor = (Width: 76);
+              @Text = "Add";
+            }
+          }
+
+          $C.@ContentSeparator { @Anchor = (Bottom: 6); }
+
+          Group {
+            LayoutMode: Left;
+            Anchor: (Height: 46, Bottom: 6);
+
+            Group {
+              LayoutMode: Top;
+              FlexWeight: 1;
+              Anchor: (Right: 10);
+
+              Label {
+                Anchor: (Height: 18, Bottom: 2);
+                Text: "Agility";
+                Style: (FontSize: 15, TextColor: #ffffff, RenderBold: true, VerticalAlignment: Center);
+              }
+
+              Label {
+                Anchor: (Height: 16);
+                Text: "Shorten your attack cooldown.";
+                Style: (FontSize: 12, TextColor: #96a9be, VerticalAlignment: Center);
+              }
+            }
+
+            Label #AgiValue {
+              Text: "0";
+              Background: (TexturePath: "../../Common/InputBoxSelected.png", Border: 16);
+              Padding: (Horizontal: 10);
+              Style: (FontSize: 14, TextColor: #ffcf97, RenderBold: true, Alignment: Center, VerticalAlignment: Center);
+              Anchor: (Width: 54, Height: 34, Right: 10);
+            }
+
+            $C.@SmallSecondaryTextButton #AgiAddBtn {
+              @Anchor = (Width: 76);
+              @Text = "Add";
+            }
+          }
+
+          $C.@ContentSeparator { @Anchor = (Bottom: 6); }
+
+          Group {
+            LayoutMode: Left;
+            Anchor: (Height: 46);
+
+            Group {
+              LayoutMode: Top;
+              FlexWeight: 1;
+              Anchor: (Right: 10);
+
+              Label {
+                Anchor: (Height: 18, Bottom: 2);
+                Text: "Speed";
+                Style: (FontSize: 15, TextColor: #ffffff, RenderBold: true, VerticalAlignment: Center);
+              }
+
+              Label {
+                Anchor: (Height: 16);
+                Text: "Move faster between fights.";
+                Style: (FontSize: 12, TextColor: #96a9be, VerticalAlignment: Center);
+              }
+            }
+
+            Label #SpdValue {
+              Text: "0";
+              Background: (TexturePath: "../../Common/InputBoxSelected.png", Border: 16);
+              Padding: (Horizontal: 10);
+              Style: (FontSize: 14, TextColor: #ffcf97, RenderBold: true, Alignment: Center, VerticalAlignment: Center);
+              Anchor: (Width: 54, Height: 34, Right: 10);
+            }
+
+            $C.@SmallSecondaryTextButton #SpdAddBtn {
+              @Anchor = (Width: 76);
+              @Text = "Add";
+            }
+          }
+        }
+
+        $C.@SimpleContainer {
+          LayoutMode: Top;
+          Padding: (Horizontal: 14, Top: 10, Bottom: 12);
+
+          Group {
+            LayoutMode: Top;
+            Anchor: (Height: 30, Bottom: 8);
+
+            Group {
+              LayoutMode: Left;
+              Anchor: (Height: 16, Bottom: 6);
+
+              Label {
+                Text: "FORTUNE";
+                Style: (FontSize: 13, TextColor: #E8A93B, RenderBold: true, RenderUppercase: true, VerticalAlignment: Center);
+                MaskTexturePath: $C.@TextHighlightGradientMask;
+              }
+            }
+
+            $C.@PanelSeparatorFancy {}
+          }
+
+          Group {
+            LayoutMode: Left;
+            Anchor: (Height: 46);
+
+            Group {
+              LayoutMode: Top;
+              FlexWeight: 1;
+              Anchor: (Right: 10);
+
+              Label {
+                Anchor: (Height: 18, Bottom: 2);
+                Text: "Luck";
+                Style: (FontSize: 15, TextColor: #ffffff, RenderBold: true, VerticalAlignment: Center);
+              }
+
+              Label {
+                Anchor: (Height: 16);
+                Text: "Improve loot quality and bonus rolls.";
+                Style: (FontSize: 12, TextColor: #96a9be, VerticalAlignment: Center);
+              }
+            }
+
+            Label #LckValue {
+              Text: "0";
+              Background: (TexturePath: "../../Common/InputBoxSelected.png", Border: 16);
+              Padding: (Horizontal: 10);
+              Style: (FontSize: 14, TextColor: #ffe08d, RenderBold: true, Alignment: Center, VerticalAlignment: Center);
+              Anchor: (Width: 54, Height: 34, Right: 10);
+            }
+
+            $C.@SmallSecondaryTextButton #LckAddBtn {
+              @Anchor = (Width: 76);
+              @Text = "Add";
+            }
+          }
+        }
+      }
+
+      Group {
+        LayoutMode: Top;
+        Anchor: (Width: 304);
+
+        $C.@SimpleContainer {
+          LayoutMode: Top;
+          Padding: (Horizontal: 14, Top: 10, Bottom: 12);
+
+          Group {
+            LayoutMode: Top;
+            Anchor: (Height: 30, Bottom: 8);
+
+            Group {
+              LayoutMode: Left;
+              Anchor: (Height: 16, Bottom: 6);
+
+              Label {
+                Text: "SURVIVAL";
+                Style: (FontSize: 13, TextColor: #7a9cc6, RenderBold: true, RenderUppercase: true, VerticalAlignment: Center);
+                MaskTexturePath: $C.@TextHighlightGradientMask;
+              }
+            }
+
+            $C.@PanelSeparatorFancy {}
+          }
+
+          Group {
+            LayoutMode: Left;
+            Anchor: (Height: 46, Bottom: 6);
+
+            Group {
+              LayoutMode: Top;
+              FlexWeight: 1;
+              Anchor: (Right: 10);
+
+              Label {
+                Anchor: (Height: 18, Bottom: 2);
+                Text: "Resistance";
+                Style: (FontSize: 15, TextColor: #ffffff, RenderBold: true, VerticalAlignment: Center);
+              }
+
+              Label {
+                Anchor: (Height: 16);
+                Text: "Reduce incoming damage taken.";
+                Style: (FontSize: 12, TextColor: #96a9be, VerticalAlignment: Center);
+              }
+            }
+
+            Label #ResValue {
+              Text: "0";
+              Background: (TexturePath: "../../Common/InputBoxSelected.png", Border: 16);
+              Padding: (Horizontal: 10);
+              Style: (FontSize: 14, TextColor: #a9d7ff, RenderBold: true, Alignment: Center, VerticalAlignment: Center);
+              Anchor: (Width: 54, Height: 34, Right: 10);
+            }
+
+            $C.@SmallSecondaryTextButton #ResAddBtn {
+              @Anchor = (Width: 76);
+              @Text = "Add";
+            }
+          }
+
+          $C.@ContentSeparator { @Anchor = (Bottom: 6); }
+
+          Group {
+            LayoutMode: Left;
+            Anchor: (Height: 46, Bottom: 6);
+
+            Group {
+              LayoutMode: Top;
+              FlexWeight: 1;
+              Anchor: (Right: 10);
+
+              Label {
+                Anchor: (Height: 18, Bottom: 2);
+                Text: "Vitality";
+                Style: (FontSize: 15, TextColor: #ffffff, RenderBold: true, VerticalAlignment: Center);
+              }
+
+              Label {
+                Anchor: (Height: 16);
+                Text: "Increase your maximum health.";
+                Style: (FontSize: 12, TextColor: #96a9be, VerticalAlignment: Center);
+              }
+            }
+
+            Label #VitValue {
+              Text: "0";
+              Background: (TexturePath: "../../Common/InputBoxSelected.png", Border: 16);
+              Padding: (Horizontal: 10);
+              Style: (FontSize: 14, TextColor: #a9d7ff, RenderBold: true, Alignment: Center, VerticalAlignment: Center);
+              Anchor: (Width: 54, Height: 34, Right: 10);
+            }
+
+            $C.@SmallSecondaryTextButton #VitAddBtn {
+              @Anchor = (Width: 76);
+              @Text = "Add";
+            }
+          }
+
+          $C.@ContentSeparator { @Anchor = (Bottom: 6); }
+
+          Group {
+            LayoutMode: Left;
+            Anchor: (Height: 46, Bottom: 6);
+
+            Group {
+              LayoutMode: Top;
+              FlexWeight: 1;
+              Anchor: (Right: 10);
+
+              Label {
+                Anchor: (Height: 18, Bottom: 2);
+                Text: "Stamina";
+                Style: (FontSize: 15, TextColor: #ffffff, RenderBold: true, VerticalAlignment: Center);
+              }
+
+              Label {
+                Anchor: (Height: 16);
+                Text: "Increase your maximum stamina.";
+                Style: (FontSize: 12, TextColor: #96a9be, VerticalAlignment: Center);
+              }
+            }
+
+            Label #StaValue {
+              Text: "0";
+              Background: (TexturePath: "../../Common/InputBoxSelected.png", Border: 16);
+              Padding: (Horizontal: 10);
+              Style: (FontSize: 14, TextColor: #a9d7ff, RenderBold: true, Alignment: Center, VerticalAlignment: Center);
+              Anchor: (Width: 54, Height: 34, Right: 10);
+            }
+
+            $C.@SmallSecondaryTextButton #StaAddBtn {
+              @Anchor = (Width: 76);
+              @Text = "Add";
+            }
+          }
+        }
+      }
     }
   }
 }

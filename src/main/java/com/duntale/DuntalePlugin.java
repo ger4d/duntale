@@ -1804,5 +1804,11 @@ public class DuntalePlugin extends JavaPlugin {
         Message secondary = Message.raw(
                 "Reached Level " + newLevel + " (+" + RpgService.POINTS_PER_LEVEL + " Stat Points)");
         EventTitleUtil.showEventTitleToPlayer(playerRef, primary, secondary, false);
+        playerRef.sendMessage(
+                Message.raw("Tip: ").color(COLOR_GREEN)
+                        .insert(Message.raw("Use ").color(COLOR_GREEN))
+                        .insert(Message.raw("/assignstats").color(COLOR_AQUA))
+                        .insert(Message.raw(" to spend your new stat points.").color(COLOR_GREEN))
+        );
     }
 }
