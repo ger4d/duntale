@@ -50,8 +50,8 @@ jobs:
       - name: Checkout DynamicTooltipsLib dependency
         uses: actions/checkout@v4
         with:
-          repository: Herolias/DynamicTooltipsLib
-          ref: main
+          repository: ger4d/DynamicTooltipsLib
+          ref: dev
           path: deps/DynamicTooltipsLib
 
       - name: Set up Java 25
