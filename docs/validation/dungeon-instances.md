@@ -46,8 +46,8 @@ Provide the current manual validation checklist and the exact automated test ent
    - Expect the instance to become `ENDED`, online roster members still in the tracked dungeon world to evacuate to the village, and the ended run to stop resolving through `Continue`.
 
 8. Verify dungeon death flow.
-   - Die inside an active dungeon instance with enough gold for both paid options.
-   - Expect `DungeonDeathPage` instead of the built-in death menu. The current-floor button should cost `floorLevel * 500` gold. The lower-floor restart button should cost `floorLevel * 300` gold and be disabled on floor 1. The village action should end the run and route the player out.
+   - Die inside an active dungeon instance with enough gold for the current-floor option.
+   - Expect `DungeonDeathPage` instead of the built-in death menu. The current-floor button should cost `floorLevel * 500` gold. No lower-floor restart button should be shown. The village action should end the run and route the player out.
 
 9. Verify restart recovery.
    - Restart the server with at least one active dungeon instance.

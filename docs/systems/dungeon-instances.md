@@ -37,8 +37,8 @@ Document the current dungeon-instance lifecycle, player entry and re-entry rules
 - Startup recovery is implemented. `DungeonInstanceService.loadOnStartup()` restores `ACTIVE` instances, ends interrupted `CREATING` rows after best-effort world cleanup, reverts interrupted `TRANSITIONING` rows back to `ACTIVE`, and does not regenerate already persisted dungeon blocks or entities.
 - After worlds load, `DuntalePlugin` backfills dynamic end portals for loaded `ACTIVE` instances so restart-resumed floors regain their exit portal volumes and visuals.
 - Dungeon death handling is live. `DungeonDeathScreenSystem` runs before the built-in death screen and only replaces it when the player dies inside the matching world for an `ACTIVE` dungeon instance.
-- `DungeonDeathPage` offers three actions: paid respawn on the current floor at `floorLevel * 500` gold, paid restart on the previous floor at `floorLevel * 300` gold when `floorLevel > 1`, and free village retreat.
-- Current-floor respawn keeps the same instance. Lower-floor restart force-ends the current instance and creates a new active instance for the captured roster at `floorLevel - 1`. Village retreat force-ends the active run after respawn settlement and routes the player to the shared world.
+- `DungeonDeathPage` currently offers two visible actions: paid respawn on the current floor at `floorLevel * 500` gold and free village retreat.
+- Current-floor respawn keeps the same instance. Village retreat force-ends the active run after respawn settlement and routes the player to the shared world. Lower-floor restart logic still exists in the respawn service, but it is not exposed on the custom death page.
 - `Dungeon.json` is the gameplay profile for dungeon worlds. It disables block breaking, gathering, and placement, keeps combat enabled, sets item-loss percentages to `0.0`, and uses world-spawn-point respawn when the custom dungeon death flow does not intercept.
 
 ## Implementation Map

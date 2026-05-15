@@ -64,14 +64,12 @@ Document the player-facing custom UI pages that are wired to runtime code today,
 ### Dungeon Death Page
 
 - `DungeonDeathScreenSystem` runs before the built-in death screen and opens `DungeonDeathPage` only when `DungeonRespawnService.resolveContext(...)` finds an `ACTIVE` instance in the same world where the death occurred.
-- The Java-side page state is fully implemented even though the page asset is missing. `build(...)` expects a death reason or fallback message, current floor label, current gold balance, current-floor cost, lower-floor cost, and lower-floor availability text.
-- The current-floor button disables when `balance < currentFloorCost`. The lower-floor button disables when the player is on floor `1` or `balance < lowerFloorCost`.
-- `DungeonRespawnService` currently prices the buttons as `floorLevel * 500` gold for current-floor respawn and `floorLevel * 300` gold for lower-floor restart.
-- Any button press immediately disables all three actions before delegating to the plugin handler.
+- The authored page asset is present in source at `src/main/resources/Common/UI/Custom/Pages/Death/DungeonDeathPage.ui`. `build(...)` currently fills the death reason or fallback message, current floor label, current gold balance, and current-floor cost.
+- The current-floor button disables when `balance < currentFloorCost`.
+- `DungeonRespawnService` still calculates `floorLevel * 500` gold for current-floor respawn and `floorLevel * 300` gold for lower-floor restart, but the authored page only exposes the current-floor and village actions.
+- Any button press immediately disables the visible actions before delegating to the plugin handler.
 - `Current Floor` respawns the player into the same active instance after charging gold. Failures refund the charge and reopen the death page when the death component is still present.
-- `Lower Floor` is available only above floor `1`. It charges gold, respawns the player, force-ends the current instance, and creates a replacement instance for `floorLevel - 1`. Failures refund the charge and reopen the page when possible.
 - `Village` is free. It respawns the player, waits for respawn teleport state to settle, force-ends the dungeon instance when one is still available, and routes the player to the village. Failures reopen the page when possible.
-- The render asset is not shipped in source. `DungeonDeathPage.build(...)` appends `Pages/Death/DungeonDeathPage.ui`, but no matching file exists under `src/main/resources/Common/UI/Custom/Pages/Death/`.
 
 ## Implementation Map
 
