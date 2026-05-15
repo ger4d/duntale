@@ -1,7 +1,7 @@
 {
     "Group": "com.duntale",
     "Name": "Duntale",
-    "Version": "0.1.0",
+    "Version": "0.1.1",
     "Description": "Duntale is a dungeon-crawling RPG mod for Hytale, featuring procedurally generated floors, dynamic difficulty scaling, and a wide variety of loot and enemies.",
     "Authors": [
         {
