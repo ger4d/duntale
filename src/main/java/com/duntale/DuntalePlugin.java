@@ -14,7 +14,6 @@ import com.duntale.command.DungeonCommand;
 import com.duntale.command.PartyCommand;
 import com.duntale.command.DListCommand;
 import com.duntale.command.DSpawnCommand;
-import com.duntale.command.GenerateCommand;
 import com.duntale.command.CameraCommand;
 import com.duntale.command.SpawnCommand;
 import com.duntale.command.WeaponCommand;
@@ -555,7 +554,6 @@ public class DuntalePlugin extends JavaPlugin {
         this.getCommandRegistry().registerCommand(new DListCommand(assetCatalog));
         this.getCommandRegistry().registerCommand(new DGiveCommand(assetCatalog));
         this.getCommandRegistry().registerCommand(new DLootCommand(lootRollService));
-        this.getCommandRegistry().registerCommand(new GenerateCommand());
         this.getCommandRegistry().registerCommand(new GoldCommand(goldService));
         this.getCommandRegistry().registerCommand(new RpgStatCommand(rpgService));
         this.getCommandRegistry().registerCommand(new MerchantCommand(merchantService, catalogGenerator));
