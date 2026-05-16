@@ -56,6 +56,7 @@ import java.util.function.Supplier;
  */
 public class FloorConfigService {
 
+    private static final List<Integer> DEFAULT_DAY_TIME = List.of(19);
     private static final List<String> DEFAULT_THEME_VARIANTS = List.of("crypt");
     private static final Map<String, String> CANONICAL_THEME_IDS_BY_ALIAS = Map.of(
             "arcane", "arcane",
@@ -72,12 +73,14 @@ public class FloorConfigService {
     // ============================================
 
     /** The data type of an overridable config field. */
-    public enum FieldType { INT, DOUBLE, BOOLEAN, STRING, STRING_LIST }
+    public enum FieldType { INT, DOUBLE, BOOLEAN, STRING, STRING_LIST, INT_LIST }
 
     private static final Map<String, FieldType> FIELD_TYPES;
 
     static {
         Map<String, FieldType> map = new LinkedHashMap<>();
+        // World
+        map.put("dayTime", FieldType.INT_LIST);
         // Layout — size
         map.put("layout.width", FieldType.INT);
         map.put("layout.depth", FieldType.INT);
@@ -213,6 +216,23 @@ public class FloorConfigService {
             return DEFAULT_THEME_VARIANTS;
         }
         return (List<String>) convertToFieldType("theme.variants", resolved);
+    }
+
+    /**
+     * Returns the resolved list of allowed world day-time hours for a floor.
+     *
+     * @param floorLevel the floor level to resolve
+     * @return the normalized non-empty list of allowed hours in the range {@code 0..23}
+     */
+    @Nonnull
+    @SuppressWarnings("unchecked")
+    public List<Integer> getDayTimesForFloor(int floorLevel) {
+        Map<String, Object> overrides = resolveEffectiveOverrides(floorLevel);
+        Object resolved = overrides.get("dayTime");
+        if (resolved == null) {
+            return DEFAULT_DAY_TIME;
+        }
+        return (List<Integer>) convertToFieldType("dayTime", resolved);
     }
 
     // ============================================
@@ -367,7 +387,7 @@ public class FloorConfigService {
                         "Invalid boolean for " + fieldPath + ": " + rawValue + " (expected true/false)");
             }
             case STRING -> rawValue;
-            case STRING_LIST -> convertToFieldType(fieldPath, rawValue);
+            case STRING_LIST, INT_LIST -> convertToFieldType(fieldPath, rawValue);
         };
     }
 
@@ -478,6 +498,7 @@ public class FloorConfigService {
             case BOOLEAN -> JsonParser.toBoolean(value);
             case STRING -> JsonParser.toStringOrNull(value);
             case STRING_LIST -> normalizeStringListField(fieldPath, value);
+            case INT_LIST -> normalizeIntListField(fieldPath, value);
         };
     }
 
@@ -543,6 +564,69 @@ public class FloorConfigService {
             }
         }
         return List.copyOf(normalized);
+    }
+
+    @Nonnull
+    private static Object normalizeIntListField(@Nonnull String fieldPath, @Nonnull Object value) {
+        if (!"dayTime".equals(fieldPath)) {
+            throw new IllegalArgumentException("Unsupported integer list field: " + fieldPath);
+        }
+        return normalizeDayTimes(value);
+    }
+
+    @Nonnull
+    private static List<Integer> normalizeDayTimes(@Nonnull Object value) {
+        Collection<?> items;
+        if (value instanceof Collection<?> collection) {
+            items = collection;
+        } else if (value instanceof Object[] array) {
+            items = Arrays.asList(array);
+        } else if (value instanceof String stringValue) {
+            items = Arrays.stream(stringValue.split(","))
+                    .map(String::trim)
+                    .filter(part -> !part.isEmpty())
+                    .toList();
+        } else {
+            throw new IllegalArgumentException("expected an integer list");
+        }
+
+        ArrayList<Integer> normalized = new ArrayList<>();
+        LinkedHashSet<Integer> seen = new LinkedHashSet<>();
+        for (Object item : items) {
+            if (item == null) {
+                continue;
+            }
+            int hour = parseDayTimeHour(item);
+            if (hour < 0 || hour > 23) {
+                throw new IllegalArgumentException("dayTime values must be between 0 and 23: " + hour);
+            }
+            if (seen.add(hour)) {
+                normalized.add(hour);
+            }
+        }
+        if (normalized.isEmpty()) {
+            throw new IllegalArgumentException("dayTime must contain at least one hour");
+        }
+        return List.copyOf(normalized);
+    }
+
+    private static int parseDayTimeHour(@Nonnull Object item) {
+        if (item instanceof Number number) {
+            double doubleValue = number.doubleValue();
+            int intValue = number.intValue();
+            if (doubleValue != intValue) {
+                throw new IllegalArgumentException("dayTime values must be integer hours: " + item);
+            }
+            return intValue;
+        }
+        if (item instanceof String stringValue) {
+            try {
+                return Integer.parseInt(stringValue.trim());
+            } catch (NumberFormatException e) {
+                throw new IllegalArgumentException("dayTime values must be integer hours: " + item, e);
+            }
+        }
+        throw new IllegalArgumentException("dayTime values must be integer hours: " + item);
     }
 
     @Nonnull
@@ -694,6 +778,7 @@ public class FloorConfigService {
             @Nonnull PacingConfig pacing
     ) {
         return switch (path) {
+            case "dayTime" -> DEFAULT_DAY_TIME;
             case "layout.width" -> layout.width();
             case "layout.depth" -> layout.depth();
             case "layout.height" -> layout.height();

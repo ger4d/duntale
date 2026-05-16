@@ -204,6 +204,7 @@ public class DungeonInstanceService {
 
         Set<UUID> roster = normalizeRoster(playerIds);
         String activeTheme = resolveActiveThemeForFloor(floorLevel);
+        int dayTime = resolveDayTimeForFloor(floorLevel);
         Vec3i origin = new Vec3i(0, DEFAULT_INSTANCE_ORIGIN_Y, 0);
         String instanceId = UUID.randomUUID().toString();
         String worldName = INSTANCE_WORLD_PREFIX + instanceId;
@@ -235,7 +236,7 @@ public class DungeonInstanceService {
         }
 
         DungeonConfig config = buildGenerationConfig(worldName, floorLevel, origin, activeTheme);
-        return runtimeAdapter.createWorld(worldName, floorLevel, pendingInstance.seed(), origin)
+        return runtimeAdapter.createWorld(worldName, floorLevel, pendingInstance.seed(), origin, dayTime)
                 .thenCompose(world -> runtimeAdapter.generate(config)
                         .thenCompose(result -> activateInstance(world, pendingInstance, roster, origin, result)))
                 .exceptionallyCompose(throwable -> handleCreationFailure(pendingInstance, throwable));
@@ -531,8 +532,9 @@ public class DungeonInstanceService {
         );
 
         String nextTheme = resolveActiveThemeForFloor(nextFloor);
+        int dayTime = resolveDayTimeForFloor(nextFloor);
         DungeonConfig config = buildGenerationConfig(nextWorldName, nextFloor, origin, nextTheme);
-        return runtimeAdapter.createWorld(nextWorldName, nextFloor, claimed.seed(), origin)
+        return runtimeAdapter.createWorld(nextWorldName, nextFloor, claimed.seed(), origin, dayTime)
                 .thenCompose(newWorld -> runtimeAdapter.generate(config)
                         .thenCompose(result -> activateTransitionedFloor(
                     newWorld, claimed, roster, nextFloor, nextTheme, origin, result, oldWorldName, transitionState)))
@@ -1178,6 +1180,11 @@ public class DungeonInstanceService {
         return availableThemes.get(ThreadLocalRandom.current().nextInt(availableThemes.size()));
     }
 
+    private int resolveDayTimeForFloor(int floorLevel) {
+        List<Integer> dayTimes = floorConfigService.getDayTimesForFloor(floorLevel);
+        return dayTimes.get(ThreadLocalRandom.current().nextInt(dayTimes.size()));
+    }
+
     private static boolean isRuntimeThemeAvailable(@Nonnull String themeId) {
         Objects.requireNonNull(themeId, "themeId");
         return AssetRegistry.getAssetStore(DungeonThemeConfig.class) != null
@@ -1371,7 +1378,8 @@ public class DungeonInstanceService {
                 @Nonnull String worldName,
                 int floorLevel,
                 @Nullable String seed,
-                @Nonnull Vec3i origin
+            @Nonnull Vec3i origin,
+            int dayTime
         );
 
         @Nonnull
@@ -1470,7 +1478,8 @@ public class DungeonInstanceService {
                 @Nonnull String worldName,
                 int floorLevel,
                 @Nullable String seed,
-                @Nonnull Vec3i origin
+            @Nonnull Vec3i origin,
+            int dayTime
         ) {
             Universe universe = Universe.get();
             if (universe == null) {
@@ -1493,7 +1502,7 @@ public class DungeonInstanceService {
             worldConfig.setDeleteOnRemove(false);
             worldConfig.setDeleteOnUniverseStart(false);
             worldConfig.setGameTimePaused(true);
-            worldConfig.setGameTime(WorldTimeResource.ZERO_YEAR.plus(16L, ChronoUnit.HOURS));
+            worldConfig.setGameTime(WorldTimeResource.ZERO_YEAR.plus(dayTime, ChronoUnit.HOURS));
             worldConfig.setGameplayConfig("Dungeon");
             worldConfig.setGameMode(GameMode.Adventure);
             worldConfig.markChanged();

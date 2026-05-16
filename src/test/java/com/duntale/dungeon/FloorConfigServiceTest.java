@@ -12,9 +12,46 @@ import java.util.TreeMap;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class FloorConfigServiceTest {
+
+    @Test
+    void getDayTimesForFloorDefaultsToNineteenWhenNoAssetsExist() {
+        FloorConfigService service = new FloorConfigService(new TestRepository(), TreeMap::new);
+
+        assertEquals(List.of(19), service.getDayTimesForFloor(1));
+    }
+
+    @Test
+    void getDayTimesForFloorNormalizesExplicitValuesAndInheritsByFloor() {
+        FloorConfigService service = new FloorConfigService(new TestRepository(), () -> assetDefaults(
+                Map.entry(3, Map.<String, Object>of(
+                        "dayTime", List.of(6, "12", 19, 12),
+                        "theme.variants", List.of("crypt")
+                )),
+                Map.entry(6, Map.<String, Object>of(
+                        "dayTime", List.of(21),
+                        "theme.variants", List.of("crypt")
+                ))
+        ));
+
+        assertEquals(List.of(6, 12, 19), service.getDayTimesForFloor(5));
+        assertEquals(List.of(21), service.getDayTimesForFloor(7));
+    }
+
+    @Test
+    void getDayTimesForFloorRejectsInvalidValues() {
+        assertThrows(IllegalArgumentException.class,
+                () -> floorConfigServiceWithDayTime(List.of()).getDayTimesForFloor(1));
+        assertThrows(IllegalArgumentException.class,
+                () -> floorConfigServiceWithDayTime(List.of(-1)).getDayTimesForFloor(1));
+        assertThrows(IllegalArgumentException.class,
+                () -> floorConfigServiceWithDayTime(List.of(24)).getDayTimesForFloor(1));
+        assertThrows(IllegalArgumentException.class,
+                () -> floorConfigServiceWithDayTime(List.of("nope")).getDayTimesForFloor(1));
+    }
 
     @Test
     void resolveConfigForFloorUsesHighestActiveAssetAtOrBelowFloor() {
@@ -72,12 +109,15 @@ class FloorConfigServiceTest {
 
         service.saveAssetOverride(5, "DevPack", Map.of(
                 "layout.width", 112,
+            "dayTime", List.of(6, 12),
                 "theme.variants", List.of("crypt", "arcane")
         ));
 
             BsonDocument document = repository.savedDocument;
         assertEquals(112, document.getInt32("layout.width").getValue());
         assertEquals(1.7, document.getDouble("pacing.difficultyRamp").getValue());
+        BsonArray dayTimes = document.getArray("dayTime");
+        assertEquals(List.of(6, 12), dayTimes.stream().map(value -> value.asInt32().getValue()).toList());
         BsonArray variants = document.getArray("theme.variants");
         assertEquals(List.of("crypt", "arcane"), variants.stream().map(value -> value.asString().getValue()).toList());
             assertEquals(5, repository.savedFloorLevel);
@@ -128,6 +168,12 @@ class FloorConfigServiceTest {
             values.put(entry.getKey(), entry.getValue());
         }
         return values;
+    }
+
+    private static FloorConfigService floorConfigServiceWithDayTime(Object dayTime) {
+        return new FloorConfigService(new TestRepository(), () -> assetDefaults(
+                Map.entry(1, Map.<String, Object>of("dayTime", dayTime))
+        ));
     }
 
     private static final class TestRepository extends FloorConfigAssetRepository {

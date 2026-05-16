@@ -417,6 +417,47 @@ class DungeonInstanceServiceTest {
             assertEquals("crypt", active.theme());
             assertEquals("crypt", runtime.generatedConfig.theme().palette());
         }
+
+            @Test
+            @DisplayName("Should pass resolved floor day time into world creation")
+            void shouldPassResolvedFloorDayTimeIntoWorldCreation() throws SQLException {
+                FakeRuntime runtime = new FakeRuntime();
+                floorConfigService = floorConfigServiceWithAssets(
+                    Map.entry(1, Map.<String, Object>of("dayTime", List.of(19))));
+                service = new DungeonInstanceService(
+                    database,
+                    instanceRepository,
+                    membershipRepository,
+                    new PartyService(),
+                    floorConfigService,
+                    runtime
+                );
+
+                service.createInstance(List.of(UUID.randomUUID()), 1).join();
+
+                assertEquals(List.of(19), runtime.createdDayTimes);
+            }
+
+            @Test
+            @DisplayName("Should choose one configured day time when multiple are available")
+            void shouldChooseOneConfiguredDayTimeWhenMultipleAreAvailable() throws SQLException {
+                FakeRuntime runtime = new FakeRuntime();
+                floorConfigService = floorConfigServiceWithAssets(
+                    Map.entry(1, Map.<String, Object>of("dayTime", List.of(6, 12, 19))));
+                service = new DungeonInstanceService(
+                    database,
+                    instanceRepository,
+                    membershipRepository,
+                    new PartyService(),
+                    floorConfigService,
+                    runtime
+                );
+
+                service.createInstance(List.of(UUID.randomUUID()), 1).join();
+
+                assertEquals(1, runtime.createdDayTimes.size());
+                assertTrue(Set.of(6, 12, 19).contains(runtime.createdDayTimes.get(0)));
+            }
     }
 
     // ============================================
@@ -842,6 +883,29 @@ class DungeonInstanceServiceTest {
             assertEquals("crypt", floor1.theme());
             assertTrue(Set.of("arcane", "hive").contains(floor2.theme()));
             assertEquals(floor2.theme(), runtime.generatedConfig.theme().palette());
+        }
+
+        @Test
+        @DisplayName("Should use next floor day time during transition")
+        void shouldUseNextFloorDayTimeDuringTransition() throws SQLException {
+            FakeRuntime runtime = new FakeRuntime();
+            floorConfigService = floorConfigServiceWithAssets(
+                Map.entry(1, Map.<String, Object>of("dayTime", List.of(6))),
+                Map.entry(2, Map.<String, Object>of("dayTime", List.of(19))));
+            service = new DungeonInstanceService(
+                    database,
+                    instanceRepository,
+                    membershipRepository,
+                    new PartyService(),
+                    floorConfigService,
+                    runtime
+            );
+
+            UUID player = UUID.randomUUID();
+            DungeonInstance floor1 = service.createInstance(List.of(player), 1).join();
+            service.transitionFloor(floor1.instanceId()).join();
+
+            assertEquals(List.of(6, 19), runtime.createdDayTimes);
         }
     }
 
@@ -1603,6 +1667,7 @@ class DungeonInstanceServiceTest {
         private final List<String> cleanedWorlds = new ArrayList<>();
         private final List<String> armedWorlds = new ArrayList<>();
         private final List<String> evacuationSourceWorlds = new ArrayList<>();
+        private final List<Integer> createdDayTimes = new ArrayList<>();
         private final List<UUID> teleportedPlayers = new ArrayList<>();
         private final List<UUID> evacuatedPlayers = new ArrayList<>();
 
@@ -1624,9 +1689,11 @@ class DungeonInstanceServiceTest {
                 String worldName,
                 int floorLevel,
                 String seed,
-                Vec3i origin
+                Vec3i origin,
+                int dayTime
         ) {
             createdWorldNames.add(worldName);
+            createdDayTimes.add(dayTime);
             if (deferredWorldCreation != null) {
                 deferredWorldName = worldName;
                 return deferredWorldCreation;

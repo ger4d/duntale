@@ -83,18 +83,21 @@ public class FloorConfigPage extends InteractiveCustomUIPage<FloorConfigPage.Flo
             "temple_dark",
             "volcanic"
     );
-        private static final List<String> PREVIEW_VALUE_BINDING_SELECTORS = List.of(
-            "#Width", "#Depth", "#Height",
-            "#MaxRooms", "#RoomDensity", "#Complexity", "#MinRoomSize", "#MaxRoomSize", "#RoomShape", "#Irregularity",
-            "#CorridorWidth", "#BranchChance", "#LoopChance", "#WindingCheck #CheckBox", "#WindingFactor",
-            "#PillarFreq", "#WaterFreq", "#LavaFreq", "#TrapDensity", "#FloorTrapsCheck #CheckBox", "#SecretWallChance", "#MerchantChance",
-            "#EntrancePlacement", "#ExitDistance",
-            "#EnemyDensity", "#MaxEnemiesPerRoom", "#AmbushChance", "#BossRoomCheck #CheckBox",
-            "#Erosion", "#RemoveCeilingCheck #CheckBox", "#FlatFloorCheck #CheckBox", "#SolidFillCheck #CheckBox",
-            "#ThemeCryptCheck #CheckBox", "#ThemeArcaneCheck #CheckBox", "#ThemeHiveCheck #CheckBox", "#ThemeTempleDarkCheck #CheckBox", "#ThemeVolcanicCheck #CheckBox",
-            "#DecayFactor", "#OvergrowthFactor", "#FloodingFactor",
-            "#BreatheRoomFreq", "#DifficultyRamp", "#PreviewTheme"
-        );
+    private static final List<String> PREVIEW_VALUE_BINDING_SELECTORS = List.of(
+        "#Width", "#Depth", "#Height",
+        "#MaxRooms", "#RoomDensity", "#Complexity", "#MinRoomSize", "#MaxRoomSize", "#RoomShape", "#Irregularity",
+        "#CorridorWidth", "#BranchChance", "#LoopChance", "#WindingCheck #CheckBox", "#WindingFactor",
+        "#PillarFreq", "#WaterFreq", "#LavaFreq", "#TrapDensity", "#FloorTrapsCheck #CheckBox", "#SecretWallChance", "#MerchantChance",
+        "#EntrancePlacement", "#ExitDistance",
+        "#EnemyDensity", "#MaxEnemiesPerRoom", "#AmbushChance", "#BossRoomCheck #CheckBox",
+        "#Erosion", "#RemoveCeilingCheck #CheckBox", "#FlatFloorCheck #CheckBox", "#SolidFillCheck #CheckBox",
+        "#ThemeCryptCheck #CheckBox", "#ThemeArcaneCheck #CheckBox", "#ThemeHiveCheck #CheckBox", "#ThemeTempleDarkCheck #CheckBox", "#ThemeVolcanicCheck #CheckBox",
+        "#DecayFactor", "#OvergrowthFactor", "#FloodingFactor",
+        "#BreatheRoomFreq", "#DifficultyRamp", "#PreviewTheme"
+    );
+    private static final List<String> PREVIEW_GENERATION_FIELDS = FloorConfigService.getSupportedFields().stream()
+            .filter(field -> !"dayTime".equals(field))
+            .toList();
 
     private final AssetPackSaveBrowser packBrowser = new AssetPackSaveBrowser(AssetPackSaveBrowserConfig.defaults());
     private final FloorConfigService floorConfigService;
@@ -104,7 +107,6 @@ public class FloorConfigPage extends InteractiveCustomUIPage<FloorConfigPage.Flo
     private int selectedFloorLevel;
         private long lastAppliedPreviewRequestSequence = 0L;
         private String selectedPreviewTheme = "crypt";
-        private List<String> enabledPreviewThemes = List.of("crypt");
     @Nullable
     private DestructiveAction pendingDestructiveAction;
 
@@ -848,8 +850,6 @@ public class FloorConfigPage extends InteractiveCustomUIPage<FloorConfigPage.Flo
             @Nullable String statusText
     ) {
         List<String> orderedThemes = orderedPreviewThemes(themeVariants);
-        enabledPreviewThemes = orderedThemes;
-
         ObjectArrayList<DropdownEntryInfo> entries = new ObjectArrayList<>();
         for (String themeId : orderedThemes) {
             entries.add(new DropdownEntryInfo(LocalizableString.fromString(displayThemeName(themeId)), themeId));
@@ -1005,7 +1005,7 @@ public class FloorConfigPage extends InteractiveCustomUIPage<FloorConfigPage.Flo
             @Nonnull Map<String, Object> values,
             @Nonnull String previewTheme
     ) {
-        for (String fieldPath : FloorConfigService.getSupportedFields()) {
+        for (String fieldPath : PREVIEW_GENERATION_FIELDS) {
             if (!values.containsKey(fieldPath)) {
                 throw new IllegalArgumentException("waiting for valid input");
             }
@@ -1113,11 +1113,10 @@ public class FloorConfigPage extends InteractiveCustomUIPage<FloorConfigPage.Flo
     }
 
     @Nonnull
-    @SuppressWarnings("unchecked")
     private static List<String> getThemeVariants(@Nonnull Map<String, Object> values) {
         Object value = values.get("theme.variants");
         if (value instanceof List<?> list) {
-            return (List<String>) list.stream().map(Object::toString).toList();
+            return list.stream().map(Object::toString).toList();
         }
         return List.of();
     }

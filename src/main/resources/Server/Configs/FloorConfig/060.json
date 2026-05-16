@@ -1,5 +1,6 @@
 {
   "Overrides": {
+    "dayTime": [19, 20, 21, 22, 23],
     "layout.ambushChance": 0.1,
     "layout.bossRoom": true,
     "layout.branchChance": 0.3,
