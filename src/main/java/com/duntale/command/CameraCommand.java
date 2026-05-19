@@ -57,7 +57,7 @@ public class CameraCommand extends CommandBase {
 
     @Override
     protected void executeSync(CommandContext context) {
-         context.sendMessage(Message.raw("Usage: /camera <topdown|iso|fps> [--camrel] [--clickmove] [--xray]"));
+         context.sendMessage(Message.raw("Usage: /camera <topdown|iso|fps> [--camrel] [--clickmove] [--xray] [--xraydebug]"));
     }
 
     // ============================================
@@ -159,7 +159,7 @@ public class CameraCommand extends CommandBase {
     }
 
     /**
-     * Configures optional features (click-to-move, xray) for a player entering overhead mode.
+    * Configures optional features (click-to-move, xray, xray debug cone) for a player entering overhead mode.
      * Always applies the DisablePrimary effect to prevent accidental hits in overhead views.
      */
     private static void enableOptionalFeatures(@Nonnull PlayerRef playerRef,
@@ -168,6 +168,7 @@ public class CameraCommand extends CommandBase {
                                                 @Nonnull Ref<EntityStore> ref,
                                                 boolean clickMove,
                                                 boolean xray,
+                                       boolean xrayDebug,
                                                 float cameraYaw,
                                                 float cameraPitch,
                                                 float cameraDistance) {
@@ -184,7 +185,7 @@ public class CameraCommand extends CommandBase {
         }
 
         if (xray) {
-            plugin.getBlockOcclusionManager().enable(uuid, cameraYaw, cameraPitch, cameraDistance);
+            plugin.getBlockOcclusionManager().enable(uuid, cameraYaw, cameraPitch, cameraDistance, xrayDebug);
         } else {
             plugin.getBlockOcclusionManager().disable(uuid, world);
         }
@@ -252,6 +253,8 @@ public class CameraCommand extends CommandBase {
                 this.withFlagArg("clickmove", "Enable click-to-move (left click to walk)");
         private final FlagArg xrayFlag =
                 this.withFlagArg("xray", "Remove blocks occluding the player");
+        private final FlagArg xrayDebugFlag =
+            this.withFlagArg("xraydebug", "Show the xray cone debug overlay");
 
         public TopDownSubCommand() {
             super("topdown", "Switch to top-down view");
@@ -267,19 +270,21 @@ public class CameraCommand extends CommandBase {
             boolean camRelative = camRelFlag.get(context);
             boolean clickMove = clickMoveFlag.get(context);
             boolean xray = xrayFlag.get(context);
+                boolean xrayDebug = xray && xrayDebugFlag.get(context);
 
             ServerCameraSettings settings = createBaseOverheadSettings(distance, camRelative, clickMove);
             settings.rotation = new Direction(0.0F, (float) (-Math.PI / 2), 0.0F);
 
             applyCamera(playerRef, settings);
             adjustMovementForMode(camRelative, store, ref, playerRef);
-            enableOptionalFeatures(playerRef, world, store, ref, clickMove, xray,
+                enableOptionalFeatures(playerRef, world, store, ref, clickMove, xray, xrayDebug,
                     0.0F, (float) (-Math.PI / 2), distance);
 
             StringBuilder info = new StringBuilder("Switched to Top-Down Camera (");
             info.append(camRelative ? "camera-rel" : "head-rel");
             if (clickMove) info.append(", click-move");
             if (xray) info.append(", xray");
+                if (xrayDebug) info.append(", xray-debug");
             info.append(", distance: ").append(distance).append(").");
             context.sendMessage(Message.raw(info.toString()));
         }
@@ -315,6 +320,8 @@ public class CameraCommand extends CommandBase {
                 this.withFlagArg("clickmove", "Enable click-to-move (left click to walk)");
         private final FlagArg xrayFlag =
                 this.withFlagArg("xray", "Remove blocks occluding the player");
+        private final FlagArg xrayDebugFlag =
+            this.withFlagArg("xraydebug", "Show the xray cone debug overlay");
         private final OptionalArg<Float> elevationArg =
                 this.withOptionalArg("elevation", "Camera Y offset (elevation)", ArgTypes.FLOAT);
 
@@ -334,6 +341,7 @@ public class CameraCommand extends CommandBase {
             boolean camRelative = camRelFlag.get(context);
             boolean clickMove = clickMoveFlag.get(context);
             boolean xray = xrayFlag.get(context);
+            boolean xrayDebug = xray && xrayDebugFlag.get(context);
 
             Float yaw = ANGLE_MAP.get(angleKey.toLowerCase());
             if (yaw == null) {
@@ -363,7 +371,7 @@ public class CameraCommand extends CommandBase {
 
             applyCamera(playerRef, settings);
             adjustMovementForMode(camRelative, store, ref, playerRef);
-            enableOptionalFeatures(playerRef, world, store, ref, clickMove, xray,
+                enableOptionalFeatures(playerRef, world, store, ref, clickMove, xray, xrayDebug,
                     yaw, pitch, effectiveDistance);
 
             StringBuilder info = new StringBuilder("Switched to Isometric Camera (");
@@ -371,6 +379,7 @@ public class CameraCommand extends CommandBase {
             info.append(", ").append(camRelative ? "camera-rel" : "head-rel");
             if (clickMove) info.append(", click-move");
             if (xray) info.append(", xray");
+                if (xrayDebug) info.append(", xray-debug");
             if (elevation != 0.0F) info.append(", elevation: ").append(elevation);
             info.append(", distance: ").append(distance).append(").");
             context.sendMessage(Message.raw(info.toString()));

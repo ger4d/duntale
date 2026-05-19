@@ -137,6 +137,10 @@ public class DuntalePlugin extends JavaPlugin {
     private static final String COLOR_GREEN = "#55FF55";
     private static final String COLOR_RED = "#FF5555";
     private static final String COLOR_AQUA = "#55FFFF";
+    private static final float DUNGEON_CAMERA_DISTANCE = 10.0F;
+    private static final float DUNGEON_CAMERA_ELEVATION = 4.0F;
+    private static final float DUNGEON_CAMERA_BASE_PITCH = (float) (-Math.PI / 4);
+    private static final float DUNGEON_CAMERA_YAW = (float) (7 * Math.PI / 4);
     private static DuntalePlugin instance;
 
     private ClickToMoveManager clickToMoveManager;
@@ -917,7 +921,7 @@ public class DuntalePlugin extends JavaPlugin {
                         World currentWorld = currentStore.getExternalData().getWorld();
                         if (currentWorld != null && activeInstance.worldName().equalsIgnoreCase(currentWorld.getName())) {
                             dungeonEndPortalService.ensurePortal(currentWorld, currentStore, activeInstance);
-                            clickToMoveManager.enableWithCamera(playerRef.getUuid(), currentStore, currentRef, playerRef);
+                            enableDungeonOverheadControls(playerRef.getUuid(), currentStore, currentRef, playerRef);
                         }
                     });
                     LOGGER.atWarning()
@@ -1053,7 +1057,7 @@ public class DuntalePlugin extends JavaPlugin {
         companionService.spawn(store, ref, uuid, companionSpawnOrigin);
 
         if (dungeonInstance != null) {
-            clickToMoveManager.enableWithCamera(uuid, store, ref, playerRef);
+            enableDungeonOverheadControls(uuid, store, ref, playerRef);
         } else if (isSharedWorld(world)) {
             restoreBuiltInControls(ref, store, playerRef);
         }
@@ -1516,6 +1520,34 @@ public class DuntalePlugin extends JavaPlugin {
         } else {
             blockOcclusionManager.disable(playerId);
         }
+    }
+
+    private void enableDungeonOverheadControls(
+            @Nonnull UUID playerId,
+            @Nonnull Store<EntityStore> store,
+            @Nonnull Ref<EntityStore> ref,
+            @Nonnull PlayerRef playerRef
+    ) {
+        clickToMoveManager.enableWithCamera(playerId, store, ref, playerRef);
+        blockOcclusionManager.enable(
+                playerId,
+                DUNGEON_CAMERA_YAW,
+                dungeonCameraPitch(),
+                dungeonCameraEffectiveDistance(),
+                false
+        );
+    }
+
+    private static float dungeonCameraPitch() {
+        double horizontalDistance = DUNGEON_CAMERA_DISTANCE * Math.cos(-DUNGEON_CAMERA_BASE_PITCH);
+        double verticalDistance = DUNGEON_CAMERA_DISTANCE * Math.sin(-DUNGEON_CAMERA_BASE_PITCH) + DUNGEON_CAMERA_ELEVATION;
+        return (float) -Math.atan2(verticalDistance, horizontalDistance);
+    }
+
+    private static float dungeonCameraEffectiveDistance() {
+        double horizontalDistance = DUNGEON_CAMERA_DISTANCE * Math.cos(-DUNGEON_CAMERA_BASE_PITCH);
+        double verticalDistance = DUNGEON_CAMERA_DISTANCE * Math.sin(-DUNGEON_CAMERA_BASE_PITCH) + DUNGEON_CAMERA_ELEVATION;
+        return (float) Math.sqrt(horizontalDistance * horizontalDistance + verticalDistance * verticalDistance);
     }
 
     @Nullable

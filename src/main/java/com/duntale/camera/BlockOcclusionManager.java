@@ -4,10 +4,14 @@ import com.hypixel.hytale.component.Ref;
 import com.hypixel.hytale.component.Store;
 import com.hypixel.hytale.logger.HytaleLogger;
 import com.hypixel.hytale.math.util.ChunkUtil;
+import com.hypixel.hytale.protocol.packets.world.ServerSetBlock;
+import com.hypixel.hytale.protocol.packets.world.ServerSetBlocks;
+import com.hypixel.hytale.protocol.packets.world.SetBlockCmd;
 import org.joml.Vector3d;
 import org.joml.Vector3i;
 import com.hypixel.hytale.server.core.asset.type.blocktype.config.BlockType;
 import com.hypixel.hytale.server.core.modules.entity.component.TransformComponent;
+import com.hypixel.hytale.server.core.modules.entity.player.ChunkTracker;
 import com.hypixel.hytale.server.core.universe.PlayerRef;
 import com.hypixel.hytale.server.core.universe.Universe;
 import com.hypixel.hytale.server.core.universe.world.World;
@@ -15,8 +19,11 @@ import com.hypixel.hytale.server.core.universe.world.chunk.WorldChunk;
 import com.hypixel.hytale.server.core.universe.world.storage.EntityStore;
 
 import javax.annotation.Nonnull;
+import javax.annotation.Nullable;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
@@ -27,31 +34,26 @@ import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
 
 /**
- * Removes <b>structural wall/ceiling blocks</b> between the camera and the
- * player so the player is visible in overhead camera modes.
+ * Sends player-scoped fake block overrides for structural wall and ceiling
+ * cells inside a camera-to-player occlusion cone so overhead views can see
+ * through them without mutating shared world state.
  *
- * <h3>Algorithm — 2D Floor-Plane Raycast</h3>
+ * <h3>Algorithm — 3D Occlusion Cone</h3>
  * <ol>
- *   <li>Project the camera direction onto the XZ plane to obtain the 2D cast
- *       direction (from the player toward the camera).</li>
- *   <li>Build up to 9 start positions: the player's tile plus up to 8
- *       adjacent open tiles.</li>
- *   <li>For each start position, perform a <b>2D DDA voxel traversal</b>
- *       (Amanatides–Woo) along the cast direction.</li>
- *   <li>Every visited tile is checked at {@code playerY} (foot level). If
- *       the block is in the {@link #WALL_BLOCK_KEYS} whitelist, the entire
- *       column from {@code playerY} to {@code playerY + WALL_CLEAR_HEIGHT}
- *       is marked for clearing.</li>
- *   <li>Previously cleared blocks that no longer appear in any ray path are
- *       restored.</li>
+ *   <li>Reconstruct the camera position from yaw, pitch, and distance.</li>
+ *   <li>Build a cone from that camera position to the player's focus point.</li>
+ *   <li>Scan the cone's bounding box and test each structural block cell's
+ *       center against the cone volume.</li>
+ *   <li>Inside-cone wall blocks are overridden to fake barrier blocks for that
+ *       player only.</li>
+ *   <li>If debug rendering is enabled, a synthetic cone outline is overlaid
+ *       with fake marker blocks for the same player.</li>
+ *   <li>Previously overridden cells that leave the cone are restored by
+ *       resending the authoritative world state to that player.</li>
  * </ol>
  *
- * <p>Because dungeon walls are uniform vertical columns, sampling at one Y
- * level and clearing the full column is both simpler and more robust than
- * 3D ray casting.</p>
- *
- * <p><b>Warning:</b> This modifies actual world state visible to all players.
- * A production solution would need per-player fake block sending.</p>
+ * <p>The fake-empty packets are resent every tick so chunk reloads do not
+ * permanently reintroduce occluders while xray remains enabled.</p>
  */
 public class BlockOcclusionManager {
 
@@ -59,110 +61,99 @@ public class BlockOcclusionManager {
 
     // ── Configuration ────────────────────────────────────────────────────
 
-    /** How many blocks above playerY to clear when a wall column is hit. */
-    private static final int WALL_CLEAR_HEIGHT = 4;
+    /** Block ID for the built-in empty block used for world reads and restores. */
+    private static final int AIR_BLOCK_ID = BlockType.EMPTY_ID;
 
-    /**
-     * Maximum 2D cast distance in blocks. Should exceed the camera's
-     * horizontal offset so we reach the camera plane from the player.
-     */
-    private static final int MAX_CAST_DISTANCE = 20;
+    /** Asset key for the invisible collision-preserving block used for xray overrides. */
+    private static final String OCCLUSION_BLOCK_KEY = "Barrier";
 
-    /** Block ID for air — used to detect already-empty positions. */
-    private static final int AIR_BLOCK_ID = 0;
+        /** Asset key for the visible debug marker used to outline the occlusion cone. */
+        private static final String DEBUG_CONE_BLOCK_KEY = "Editor_Anchor";
 
-    /** Asset key for the built-in barrier block (solid but invisible). */
-    private static final String TRANSPARENT_BLOCK_KEY = "Barrier";
+        /** Player focus point offset above transform position. */
+        private static final double PLAYER_FOCUS_HEIGHT_OFFSET = 1.0D;
+
+        /** Small cone thickness near the camera to avoid voxel gaps. */
+        private static final double CONE_APEX_RADIUS = 1.70D;
+
+        /** Cone radius at the player focus point. */
+        private static final double CONE_END_RADIUS = 2.0D;
 
     /** Tick interval in ms. */
     private static final long TICK_INTERVAL_MS = 500;
 
-    /**
-     * XZ offsets for the 8 adjacent tiles around the player (N, NE, E, SE, S, SW, W, NW).
-     */
-    private static final int[][] ADJACENT_OFFSETS = {
-            { 0, -1}, { 1, -1}, { 1,  0}, { 1,  1},
-            { 0,  1}, {-1,  1}, {-1,  0}, {-1, -1}
-    };
+        /** Number of sampled cross-sections used for the debug cone skeleton. */
+        private static final int DEBUG_CONE_SLICE_COUNT = 6;
 
-    /**
-     * Structural block asset keys extracted from dungeon-gen themes.
-     * Only these blocks are candidates for occlusion removal.
-     * Generated by: {@code python3 scripts/extract_wall_blocks.py}
-     *
-     * <p>Includes: PrimaryWall, SecondaryWall, Ceiling, PillarBase,
-     * PillarMiddle, DecayVariants, Stairs, Slab, AccentBlock.</p>
-     *
-     * <p>Excludes: Floor (below player), OvergrowthBlocks (thin/transparent),
-     * RubbleBlocks (floor-level), Fluids, Lights, Props.</p>
-     */
-    private static final Set<String> WALL_BLOCK_KEYS = Set.of(
-            "Deco_Hive",
-            "Ore_Gold_Volcanic",
-            "Ore_Iron_Stone",
-            "Plant_Crop_Mushroom_Block_Blue_Trunk",
-            "Plant_Crop_Mushroom_Glowing_Blue",
-            "Plant_Moss_Block_Blue",
-            "Plant_Moss_Block_Green",
-            "Plant_Moss_Block_Green_Dark",
-            "Plant_Moss_Block_Red",
-            "Plant_Moss_Block_Yellow",
-            "Rock_Basalt_Brick",
-            "Rock_Basalt_Brick_Pillar_Base",
-            "Rock_Basalt_Brick_Pillar_Middle",
-            "Rock_Runic_Blue_Brick",
-            "Rock_Runic_Blue_Brick_Pillar_Base",
-            "Rock_Runic_Blue_Brick_Pipe_Short",
-            "Rock_Runic_Brick",
-            "Rock_Runic_Cobble_Pillar_Middle",
-            "Rock_Runic_Dark_Brick",
-            "Rock_Runic_Teal_Brick",
-            "Rock_Shale_Brick",
-            "Rock_Shale_Cobble",
-            "Rock_Slate",
-            "Rock_Stone",
-            "Rock_Stone_Brick",
-            "Rock_Stone_Brick_Half",
-            "Rock_Stone_Brick_Mossy",
-            "Rock_Stone_Brick_Pillar_Base",
-            "Rock_Stone_Brick_Pillar_Middle",
-            "Rock_Stone_Brick_Stairs",
-            "Rock_Stone_Cobble",
-            "Rock_Stone_Cobble_Mossy",
-            "Rock_Stone_Mossy",
-            "Rock_Volcanic_Brick",
-            "Rock_Volcanic_Brick_Pillar_Base",
-            "Rock_Volcanic_Brick_Pillar_Middle",
-            "Rock_Volcanic_Cobble",
-            "Rock_Volcanic_Cracked_Incandescent",
-            "Rock_Volcanic_Cracked_Lava",
-            "Soil_Gravel_Mossy",
-            "Soil_Hive_Brick",
-            "Soil_Hive_Brick_Beam",
-            "Soil_Hive_Brick_Smooth",
-            "Soil_Hive_Corrupted",
-            "Soil_Hive_Corrupted_Brick",
-            "Wood_Darkwood_Beam",
-            "Wood_Darkwood_Planks"
-    );
+        /** Number of sampled points around each debug ring. */
+        private static final int DEBUG_CONE_RING_SEGMENTS = 12;
+
+        /** Number of longitudinal debug edges around the cone. */
+        private static final int DEBUG_CONE_LONGITUDE_COUNT = 6;
+
+        /** Number of samples used for the debug cone center axis. */
+        private static final int DEBUG_CONE_AXIS_SEGMENTS = 8;
+
+        /**
+         * Block asset keys that should remain visible even when they fall inside the
+         * occlusion cone.
+         *
+         * <p>Derived from dungeon-gen theme resources:
+         * lights under {@code Themes/*.json -> Lights.*} and loot container props with
+         * {@code ChestTier} entries.</p>
+         */
+        private static final Set<String> EXCLUDED_OCCLUSION_BLOCK_KEYS = Set.of(
+            "Deco_Lantern_Ceiling",
+            "Furniture_Ancient_Chest_Small",
+            "Furniture_Ancient_Crate",
+            "Furniture_Crude_Brazier",
+            "Furniture_Crude_Chest_Large",
+            "Furniture_Crude_Chest_Small",
+            "Furniture_Desert_Torch",
+            "Furniture_Dungeon_Chest_Epic",
+            "Furniture_Dungeon_Chest_Epic_Large",
+            "Furniture_Feran_Torch",
+            "Furniture_Frozen_Castle_Lamp",
+            "Furniture_Frozen_Castle_Secondary_Lamp",
+            "Furniture_Human_Ruins_Torch",
+            "Furniture_Jungle_Brazier",
+            "Furniture_Jungle_Chest_Small",
+            "Furniture_Scarak_Hive_Lamp",
+            "Furniture_Temple_Dark_Brazier",
+            "Furniture_Temple_Dark_Chest_Large",
+            "Furniture_Temple_Light_Brazier",
+            "Furniture_Temple_Light_Lantern",
+            "Furniture_Temple_Scarak_Chest_Small",
+            "Plant_Crop_Mushroom_Glowing_Purple",
+            "Wood_Torch_Wall"
+        );
 
     // ── Camera parameters per player ─────────────────────────────────────
 
     /**
-     * Camera parameters per player: [0] = yaw, [1] = pitch, [2] = distance.
+    * Camera-backed occlusion settings per player.
      */
-    private final Map<UUID, float[]> playerCameraParams = new ConcurrentHashMap<>();
+    private final Map<UUID, CameraOcclusionSettings> playerOcclusionSettings = new ConcurrentHashMap<>();
 
     // ── State ────────────────────────────────────────────────────────────
 
-    /** Resolved block ID for the transparent occluder block (lazy-init). */
-    private int transparentBlockId = -1;
+    /** Resolved exclusion block IDs (lazy-init from EXCLUDED_OCCLUSION_BLOCK_KEYS). */
+    private Set<Integer> excludedOcclusionBlockIds = null;
 
-    /** Resolved wall block IDs (lazy-init from WALL_BLOCK_KEYS). */
-    private Set<Integer> wallBlockIds = null;
+    /** Resolved block ID for the barrier replacement block. */
+    private int occlusionBlockId = -1;
 
-    /** Per-player original block state tracking for restoration. */
-    private final Map<UUID, Map<Vector3i, Integer>> playerOriginalBlocks = new ConcurrentHashMap<>();
+    /** Whether the barrier replacement block lookup has already been attempted. */
+    private boolean occlusionBlockResolved;
+
+    /** Resolved block ID for the debug marker block. */
+    private int debugBlockId = -1;
+
+    /** Whether the debug marker block lookup has already been attempted. */
+    private boolean debugBlockResolved;
+
+    /** Per-player fake block overrides currently active on the client. */
+    private final Map<UUID, Map<Vector3i, BlockVisual>> playerVisualOverrides = new ConcurrentHashMap<>();
 
     /** Tracks which players have occlusion removal enabled. */
     private final Set<UUID> enabledPlayers = ConcurrentHashMap.newKeySet();
@@ -196,12 +187,17 @@ public class BlockOcclusionManager {
      * @param cameraYaw      camera yaw in radians (0=north, PI/2=east, etc.)
      * @param cameraPitch    camera pitch in radians (negative = looking down)
      * @param cameraDistance  camera distance from the player in blocks
+     * @param debugCone      whether to render the cone outline with debug blocks
      */
-    public void enable(@Nonnull UUID uuid, float cameraYaw, float cameraPitch, float cameraDistance) {
+    public void enable(@Nonnull UUID uuid,
+                       float cameraYaw,
+                       float cameraPitch,
+                       float cameraDistance,
+                       boolean debugCone) {
         pausedPlayers.remove(uuid);
         enabledPlayers.add(uuid);
-        playerOriginalBlocks.putIfAbsent(uuid, new HashMap<>());
-        playerCameraParams.put(uuid, new float[]{cameraYaw, cameraPitch, cameraDistance});
+        playerVisualOverrides.computeIfAbsent(uuid, ignored -> new ConcurrentHashMap<>());
+        playerOcclusionSettings.put(uuid, new CameraOcclusionSettings(cameraYaw, cameraPitch, cameraDistance, debugCone));
     }
 
     /**
@@ -214,8 +210,8 @@ public class BlockOcclusionManager {
         enabledPlayers.remove(uuid);
         pausedPlayers.remove(uuid);
         restoreAllBlocks(uuid, world);
-        playerOriginalBlocks.remove(uuid);
-        playerCameraParams.remove(uuid);
+        playerVisualOverrides.remove(uuid);
+        playerOcclusionSettings.remove(uuid);
     }
 
     /**
@@ -230,8 +226,8 @@ public class BlockOcclusionManager {
     public void disable(@Nonnull UUID uuid) {
         enabledPlayers.remove(uuid);
         pausedPlayers.remove(uuid);
-        playerOriginalBlocks.remove(uuid);
-        playerCameraParams.remove(uuid);
+        playerVisualOverrides.remove(uuid);
+        playerOcclusionSettings.remove(uuid);
     }
 
     /**
@@ -268,10 +264,10 @@ public class BlockOcclusionManager {
         if (!pausedPlayers.remove(uuid)) {
             return;
         }
-        if (!playerCameraParams.containsKey(uuid)) {
+        if (!playerOcclusionSettings.containsKey(uuid)) {
             return;
         }
-        playerOriginalBlocks.putIfAbsent(uuid, new HashMap<>());
+        playerVisualOverrides.computeIfAbsent(uuid, ignored -> new ConcurrentHashMap<>());
         enabledPlayers.add(uuid);
     }
 
@@ -285,13 +281,13 @@ public class BlockOcclusionManager {
             this.tickFuture.cancel(false);
         }
         this.scheduler.shutdownNow();
-        for (UUID uuid : enabledPlayers) {
+        for (UUID uuid : new HashSet<>(playerVisualOverrides.keySet())) {
             restoreAllBlocks(uuid, world);
         }
         enabledPlayers.clear();
         pausedPlayers.clear();
-        playerOriginalBlocks.clear();
-        playerCameraParams.clear();
+        playerVisualOverrides.clear();
+        playerOcclusionSettings.clear();
     }
 
     // ── Tick Loop ────────────────────────────────────────────────────────
@@ -319,39 +315,58 @@ public class BlockOcclusionManager {
     // ── Lazy-init helpers ────────────────────────────────────────────────
 
     /**
-     * Resolves the transparent occluder block ID from the asset map on first use.
-     */
-    private int getTransparentBlockId() {
-        if (transparentBlockId == -1) {
-            transparentBlockId = BlockType.getAssetMap().getIndex(TRANSPARENT_BLOCK_KEY);
-            LOGGER.atInfo().log("Resolved transparent occluder block ID: {}", transparentBlockId);
-        }
-        return transparentBlockId;
-    }
-
-    /**
-     * Resolves the wall block IDs from the asset map on first use.
-     * Only these block IDs are eligible for occlusion removal.
+     * Resolves the block IDs that should not be occluded.
      */
     @Nonnull
-    private Set<Integer> getWallBlockIds() {
-        if (wallBlockIds == null) {
+    private Set<Integer> getExcludedOcclusionBlockIds() {
+        if (excludedOcclusionBlockIds == null) {
             Set<Integer> ids = new HashSet<>();
-            for (String key : WALL_BLOCK_KEYS) {
+            for (String key : EXCLUDED_OCCLUSION_BLOCK_KEYS) {
                 int id = BlockType.getAssetMap().getIndex(key);
                 if (id > 0) {
                     ids.add(id);
                 } else {
-                    LOGGER.atWarning().log("Wall block key not found in asset map: {}", key);
+                    LOGGER.atWarning().log("Excluded occlusion block key not found in asset map: {}", key);
                 }
             }
-            wallBlockIds = ids;
-            LOGGER.atInfo().log("Resolved {} wall block IDs for occlusion filtering", ids.size());
+            excludedOcclusionBlockIds = ids;
+            LOGGER.atInfo().log("Resolved {} excluded occlusion block IDs", ids.size());
         }
-        return wallBlockIds;
+        return excludedOcclusionBlockIds;
     }
 
-    // ── Core 2D floor-plane raycast ─────────────────────────────────────
+    @Nullable
+    private BlockVisual getOcclusionBlock() {
+        if (!occlusionBlockResolved) {
+            occlusionBlockId = BlockType.getAssetMap().getIndex(OCCLUSION_BLOCK_KEY);
+            occlusionBlockResolved = true;
+            if (occlusionBlockId > 0) {
+                LOGGER.atInfo().log("Resolved xray occlusion block ID: {}", occlusionBlockId);
+            } else {
+                LOGGER.atWarning().log("Xray occlusion block key not found in asset map: {}", OCCLUSION_BLOCK_KEY);
+            }
+        }
+
+        if (occlusionBlockId <= 0) {
+            return null;
+        }
+        return new BlockVisual(occlusionBlockId, (short) 0, (byte) 0);
+    }
+
+    private int getDebugBlockId() {
+        if (!debugBlockResolved) {
+            debugBlockId = BlockType.getAssetMap().getIndex(DEBUG_CONE_BLOCK_KEY);
+            debugBlockResolved = true;
+            if (debugBlockId > 0) {
+                LOGGER.atInfo().log("Resolved xray debug cone block ID: {}", debugBlockId);
+            } else {
+                LOGGER.atWarning().log("Xray debug cone block key not found in asset map: {}", DEBUG_CONE_BLOCK_KEY);
+            }
+        }
+        return debugBlockId;
+    }
+
+    // ── Core cone test ───────────────────────────────────────────────────
 
     private void update(@Nonnull Ref<EntityStore> ref,
                         @Nonnull Store<EntityStore> store,
@@ -362,202 +377,355 @@ public class BlockOcclusionManager {
         UUID uuid = playerRef.getUuid();
         if (!isEnabled(uuid)) return;
 
-        float[] camParams = playerCameraParams.get(uuid);
-        if (camParams == null) return;
+        CameraOcclusionSettings cameraSettings = playerOcclusionSettings.get(uuid);
+        if (cameraSettings == null) return;
 
         TransformComponent transform = store.getComponent(ref, TransformComponent.getComponentType());
         if (transform == null) return;
 
         Vector3d playerPos = transform.getPosition();
-        int playerX = (int) Math.floor(playerPos.x);
-        int playerY = (int) Math.floor(playerPos.y);
-        int playerZ = (int) Math.floor(playerPos.z);
-
-        Set<Integer> wallIds = getWallBlockIds();
-
-        // 2D camera direction on XZ plane (player → camera)
-        float yaw = camParams[0];
-        double dirX = Math.sin(yaw);
-        double dirZ = Math.cos(yaw);
-
-        // If top-down (pitch ≈ -PI/2), horizontal direction is near-zero.
-        // Use a small fallback to still clear the column above the player.
-        double dirLen = Math.sqrt(dirX * dirX + dirZ * dirZ);
-        if (dirLen < 0.001) {
-            dirX = 0;
-            dirZ = 1;
-            dirLen = 1;
-        }
-        double ndx = dirX / dirLen;
-        double ndz = dirZ / dirLen;
-
-        int replaceId = getTransparentBlockId();
-
-        // Build start positions: player tile (always) + up to 8 open adjacent
-        int[][] startTiles = buildStartTiles(world, wallIds, replaceId, playerX, playerY, playerZ);
-
-        Map<Vector3i, Integer> originalBlocks = playerOriginalBlocks.computeIfAbsent(uuid, k -> new HashMap<>());
-        Set<Vector3i> previousPositions = new HashSet<>(originalBlocks.keySet());
-        Set<Vector3i> newPositions = new HashSet<>();
-
-        // Cast each 2D ray and collect wall columns to clear
-        for (int rayIndex = 0; rayIndex < startTiles.length; rayIndex++) {
-            int[] tile = startTiles[rayIndex];
-            if (tile == null) continue;
-
-            castRay2D(world, tile[0], tile[1], ndx, ndz, playerY, wallIds, replaceId, newPositions);
+        int playerFootY = (int) Math.floor(playerPos.y);
+        Vector3d playerFocus = new Vector3d(playerPos.x, playerPos.y + PLAYER_FOCUS_HEIGHT_OFFSET, playerPos.z);
+        Vector3d cameraPosition = computeCameraPosition(playerFocus, cameraSettings);
+        ConeGeometry cone = createConeGeometry(cameraPosition, playerFocus);
+        if (cone == null) {
+            restoreAllBlocks(uuid, world);
+            return;
         }
 
-        // Restore blocks no longer in any ray path
-        for (Vector3i pos : previousPositions) {
-            if (!newPositions.contains(pos)) {
-                Integer originalBlockId = originalBlocks.remove(pos);
-                if (originalBlockId != null) {
-                    setBlock(world, pos.x, pos.y, pos.z, originalBlockId);
+        BlockVisual occlusionBlock = getOcclusionBlock();
+        if (occlusionBlock == null) {
+            restoreAllBlocks(uuid, world);
+            return;
+        }
+
+        Set<Integer> excludedIds = getExcludedOcclusionBlockIds();
+
+        Map<Vector3i, BlockVisual> desiredOverrides = new HashMap<>();
+        for (Vector3i pos : collectConeOccluderBlocks(world, excludedIds, cone, playerFootY)) {
+            desiredOverrides.put(pos, occlusionBlock);
+        }
+
+        if (cameraSettings.debugCone()) {
+            int resolvedDebugBlockId = getDebugBlockId();
+            if (resolvedDebugBlockId > 0) {
+                BlockVisual debugBlock = new BlockVisual(resolvedDebugBlockId, (short) 0, (byte) 0);
+                for (Vector3i pos : buildDebugConeOutline(cone)) {
+                    if (pos.y < playerFootY) {
+                        continue;
+                    }
+                    desiredOverrides.put(pos, debugBlock);
                 }
             }
         }
 
-        // Replace wall blocks in the ray paths
-        for (Vector3i pos : newPositions) {
-            if (!originalBlocks.containsKey(pos)) {
-                int currentBlockId = getBlock(world, pos.x, pos.y, pos.z);
-                if (currentBlockId != AIR_BLOCK_ID
-                        && currentBlockId != replaceId
-                        && wallIds.contains(currentBlockId)) {
-                    originalBlocks.put(pos, currentBlockId);
-                    setBlock(world, pos.x, pos.y, pos.z, replaceId);
-                }
-            }
+        Map<Vector3i, BlockVisual> trackedOverrides =
+                playerVisualOverrides.computeIfAbsent(uuid, ignored -> new ConcurrentHashMap<>());
+        Set<Vector3i> restorePositions = new HashSet<>(trackedOverrides.keySet());
+        restorePositions.removeAll(desiredOverrides.keySet());
+        if (!restorePositions.isEmpty()) {
+            sendCurrentWorldBlocks(playerRef, world, restorePositions);
+        }
+
+        trackedOverrides.clear();
+        trackedOverrides.putAll(desiredOverrides);
+
+        if (!trackedOverrides.isEmpty()) {
+            sendOverrideBlocks(playerRef, trackedOverrides);
         }
     }
 
-    /**
-     * Builds the array of starting tile positions. Index 0 is always the
-     * player's tile. Indices 1–8 are adjacent tiles that are {@code null}
-     * if they contain a wall block at foot or head height.
-     *
-     * @param world     the world to check blocks in
-     * @param wallIds   the set of structural wall block IDs
-     * @param replaceId the barrier block ID (walls we already replaced)
-     * @param playerX   player's block X
-     * @param playerY   player's block Y (foot level)
-     * @param playerZ   player's block Z
-     * @return array of {@code [tileX, tileZ]}; null entries = skipped
-     */
     @Nonnull
-    private static int[][] buildStartTiles(@Nonnull World world,
-                                            @Nonnull Set<Integer> wallIds,
-                                            int replaceId,
-                                            int playerX, int playerY, int playerZ) {
-        int[][] tiles = new int[9][];
-
-        tiles[0] = new int[]{playerX, playerZ};
-
-        for (int i = 0; i < ADJACENT_OFFSETS.length; i++) {
-            int adjX = playerX + ADJACENT_OFFSETS[i][0];
-            int adjZ = playerZ + ADJACENT_OFFSETS[i][1];
-
-            int footBlock = getBlock(world, adjX, playerY, adjZ);
-            int headBlock = getBlock(world, adjX, playerY + 1, adjZ);
-
-            boolean footIsWall = wallIds.contains(footBlock) || footBlock == replaceId;
-            boolean headIsWall = wallIds.contains(headBlock) || headBlock == replaceId;
-
-            if (!footIsWall && !headIsWall) {
-                tiles[i + 1] = new int[]{adjX, adjZ};
-            }
-        }
-
-        return tiles;
-    }
-
-    /**
-     * Performs a 2D DDA (Amanatides–Woo) voxel traversal from a start tile
-     * along the given direction on the XZ plane. For each tile visited, checks
-     * if the block at {@code (x, floorY, z)} is a wall block. If so, the full
-     * column from {@code floorY} to {@code floorY + WALL_CLEAR_HEIGHT} is
-     * added to the clear set.
-     *
-     * <p>Treats both wall blocks and barrier blocks (previously cleared walls)
-     * as walls to prevent flicker caused by reading our own modifications.</p>
-     *
-     * @param world     the world to read blocks from
-     * @param startX    starting tile X
-     * @param startZ    starting tile Z
-     * @param ndx       normalized 2D direction X (player → camera)
-     * @param ndz       normalized 2D direction Z (player → camera)
-     * @param floorY    the Y level to sample for wall detection
-     * @param wallIds   set of wall block IDs
-     * @param replaceId barrier block ID (already-cleared walls to also treat as walls)
-     * @param outBlocks set to add block positions to
-     */
-    private static void castRay2D(@Nonnull World world,
-                                   int startX, int startZ,
-                                   double ndx, double ndz,
-                                   int floorY,
-                                   @Nonnull Set<Integer> wallIds,
-                                   int replaceId,
-                                   @Nonnull Set<Vector3i> outBlocks) {
-        // Ray origin: center of starting tile
-        double originX = startX + 0.5;
-        double originZ = startZ + 0.5;
-
-        int gridX = startX;
-        int gridZ = startZ;
-
-        // DDA step direction
-        int stepX = (ndx >= 0) ? 1 : -1;
-        int stepZ = (ndz >= 0) ? 1 : -1;
-
-        // Distance along ray between consecutive X / Z grid lines
-        double tDeltaX = (ndx != 0) ? Math.abs(1.0 / ndx) : Double.MAX_VALUE;
-        double tDeltaZ = (ndz != 0) ? Math.abs(1.0 / ndz) : Double.MAX_VALUE;
-
-        // Distance from origin to the first X / Z grid boundary in the ray direction
-        double tMaxX = (ndx != 0)
-                ? ((ndx > 0 ? (gridX + 1 - originX) : (originX - gridX)) / Math.abs(ndx))
-                : Double.MAX_VALUE;
-        double tMaxZ = (ndz != 0)
-                ? ((ndz > 0 ? (gridZ + 1 - originZ) : (originZ - gridZ)) / Math.abs(ndz))
-                : Double.MAX_VALUE;
-
-        double traveled = 0;
-
-        while (traveled < MAX_CAST_DISTANCE) {
-            // Check if the tile at floor level contains a wall (or an already-cleared wall)
-            int blockId = getBlock(world, gridX, floorY, gridZ);
-            if (wallIds.contains(blockId) || blockId == replaceId) {
-                // Mark the entire column for clearing
-                for (int dy = 0; dy <= WALL_CLEAR_HEIGHT; dy++) {
-                    outBlocks.add(new Vector3i(gridX, floorY + dy, gridZ));
+    private static Set<Vector3i> collectConeOccluderBlocks(@Nonnull World world,
+                                                            @Nonnull Set<Integer> excludedBlockIds,
+                                                            @Nonnull ConeGeometry cone,
+                                                            int minOcclusionY) {
+        Set<Vector3i> positions = new HashSet<>();
+        for (int x = cone.minX(); x <= cone.maxX(); x++) {
+            for (int y = Math.max(cone.minY(), minOcclusionY); y <= cone.maxY(); y++) {
+                for (int z = cone.minZ(); z <= cone.maxZ(); z++) {
+                    if (!isOccluderBlock(world, excludedBlockIds, x, y, z)) {
+                        continue;
+                    }
+                    if (isBlockCenterInsideCone(x, y, z, cone)) {
+                        positions.add(new Vector3i(x, y, z));
+                    }
                 }
             }
-
-            // Step to next tile
-            if (tMaxX < tMaxZ) {
-                gridX += stepX;
-                traveled = tMaxX;
-                tMaxX += tDeltaX;
-            } else {
-                gridZ += stepZ;
-                traveled = tMaxZ;
-                tMaxZ += tDeltaZ;
-            }
         }
+        return positions;
+    }
+
+    private static boolean isBlockCenterInsideCone(int x,
+                                                   int y,
+                                                   int z,
+                                                   @Nonnull ConeGeometry cone) {
+        double relX = x + 0.5D - cone.apex().x;
+        double relY = y + 0.5D - cone.apex().y;
+        double relZ = z + 0.5D - cone.apex().z;
+
+        double t = relX * cone.axisDir().x + relY * cone.axisDir().y + relZ * cone.axisDir().z;
+        if (t < 0.0D || t > cone.axisLength()) {
+            return false;
+        }
+
+        double alpha = t / cone.axisLength();
+        double radius = cone.apexRadius() + (cone.endRadius() - cone.apexRadius()) * alpha;
+        double radialDistanceSq = Math.max(0.0D, relX * relX + relY * relY + relZ * relZ - t * t);
+        return radialDistanceSq <= radius * radius;
+    }
+
+    @Nonnull
+    private static Set<Vector3i> buildDebugConeOutline(@Nonnull ConeGeometry cone) {
+        Set<Vector3i> positions = new HashSet<>();
+
+        Vector3d axisDir = cone.axisDir();
+        Vector3d referenceAxis = Math.abs(axisDir.y) < 0.99D
+                ? new Vector3d(0.0D, 1.0D, 0.0D)
+                : new Vector3d(1.0D, 0.0D, 0.0D);
+        Vector3d basisU = axisDir.cross(referenceAxis, new Vector3d());
+        if (basisU.lengthSquared() < 1.0E-6D) {
+            basisU.set(1.0D, 0.0D, 0.0D);
+        } else {
+            basisU.normalize();
+        }
+        Vector3d basisV = axisDir.cross(basisU, new Vector3d()).normalize();
+
+        for (int slice = 0; slice <= DEBUG_CONE_SLICE_COUNT; slice++) {
+            double alpha = slice / (double) DEBUG_CONE_SLICE_COUNT;
+            addDebugRing(positions, cone, basisU, basisV, alpha);
+        }
+
+        for (int longitude = 0; longitude < DEBUG_CONE_LONGITUDE_COUNT; longitude++) {
+            double angle = (Math.PI * 2.0D * longitude) / DEBUG_CONE_LONGITUDE_COUNT;
+            addDebugLongitude(positions, cone, basisU, basisV, angle);
+        }
+
+        addDebugAxis(positions, cone);
+        return positions;
+    }
+
+    private static void addDebugRing(@Nonnull Set<Vector3i> positions,
+                                     @Nonnull ConeGeometry cone,
+                                     @Nonnull Vector3d basisU,
+                                     @Nonnull Vector3d basisV,
+                                     double alpha) {
+        Vector3d center = pointAlongAxis(cone, alpha * cone.axisLength());
+        double radius = cone.apexRadius() + (cone.endRadius() - cone.apexRadius()) * alpha;
+
+        if (radius < 0.15D) {
+            addDebugBlock(positions, center.x, center.y, center.z);
+            return;
+        }
+
+        for (int segment = 0; segment < DEBUG_CONE_RING_SEGMENTS; segment++) {
+            double angle = (Math.PI * 2.0D * segment) / DEBUG_CONE_RING_SEGMENTS;
+            double cos = Math.cos(angle);
+            double sin = Math.sin(angle);
+            addDebugBlock(
+                    positions,
+                    center.x + basisU.x * cos * radius + basisV.x * sin * radius,
+                    center.y + basisU.y * cos * radius + basisV.y * sin * radius,
+                    center.z + basisU.z * cos * radius + basisV.z * sin * radius
+            );
+        }
+    }
+
+    private static void addDebugLongitude(@Nonnull Set<Vector3i> positions,
+                                          @Nonnull ConeGeometry cone,
+                                          @Nonnull Vector3d basisU,
+                                          @Nonnull Vector3d basisV,
+                                          double angle) {
+        double cos = Math.cos(angle);
+        double sin = Math.sin(angle);
+        for (int slice = 0; slice <= DEBUG_CONE_SLICE_COUNT; slice++) {
+            double alpha = slice / (double) DEBUG_CONE_SLICE_COUNT;
+            Vector3d center = pointAlongAxis(cone, alpha * cone.axisLength());
+            double radius = cone.apexRadius() + (cone.endRadius() - cone.apexRadius()) * alpha;
+            addDebugBlock(
+                    positions,
+                    center.x + basisU.x * cos * radius + basisV.x * sin * radius,
+                    center.y + basisU.y * cos * radius + basisV.y * sin * radius,
+                    center.z + basisU.z * cos * radius + basisV.z * sin * radius
+            );
+        }
+    }
+
+    private static void addDebugAxis(@Nonnull Set<Vector3i> positions, @Nonnull ConeGeometry cone) {
+        for (int step = 0; step <= DEBUG_CONE_AXIS_SEGMENTS; step++) {
+            double alpha = step / (double) DEBUG_CONE_AXIS_SEGMENTS;
+            Vector3d point = pointAlongAxis(cone, alpha * cone.axisLength());
+            addDebugBlock(positions, point.x, point.y, point.z);
+        }
+    }
+
+    @Nonnull
+    private static Vector3d pointAlongAxis(@Nonnull ConeGeometry cone, double distanceAlongAxis) {
+        return new Vector3d(
+                cone.apex().x + cone.axisDir().x * distanceAlongAxis,
+                cone.apex().y + cone.axisDir().y * distanceAlongAxis,
+                cone.apex().z + cone.axisDir().z * distanceAlongAxis
+        );
+    }
+
+    private static void addDebugBlock(@Nonnull Set<Vector3i> positions,
+                                      double x,
+                                      double y,
+                                      double z) {
+        int blockY = (int) Math.round(y);
+        if (blockY < 0 || blockY >= 320) {
+            return;
+        }
+
+        positions.add(new Vector3i(
+                (int) Math.round(x),
+                blockY,
+                (int) Math.round(z)
+        ));
+    }
+
+    @Nonnull
+    private static Vector3d computeCameraPosition(@Nonnull Vector3d playerFocus,
+                                                  @Nonnull CameraOcclusionSettings cameraSettings) {
+        double cosPitch = Math.cos(cameraSettings.cameraPitch());
+        double offsetX = Math.sin(cameraSettings.cameraYaw()) * cosPitch * cameraSettings.cameraDistance();
+        double offsetY = -Math.sin(cameraSettings.cameraPitch()) * cameraSettings.cameraDistance();
+        double offsetZ = Math.cos(cameraSettings.cameraYaw()) * cosPitch * cameraSettings.cameraDistance();
+        return new Vector3d(playerFocus).add(offsetX, offsetY, offsetZ);
+    }
+
+    @Nullable
+    private static ConeGeometry createConeGeometry(@Nonnull Vector3d cameraPosition,
+                                                   @Nonnull Vector3d playerFocus) {
+        Vector3d axis = new Vector3d(playerFocus).sub(cameraPosition);
+        double axisLength = axis.length();
+        if (axisLength < 1.0E-4D) {
+            return null;
+        }
+
+        axis.div(axisLength);
+
+        double maxRadius = Math.max(CONE_APEX_RADIUS, CONE_END_RADIUS) + 1.0D;
+        int minX = (int) Math.floor(Math.min(cameraPosition.x, playerFocus.x) - maxRadius);
+        int maxX = (int) Math.ceil(Math.max(cameraPosition.x, playerFocus.x) + maxRadius);
+        int minY = Math.max(0, (int) Math.floor(Math.min(cameraPosition.y, playerFocus.y) - maxRadius));
+        int maxY = Math.min(319, (int) Math.ceil(Math.max(cameraPosition.y, playerFocus.y) + maxRadius));
+        int minZ = (int) Math.floor(Math.min(cameraPosition.z, playerFocus.z) - maxRadius);
+        int maxZ = (int) Math.ceil(Math.max(cameraPosition.z, playerFocus.z) + maxRadius);
+
+        return new ConeGeometry(cameraPosition, axis, axisLength, CONE_APEX_RADIUS, CONE_END_RADIUS,
+                minX, maxX, minY, maxY, minZ, maxZ);
     }
 
     // ── Restoration ──────────────────────────────────────────────────────
 
     private void restoreAllBlocks(@Nonnull UUID uuid, @Nonnull World world) {
-        Map<Vector3i, Integer> originalBlocks = playerOriginalBlocks.get(uuid);
-        if (originalBlocks == null) return;
-
-        for (Map.Entry<Vector3i, Integer> entry : originalBlocks.entrySet()) {
-            Vector3i pos = entry.getKey();
-            setBlock(world, pos.x, pos.y, pos.z, entry.getValue());
+        Map<Vector3i, BlockVisual> overriddenBlocks = playerVisualOverrides.get(uuid);
+        if (overriddenBlocks == null || overriddenBlocks.isEmpty()) {
+            return;
         }
-        originalBlocks.clear();
+
+        PlayerRef playerRef = Universe.get().getPlayer(uuid);
+        if (playerRef != null) {
+            sendCurrentWorldBlocks(playerRef, world, new HashSet<>(overriddenBlocks.keySet()));
+        }
+        overriddenBlocks.clear();
+    }
+
+    // ── Packet helpers ───────────────────────────────────────────────────
+
+    private void sendOverrideBlocks(@Nonnull PlayerRef playerRef,
+                                    @Nonnull Map<Vector3i, BlockVisual> overrides) {
+        Map<SectionKey, List<SetBlockCmd>> batches = new HashMap<>();
+        for (Map.Entry<Vector3i, BlockVisual> entry : overrides.entrySet()) {
+            addBatchCommand(batches, entry.getKey(), entry.getValue());
+        }
+        sendBatches(playerRef, batches);
+    }
+
+    private void sendCurrentWorldBlocks(@Nonnull PlayerRef playerRef,
+                                        @Nonnull World world,
+                                        @Nonnull Set<Vector3i> positions) {
+        Map<SectionKey, List<SetBlockCmd>> batches = new HashMap<>();
+        for (Vector3i pos : positions) {
+            BlockVisual blockVisual = readBlockVisual(world, pos.x, pos.y, pos.z);
+            if (blockVisual == null) {
+                continue;
+            }
+            addBatchCommand(batches, pos, blockVisual);
+        }
+        sendBatches(playerRef, batches);
+    }
+
+    private static void addBatchCommand(@Nonnull Map<SectionKey, List<SetBlockCmd>> batches,
+                                        @Nonnull Vector3i pos,
+                                        @Nonnull BlockVisual blockVisual) {
+        SectionKey sectionKey = new SectionKey(
+                ChunkUtil.chunkCoordinate(pos.x),
+                ChunkUtil.chunkCoordinate(pos.y),
+                ChunkUtil.chunkCoordinate(pos.z)
+        );
+        SetBlockCmd command = new SetBlockCmd(
+                (short) ChunkUtil.indexBlock(pos.x, pos.y, pos.z),
+                blockVisual.blockId(),
+                blockVisual.filler(),
+                blockVisual.rotation()
+        );
+        batches.computeIfAbsent(sectionKey, ignored -> new ArrayList<>()).add(command);
+    }
+
+    private static void sendBatches(@Nonnull PlayerRef playerRef,
+                                    @Nonnull Map<SectionKey, List<SetBlockCmd>> batches) {
+        if (batches.isEmpty()) {
+            return;
+        }
+
+        ChunkTracker tracker = playerRef.getChunkTracker();
+        if (tracker == null) {
+            return;
+        }
+
+        for (Map.Entry<SectionKey, List<SetBlockCmd>> entry : batches.entrySet()) {
+            SectionKey sectionKey = entry.getKey();
+            long chunkIndex = ChunkUtil.indexChunk(sectionKey.x(), sectionKey.z());
+            if (!tracker.isLoaded(chunkIndex)) {
+                continue;
+            }
+
+            List<SetBlockCmd> commands = entry.getValue();
+            if (commands.isEmpty()) {
+                continue;
+            }
+
+            if (commands.size() == 1) {
+                SetBlockCmd command = commands.get(0);
+                int x = ChunkUtil.minBlock(sectionKey.x()) + ChunkUtil.xFromIndex(command.index);
+                int y = ChunkUtil.minBlock(sectionKey.y()) + ChunkUtil.yFromIndex(command.index);
+                int z = ChunkUtil.minBlock(sectionKey.z()) + ChunkUtil.zFromIndex(command.index);
+                playerRef.getPacketHandler().writeNoCache(
+                        new ServerSetBlock(x, y, z, command.blockId, command.filler, command.rotation)
+                );
+                continue;
+            }
+
+            playerRef.getPacketHandler().writeNoCache(
+                    new ServerSetBlocks(
+                            sectionKey.x(),
+                            sectionKey.y(),
+                            sectionKey.z(),
+                            commands.toArray(SetBlockCmd[]::new)
+                    )
+            );
+        }
+    }
+
+    private static boolean isOccluderBlock(@Nonnull World world,
+                                           @Nonnull Set<Integer> excludedBlockIds,
+                                           int x,
+                                           int y,
+                                           int z) {
+        int blockId = getBlock(world, x, y, z);
+        return blockId != AIR_BLOCK_ID && !excludedBlockIds.contains(blockId);
     }
 
     // ── Block access helpers ─────────────────────────────────────────────
@@ -568,10 +736,41 @@ public class BlockOcclusionManager {
         return chunk.getBlock(x, y, z);
     }
 
-    private static void setBlock(@Nonnull World world, int x, int y, int z, int blockId) {
+    private static BlockVisual readBlockVisual(@Nonnull World world, int x, int y, int z) {
         WorldChunk chunk = world.getChunk(ChunkUtil.indexChunkFromBlock(x, z));
-        if (chunk != null) {
-            chunk.setBlock(x, y, z, blockId);
+        if (chunk == null) {
+            return null;
         }
+
+        return new BlockVisual(
+                chunk.getBlock(x, y, z),
+                (short) chunk.getFiller(x, y, z),
+                (byte) chunk.getRotationIndex(x, y, z)
+        );
+    }
+
+    private record BlockVisual(int blockId, short filler, byte rotation) {
+    }
+
+    private record CameraOcclusionSettings(float cameraYaw,
+                                           float cameraPitch,
+                                           float cameraDistance,
+                                           boolean debugCone) {
+    }
+
+    private record ConeGeometry(@Nonnull Vector3d apex,
+                                @Nonnull Vector3d axisDir,
+                                double axisLength,
+                                double apexRadius,
+                                double endRadius,
+                                int minX,
+                                int maxX,
+                                int minY,
+                                int maxY,
+                                int minZ,
+                                int maxZ) {
+    }
+
+    private record SectionKey(int x, int y, int z) {
     }
 }
