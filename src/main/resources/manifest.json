@@ -9,10 +9,10 @@
         }
     ],
     "Main": "com.duntale.DuntalePlugin",
-    "ServerVersion": "0.5.0-pre.8",
+    "ServerVersion": "0.5.0-pre.9.1",
     "Dependencies": {
         "com.duntale:DungeonGen": ">=0.1.0",
-        "org.herolias:DynamicTooltipsLib": ">=1.5.1"
+        "org.herolias:DynamicTooltipsLib": ">=1.6.1-pre-release"
     },
     "DisabledByDefault": false,
     "IncludesAssetPack": true

@@ -26,6 +26,7 @@ import javax.annotation.Nullable;
  */
 public class DuntaleScoreboard extends CustomUIHud {
 
+    private static final String HUD_KEY = "default";
     private static final String UI_FILE = "Scoreboard/DuntaleScoreboard.ui";
 
     /** Width of the XP bar in pixels (must match .ui template). */
@@ -40,7 +41,7 @@ public class DuntaleScoreboard extends CustomUIHud {
      * @param playerRef the player reference
      */
     public DuntaleScoreboard(@Nonnull PlayerRef playerRef) {
-        super(playerRef);
+        super(playerRef, HUD_KEY);
     }
 
     @Override

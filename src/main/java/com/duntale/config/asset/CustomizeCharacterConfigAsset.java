@@ -1,6 +1,7 @@
 package com.duntale.config.asset;
 
 import com.duntale.CustomizeCharacterConfig;
+import com.duntale.config.RawBsonDocumentCodec;
 import com.hypixel.hytale.assetstore.AssetExtraInfo;
 import com.hypixel.hytale.assetstore.AssetRegistry;
 import com.hypixel.hytale.assetstore.AssetStore;
@@ -26,7 +27,7 @@ public class CustomizeCharacterConfigAsset
     public static final String ASSET_PATH = "Configs/EntryFlow";
     private static final String ASSET_ID = "CustomizeCharacter";
     private static final ArrayCodec<BsonDocument> DOCUMENT_ARRAY_CODEC =
-            new ArrayCodec<>(Codec.BSON_DOCUMENT, BsonDocument[]::new);
+            new ArrayCodec<>(RawBsonDocumentCodec.INSTANCE, BsonDocument[]::new);
 
     public static AssetBuilderCodec<String, CustomizeCharacterConfigAsset> CODEC;
     private static AssetStore<String, CustomizeCharacterConfigAsset,
@@ -60,11 +61,11 @@ public class CustomizeCharacterConfigAsset
                         (asset, value) -> asset.setupSlots = value,
                         asset -> asset.setupSlots)
                 .add()
-                .append(new KeyedCodec<>("Camera", Codec.BSON_DOCUMENT),
+                .append(new KeyedCodec<>("Camera", RawBsonDocumentCodec.INSTANCE),
                         (asset, value) -> asset.camera = value,
                         asset -> asset.camera)
                 .add()
-                .append(new KeyedCodec<>("CompanionOffset", Codec.BSON_DOCUMENT),
+                .append(new KeyedCodec<>("CompanionOffset", RawBsonDocumentCodec.INSTANCE),
                         (asset, value) -> asset.companionOffset = value,
                         asset -> asset.companionOffset)
                 .add()

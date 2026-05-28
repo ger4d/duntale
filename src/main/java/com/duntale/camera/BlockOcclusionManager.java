@@ -16,6 +16,8 @@ import com.hypixel.hytale.server.core.universe.PlayerRef;
 import com.hypixel.hytale.server.core.universe.Universe;
 import com.hypixel.hytale.server.core.universe.world.World;
 import com.hypixel.hytale.server.core.universe.world.chunk.WorldChunk;
+import com.hypixel.hytale.server.core.universe.world.chunk.section.BlockSection;
+import com.hypixel.hytale.server.core.universe.world.storage.ChunkStore;
 import com.hypixel.hytale.server.core.universe.world.storage.EntityStore;
 
 import javax.annotation.Nonnull;
@@ -737,16 +739,34 @@ public class BlockOcclusionManager {
     }
 
     private static BlockVisual readBlockVisual(@Nonnull World world, int x, int y, int z) {
-        WorldChunk chunk = world.getChunk(ChunkUtil.indexChunkFromBlock(x, z));
-        if (chunk == null) {
+        BlockSection blockSection = getBlockSection(world, x, y, z);
+        if (blockSection == null) {
             return null;
         }
 
         return new BlockVisual(
-                chunk.getBlock(x, y, z),
-                (short) chunk.getFiller(x, y, z),
-                (byte) chunk.getRotationIndex(x, y, z)
+                blockSection.get(x, y, z),
+                (short) blockSection.getFiller(x, y, z),
+                (byte) blockSection.getRotationIndex(x, y, z)
         );
+    }
+
+    @Nullable
+    private static BlockSection getBlockSection(@Nonnull World world, int x, int y, int z) {
+        if (y < 0 || y >= 320) {
+            return null;
+        }
+
+        Ref<ChunkStore> sectionRef = world.getChunkStore().getChunkSectionReference(
+                ChunkUtil.chunkCoordinate(x),
+                ChunkUtil.chunkCoordinate(y),
+                ChunkUtil.chunkCoordinate(z)
+        );
+        if (sectionRef == null || !sectionRef.isValid()) {
+            return null;
+        }
+
+        return sectionRef.getStore().getComponent(sectionRef, BlockSection.getComponentType());
     }
 
     private record BlockVisual(int blockId, short filler, byte rotation) {

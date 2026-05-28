@@ -1,13 +1,14 @@
 package com.duntale.dungeon.config.asset;
 
+import com.duntale.config.RawBsonDocumentCodec;
 import com.hypixel.hytale.assetstore.AssetExtraInfo;
 import com.hypixel.hytale.assetstore.AssetRegistry;
 import com.hypixel.hytale.assetstore.AssetStore;
+import com.hypixel.hytale.assetstore.codec.AssetBuilderCodec;
 import com.hypixel.hytale.assetstore.map.DefaultAssetMap;
 import com.hypixel.hytale.assetstore.map.JsonAssetWithMap;
 import com.hypixel.hytale.codec.Codec;
 import com.hypixel.hytale.codec.KeyedCodec;
-import com.hypixel.hytale.assetstore.codec.AssetBuilderCodec;
 import com.hypixel.hytale.server.core.asset.HytaleAssetStore;
 import org.bson.BsonDocument;
 
@@ -51,7 +52,7 @@ public class FloorConfigDefaultAsset
                         (asset, extra) -> asset.data = extra,
                         asset -> asset.data
                 )
-                .append(new KeyedCodec<>("Overrides", Codec.BSON_DOCUMENT),
+                .append(new KeyedCodec<>("Overrides", RawBsonDocumentCodec.INSTANCE),
                         (asset, value) -> asset.overrides = value,
                         asset -> asset.overrides)
                 .add()
