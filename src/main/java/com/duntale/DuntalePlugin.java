@@ -137,10 +137,6 @@ public class DuntalePlugin extends JavaPlugin {
     private static final String COLOR_GREEN = "#55FF55";
     private static final String COLOR_RED = "#FF5555";
     private static final String COLOR_AQUA = "#55FFFF";
-    private static final float DUNGEON_CAMERA_DISTANCE = 10.0F;
-    private static final float DUNGEON_CAMERA_ELEVATION = 4.0F;
-    private static final float DUNGEON_CAMERA_BASE_PITCH = (float) (-Math.PI / 4);
-    private static final float DUNGEON_CAMERA_YAW = (float) (7 * Math.PI / 4);
     private static DuntalePlugin instance;
 
     private ClickToMoveManager clickToMoveManager;
@@ -1085,12 +1081,7 @@ public class DuntalePlugin extends JavaPlugin {
         rpgService.onPlayerLeave(uuid);
         progressionService.onPlayerLeave(uuid);
 
-        Ref<EntityStore> ref = event.getPlayerRef().getReference();
-        if (ref != null && ref.isValid()) {
-            blockOcclusionManager.disable(uuid, ref.getStore().getExternalData().getWorld());
-        } else {
-            blockOcclusionManager.disable(uuid);
-        }
+        blockOcclusionManager.disable(uuid);
 
         clickToMoveManager.disable(uuid);
         merchantService.closeMerchant(uuid);
@@ -1529,25 +1520,6 @@ public class DuntalePlugin extends JavaPlugin {
             @Nonnull PlayerRef playerRef
     ) {
         clickToMoveManager.enableWithCamera(playerId, store, ref, playerRef);
-        blockOcclusionManager.enable(
-                playerId,
-                DUNGEON_CAMERA_YAW,
-                dungeonCameraPitch(),
-                dungeonCameraEffectiveDistance(),
-                false
-        );
-    }
-
-    private static float dungeonCameraPitch() {
-        double horizontalDistance = DUNGEON_CAMERA_DISTANCE * Math.cos(-DUNGEON_CAMERA_BASE_PITCH);
-        double verticalDistance = DUNGEON_CAMERA_DISTANCE * Math.sin(-DUNGEON_CAMERA_BASE_PITCH) + DUNGEON_CAMERA_ELEVATION;
-        return (float) -Math.atan2(verticalDistance, horizontalDistance);
-    }
-
-    private static float dungeonCameraEffectiveDistance() {
-        double horizontalDistance = DUNGEON_CAMERA_DISTANCE * Math.cos(-DUNGEON_CAMERA_BASE_PITCH);
-        double verticalDistance = DUNGEON_CAMERA_DISTANCE * Math.sin(-DUNGEON_CAMERA_BASE_PITCH) + DUNGEON_CAMERA_ELEVATION;
-        return (float) Math.sqrt(horizontalDistance * horizontalDistance + verticalDistance * verticalDistance);
     }
 
     @Nullable

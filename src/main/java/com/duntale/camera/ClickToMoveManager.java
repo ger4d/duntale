@@ -11,6 +11,7 @@ import com.hypixel.hytale.protocol.AnimationSlot;
 import com.hypixel.hytale.protocol.CameraNode;
 import com.hypixel.hytale.protocol.MouseButtonState;
 import com.hypixel.hytale.protocol.MouseButtonType;
+import com.hypixel.hytale.protocol.Packet;
 import com.hypixel.hytale.protocol.Rangef;
 import com.hypixel.hytale.server.core.HytaleServer;
 import com.hypixel.hytale.server.core.asset.type.model.config.Model;
@@ -60,6 +61,7 @@ import com.hypixel.hytale.protocol.packets.camera.SetServerCamera;
 import com.hypixel.hytale.protocol.packets.entities.PlayAnimation;
 import com.hypixel.hytale.protocol.packets.interface_.Page;
 import com.hypixel.hytale.protocol.packets.interface_.SetPage;
+import com.hypixel.hytale.protocol.packets.window.CloseWindow;
 import com.hypixel.hytale.protocol.packets.world.PlaySoundEvent2D;
 import com.hypixel.hytale.server.core.asset.type.soundevent.config.SoundEvent;
 import com.hypixel.hytale.server.core.io.adapter.PacketAdapters;
@@ -177,6 +179,9 @@ public class ClickToMoveManager {
     /** Stored reference for deregistration on shutdown. */
     private final PacketFilter pageWatcher;
 
+    /** Stored reference for deregistration of inbound input diagnostics. */
+    private final PacketFilter inboundInputWatcher;
+
     // ============================================
     // Constructor
     // ============================================
@@ -208,6 +213,9 @@ public class ClickToMoveManager {
                         }
                     }
                 });
+
+        this.inboundInputWatcher = PacketAdapters.registerInbound(
+                (PlayerPacketWatcher) this::watchInboundPacket);
     }
 
     // ============================================
@@ -263,6 +271,38 @@ public class ClickToMoveManager {
             LOGGER.atFine().log("[CTM] Sent hurt sound (index=%d) to %s",
                     hurtSoundIndex, playerRef.getUsername());
         }
+    }
+
+    private void watchInboundPacket(@Nonnull PlayerRef playerRef, @Nonnull Packet packet) {
+        PlayerState state = players.get(playerRef.getUuid());
+        if (state == null) {
+            return;
+        }
+
+        if (packet instanceof CloseWindow closeWindow) {
+            LOGGER.atInfo().log(
+                    "[CTM] Inbound CloseWindow for %s: windowId=%d activePage=%s",
+                    playerRef.getUsername(),
+                    closeWindow.id,
+                    state.activePage
+            );
+            handleInboundCloseWindow(playerRef, state);
+        }
+    }
+
+    private void handleInboundCloseWindow(@Nonnull PlayerRef playerRef,
+                                          @Nonnull PlayerState state) {
+        if (state.activePage != Page.Bench) {
+            return;
+        }
+
+        state.leftButtonHeld = false;
+        state.targetPosition = null;
+        state.targetEntity = null;
+        state.targetMerchantEntity = null;
+        state.targetInteractBlock = null;
+        state.activePage = Page.None;
+        playerRef.getPacketHandler().writeNoCache(new SetPage(Page.None, true));
     }
 
     // ============================================
@@ -793,7 +833,7 @@ public class ClickToMoveManager {
         MerchantService merchantService = DuntalePlugin.get().getMerchantService();
 
         int floorLevel = mc.getFloorLevel();
-        java.util.List<CatalogEntry> catalog;
+        List<CatalogEntry> catalog;
         if (mc.hasCatalog()) {
             catalog = mc.getCatalog();
         } else {
@@ -828,6 +868,7 @@ public class ClickToMoveManager {
         this.eventRegistry.shutdownAndCleanup(false);
         PacketAdapters.deregisterOutbound(this.hurtAnimationFilter);
         PacketAdapters.deregisterOutbound(this.pageWatcher);
+        PacketAdapters.deregisterInbound(this.inboundInputWatcher);
         this.players.clear();
     }
 
@@ -918,18 +959,46 @@ public class ClickToMoveManager {
     private boolean isPageOpen(@Nonnull PlayerState state,
                                @Nonnull Store<EntityStore> store,
                                @Nonnull Ref<EntityStore> ref,
-                               boolean recoverStale) {
+                       boolean recoverStale) {
         Player player = store.getComponent(ref, Player.getComponentType());
         boolean customPageOpen = player != null
                 && player.getPageManager().getCustomPage() != null;
-        if (customPageOpen) return true;
+        PlayerRef pRef = store.getComponent(ref, PlayerRef.getComponentType());
+        MerchantService merchantService = DuntalePlugin.get().getMerchantService();
+        boolean merchantSessionOpen = pRef != null
+                && merchantService != null
+                && merchantService.hasOpenSession(pRef.getUuid());
+
+        if (customPageOpen) {
+            return true;
+        }
+
+        if (recoverStale && state.activePage == Page.Bench) {
+            if (player != null && !player.getWindowManager().getWindows().isEmpty()) {
+                LOGGER.atFine().log("[CTM] Closing stale Bench windows for %s",
+                        pRef != null ? pRef.getUsername() : ref);
+                player.getWindowManager().closeAllWindows(ref, store);
+            }
+
+            if (merchantSessionOpen && pRef != null && merchantService != null) {
+                LOGGER.atFine().log("[CTM] Clearing stale merchant session for %s after Bench recovery",
+                        pRef.getUsername());
+                merchantService.closeMerchant(pRef.getUuid());
+            }
+
+            state.leftButtonHeld = false;
+            state.targetMerchantEntity = null;
+            state.targetInteractBlock = null;
+
+            LOGGER.atFine().log("[CTM] Clearing stale activePage=%s (assumed closed)", state.activePage);
+            state.activePage = Page.None;
+            return false;
+        }
 
         // Check merchant session — the shop uses Page.Bench which can be
-        // incorrectly cleared by the stale recovery logic below.
-        PlayerRef pRef = store.getComponent(ref, PlayerRef.getComponentType());
-        if (pRef != null) {
-            MerchantService ms = DuntalePlugin.get().getMerchantService();
-            if (ms != null && ms.hasOpenSession(pRef.getUuid())) return true;
+        // left stale when the client closes a built-in page locally.
+        if (merchantSessionOpen) {
+            return true;
         }
 
         if (state.activePage != Page.None) {
@@ -937,13 +1006,14 @@ public class ClickToMoveManager {
                 // Built-in page close is invisible to the server (client-side only).
                 // A mouse-click arriving with no custom page suggests the player
                 // closed the built-in page — clear the stale tracker.
-                LOGGER.atInfo().log("[CTM] Clearing stale activePage=%s (assumed closed)",
+                LOGGER.atFine().log("[CTM] Clearing stale activePage=%s (assumed closed)",
                         state.activePage);
                 state.activePage = Page.None;
                 return false;
             }
             return true;
         }
+
         return false;
     }
 

@@ -25,6 +25,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.function.Consumer;
 import java.util.logging.Level;
 
 /**
@@ -36,7 +37,7 @@ import java.util.logging.Level;
  * {@code pageManager.setPageWithWindows(Page.Bench, ...)}.
  *
  * <p>Transactions are handled via
- * {@link ItemContainer#registerChangeEvent(java.util.function.Consumer) registerChangeEvent},
+ * {@link ItemContainer#registerChangeEvent(Consumer) registerChangeEvent},
  * which fires when items move between the player's inventory and the merchant container.
  *
  * @see MerchantContainer
@@ -432,7 +433,9 @@ public class MerchantService {
         closeMerchant(playerId);
 
         Player player = accessor.getComponent(ref, Player.getComponentType());
-        if (player == null) return;
+        if (player == null) {
+            return;
+        }
 
         InventoryComponent.Hotbar hotbar = accessor.getComponent(ref, InventoryComponent.Hotbar.getComponentType());
         InventoryComponent.Storage storage = accessor.getComponent(ref, InventoryComponent.Storage.getComponentType());

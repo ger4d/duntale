@@ -1,6 +1,7 @@
 package com.duntale.camera;
 
 import com.hypixel.hytale.component.Ref;
+import com.hypixel.hytale.protocol.InteractionType;
 import org.joml.Vector3d;
 import org.joml.Vector3i;
 import com.hypixel.hytale.protocol.packets.interface_.Page;
@@ -55,7 +56,8 @@ final class PlayerState {
      * recomputes the target as {@code playerPos + (cursorOffsetX, cursorOffsetZ)}
      * to account for camera following the player with a stationary mouse.
      *
-     * <p><b>Volatile</b>: written by event handlers, read by tick system.</p>
+    * <p><b>Volatile</b>: written by event handlers and the inbound close-window
+    * packet watcher, read by tick system.</p>
      */
     volatile boolean leftButtonHeld = false;
 
@@ -75,17 +77,19 @@ final class PlayerState {
      * this entity and checks attack range each tick. Cleared when the entity becomes
      * invalid or the player clicks on empty ground.
      *
-     * <p><b>Volatile</b>: written by event handlers, read by tick system.</p>
+    * <p><b>Volatile</b>: written by event handlers and the inbound close-window
+    * packet watcher, read by tick system.</p>
      */
     @Nullable volatile Ref<EntityStore> targetEntity;
 
     /**
      * Block position of an interactable block (e.g. bench, chest) that the player
      * is walking toward. When the player arrives within interaction range, a
-     * {@link com.hypixel.hytale.protocol.InteractionType#Use Use} interaction chain
+    * {@link InteractionType#Use Use} interaction chain
      * is triggered. {@code null} when no block interaction is pending.
      *
-     * <p><b>Volatile</b>: written by event handlers, read by tick system.</p>
+    * <p><b>Volatile</b>: written by event handlers and the inbound close-window
+    * packet watcher, read by tick system.</p>
      */
     @Nullable volatile Vector3i targetInteractBlock;
 
@@ -95,7 +99,8 @@ final class PlayerState {
      * directly (bypassing the NPC interaction system for click-move compatibility).
      * {@code null} when no merchant interaction is pending.
      *
-     * <p><b>Volatile</b>: written by event handlers, read by tick system.</p>
+    * <p><b>Volatile</b>: written by event handlers and the inbound close-window
+    * packet watcher, read by tick system.</p>
      */
     @Nullable volatile Ref<EntityStore> targetMerchantEntity;
 
@@ -113,8 +118,8 @@ final class PlayerState {
      * {@code SetPage} watcher. Used to suppress CTM input while a built-in page
      * (e.g. Bench) is open.
      *
-     * <p><b>Volatile</b>: written by Netty I/O thread (PacketAdapter watcher),
-     * read by world thread (event handlers).</p>
+    * <p><b>Volatile</b>: written by Netty I/O thread (PacketAdapter watchers),
+    * read by world thread (event handlers).</p>
      *
      * <p><b>Limitation</b>: Client-toggled pages (Inventory, Map) are opened
      * entirely client-side — the server receives no notification, so this field
