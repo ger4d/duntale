@@ -7,9 +7,12 @@ import org.junit.jupiter.api.Test;
 
 import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 @DisplayName("MerchantPriceRegistry")
@@ -98,6 +101,74 @@ class MerchantPriceRegistryTest {
                 }
                 assertEquals(registry.getBuyPrice(entry.itemId(), entry.level()), entry.buyPrice());
             }
+        }
+
+        @Test
+        @DisplayName("Should keep curated foods, include the full arrow set, and remove spellbook consumables")
+        void shouldKeepCuratedFoodsIncludeFullArrowSetAndRemoveSpellbookConsumables() {
+            MerchantPriceRegistry registry = initializedRegistry(List.of(), List.of());
+            CatalogGenerator generator = new CatalogGenerator(registry);
+
+            Set<String> seenConsumables = new HashSet<>();
+            for (long seed = 0; seed < 500; seed++) {
+                for (CatalogEntry entry : generator.generate(20, seed)) {
+                    if (entry.level() == 0) {
+                        seenConsumables.add(entry.itemId());
+                    }
+                }
+            }
+
+            assertTrue(seenConsumables.contains("Food_Kebab_Meat"));
+            assertTrue(seenConsumables.contains("Food_Pie_Meat"));
+            assertTrue(seenConsumables.contains("Weapon_Arrow_Crude"));
+            assertTrue(seenConsumables.contains("Weapon_Arrow_Iron"));
+            assertTrue(seenConsumables.contains("Weapon_Arrow_Deadeye"));
+            assertTrue(seenConsumables.contains("Weapon_Arrow_Clearshot"));
+            assertTrue(seenConsumables.contains("Weapon_Arrow_Trueshot"));
+            assertTrue(seenConsumables.contains("Weapon_Deployable_Turret"));
+            assertTrue(seenConsumables.contains("Weapon_Deployable_Healing_Totem"));
+            assertTrue(seenConsumables.contains("Weapon_Deployable_Slowness_Totem"));
+
+            assertFalse(seenConsumables.contains("Food_Bread"));
+            assertFalse(seenConsumables.contains("Food_Fish_Grilled"));
+            assertFalse(seenConsumables.contains("Weapon_Spellbook_Fire"));
+            assertFalse(seenConsumables.contains("Weapon_Spellbook_Frost"));
+            assertFalse(seenConsumables.contains("Weapon_Spellbook_Demon"));
+            assertFalse(seenConsumables.contains("Weapon_Spellbook_Grimoire_Brown"));
+            assertFalse(seenConsumables.contains("Weapon_Spellbook_Grimoire_Purple"));
+            assertFalse(seenConsumables.contains("Weapon_Spellbook_Rekindle_Embers"));
+        }
+
+        @Test
+        @DisplayName("Should offer repair kits as single kits or fixed five-packs instead of full stacks")
+        void shouldOfferRepairKitsAsSingleKitsOrFixedFivePacksInsteadOfFullStacks() {
+            MerchantPriceRegistry registry = initializedRegistry(List.of(), List.of());
+            CatalogGenerator generator = new CatalogGenerator(registry);
+
+            boolean sawSingleKit = false;
+            boolean sawFivePack = false;
+            boolean sawFullStack = false;
+
+            for (long seed = 0; seed < 1000; seed++) {
+                for (CatalogEntry entry : generator.generate(20, seed)) {
+                    if (!"Tool_Repair_Kit_Iron".equals(entry.itemId())) {
+                        continue;
+                    }
+                    if (entry.quantity() == 1 && entry.buyPrice() == 25_000L) {
+                        sawSingleKit = true;
+                    }
+                    if (entry.quantity() == 5 && entry.buyPrice() == 125_000L) {
+                        sawFivePack = true;
+                    }
+                    if (entry.quantity() > 5) {
+                        sawFullStack = true;
+                    }
+                }
+            }
+
+            assertTrue(sawSingleKit);
+            assertTrue(sawFivePack);
+            assertFalse(sawFullStack);
         }
     }
 

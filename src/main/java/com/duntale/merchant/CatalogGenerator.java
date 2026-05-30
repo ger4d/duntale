@@ -57,15 +57,14 @@ public class CatalogGenerator {
     /**
      * A consumable offer definition.
      *
-     * @param itemId      the engine item ID to offer
-     * @param price       the per-unit price (or the fixed price when {@code forceSingle} is true)
-     * @param forceSingle when true, the entry is always offered as a single item at the
-     *                    exact {@code price}, bypassing the max-stack quantity/price multiply
-     *                    (used for non-stackable items such as backpack upgrades)
+     * @param itemId           the engine item ID to offer
+     * @param unitPrice        the per-unit price for the offer
+     * @param fixedQuantity    optional fixed quantity override; {@code 0} means offer a full
+     *                         max stack and multiply the price by that resolved stack size
      */
-    private record ConsumableDef(@Nonnull String itemId, long price, boolean forceSingle) {
-        private ConsumableDef(@Nonnull String itemId, long price) {
-            this(itemId, price, false);
+    private record ConsumableDef(@Nonnull String itemId, long unitPrice, int fixedQuantity) {
+        private ConsumableDef(@Nonnull String itemId, long unitPrice) {
+            this(itemId, unitPrice, 0);
         }
     }
 
@@ -75,25 +74,22 @@ public class CatalogGenerator {
     private static final ConsumableDef[] CONSUMABLE_POOL = {
             new ConsumableDef("Weapon_Arrow_Crude", 5),
             new ConsumableDef("Weapon_Arrow_Iron", 15),
-            new ConsumableDef("Food_Bread", 10),
+            new ConsumableDef("Weapon_Arrow_Deadeye", 30),
+            new ConsumableDef("Weapon_Arrow_Clearshot", 45),
+            new ConsumableDef("Weapon_Arrow_Trueshot", 60),
             new ConsumableDef("Food_Kebab_Meat", 25),
-            new ConsumableDef("Food_Fish_Grilled", 20),
+            new ConsumableDef("Food_Pie_Meat", 50),
             new ConsumableDef("Potion_Stamina", 75),
             new ConsumableDef("Potion_Regen_Health", 100),
             new ConsumableDef("Potion_Antidote", 40),
-            // Backpack upgrades — non-stackable, fixed price (25,000 × tier), single item.
-            new ConsumableDef("Upgrade_Backpack_1", 25_000, true),
-            new ConsumableDef("Upgrade_Backpack_2", 50_000, true),
-            new ConsumableDef("Upgrade_Backpack_3", 75_000, true),
-            // Enchant books — PLACEHOLDER: existing spellbook weapons used as stand-in
-            // offers until a real enchantment system/assets exist. Single item, fixed
-            // price (forceSingle) so the buy handler never sees a 0 price or stack multiply.
-            new ConsumableDef("Weapon_Spellbook_Fire", 2_000, true),
-            new ConsumableDef("Weapon_Spellbook_Frost", 2_000, true),
-            new ConsumableDef("Weapon_Spellbook_Demon", 3_500, true),
-            new ConsumableDef("Weapon_Spellbook_Grimoire_Brown", 1_500, true),
-            new ConsumableDef("Weapon_Spellbook_Grimoire_Purple", 2_500, true),
-            new ConsumableDef("Weapon_Spellbook_Rekindle_Embers", 3_000, true),
+            new ConsumableDef("Tool_Repair_Kit_Iron", 25_000, 1),
+            new ConsumableDef("Tool_Repair_Kit_Iron", 25_000, 5),
+            new ConsumableDef("Weapon_Deployable_Turret", 120_000, 1),
+            new ConsumableDef("Weapon_Deployable_Healing_Totem", 125_000, 1),
+            new ConsumableDef("Weapon_Deployable_Slowness_Totem", 100_000, 1),
+            new ConsumableDef("Upgrade_Backpack_1", 25_000, 1),
+            new ConsumableDef("Upgrade_Backpack_2", 50_000, 1),
+            new ConsumableDef("Upgrade_Backpack_3", 75_000, 1),
     };
 
     private final MerchantPriceRegistry priceRegistry;
@@ -169,23 +165,26 @@ public class CatalogGenerator {
     }
 
     /**
-     * Builds a consumable catalog entry. By default the item is offered as a full
-     * stack, resolving the item's max stack size and scaling the per-unit price by
-     * that quantity. Definitions flagged {@link ConsumableDef#forceSingle()} are
-     * always offered as a single item at the exact fixed price, bypassing the
-     * max-stack multiply (used for non-stackable items such as backpack upgrades).
+    * Builds a consumable catalog entry. By default the item is offered as a full
+    * stack, resolving the item's max stack size and scaling the per-unit price by
+    * that quantity. Definitions with a fixed quantity override bypass the max-stack
+    * lookup and instead use the configured quantity directly.
      *
      * @param def the consumable definition (item ID, price, and stacking behaviour)
      * @return a catalog entry with the resolved quantity and price
      */
     @Nonnull
     private static CatalogEntry toConsumableEntry(@Nonnull ConsumableDef def) {
-        if (def.forceSingle()) {
-            return CatalogEntry.consumable(def.itemId(), def.price(), 1);
+        if (def.fixedQuantity() > 0) {
+            return CatalogEntry.consumable(def.itemId(), def.unitPrice() * def.fixedQuantity(), def.fixedQuantity());
         }
-        Item item = Item.getAssetMap().getAsset(def.itemId());
+        Item item = null;
+        var assetStore = Item.getAssetStore();
+        if (assetStore != null && assetStore.getAssetMap() != null) {
+            item = Item.getAssetMap().getAsset(def.itemId());
+        }
         int maxStack = item != null ? Math.max(1, item.getMaxStack()) : 1;
-        long stackPrice = def.price() * maxStack;
+        long stackPrice = def.unitPrice() * maxStack;
         return CatalogEntry.consumable(def.itemId(), stackPrice, maxStack);
     }
 
