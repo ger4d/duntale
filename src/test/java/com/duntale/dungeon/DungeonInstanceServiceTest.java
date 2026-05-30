@@ -639,10 +639,158 @@ class DungeonInstanceServiceTest {
             DungeonInstance active = service.createInstanceForPlayer(playerA, 1).join();
             runtime.teleportedPlayers.clear();
 
-            service.transitionFloor(active.instanceId()).join();
+                service.transitionFloor(new DungeonInstanceService.FloorTransitionRequest(
+                    active.instanceId(),
+                    Set.of(playerA, playerB))).join();
 
             assertEquals(Set.of(playerA, playerB), Set.copyOf(runtime.teleportedPlayers));
         }
+
+            @Test
+            @DisplayName("Should teleport only supplied transfer players")
+            void shouldTeleportOnlySuppliedTransferPlayers() throws SQLException {
+                FakeRuntime runtime = new FakeRuntime();
+                service = new DungeonInstanceService(
+                    database, instanceRepository, membershipRepository, new PartyService(), floorConfigService, runtime);
+
+                UUID playerA = UUID.randomUUID();
+                UUID playerB = UUID.randomUUID();
+                UUID playerC = UUID.randomUUID();
+                DungeonInstance active = service.createInstance(List.of(playerA, playerB, playerC), 1).join();
+                runtime.teleportedPlayers.clear();
+
+                service.transitionFloor(new DungeonInstanceService.FloorTransitionRequest(
+                    active.instanceId(),
+                    Set.of(playerA, playerB))).join();
+
+                assertEquals(Set.of(playerA, playerB), Set.copyOf(runtime.teleportedPlayers));
+                assertEquals(Set.of(playerA, playerB, playerC),
+                    membershipRepository.findPlayerIdsByInstance(active.instanceId()));
+            }
+
+            @Test
+            @DisplayName("Should reactivate LEFT party member during floor transition preparation")
+            void shouldReactivateLeftPartyMemberDuringPreparation() throws SQLException {
+                UUID owner = UUID.randomUUID();
+                UUID member = UUID.randomUUID();
+                DungeonInstance target = testInstanceWithState("inst-target", "world-target", DungeonInstanceState.ACTIVE);
+                service.createInstance(target, List.of(owner, member));
+                service.leaveInstanceForPlayer(member).join();
+
+                DungeonInstanceService.FloorTransitionPreparation preparation =
+                    service.preparePartyAwareFloorTransition(target.instanceId(), Set.of(owner, member));
+
+                assertTrue(preparation.reactivatedMembers().contains(member));
+                assertTrue(preparation.expandedPartyMembers().contains(member));
+                assertEquals(Set.of(owner, member), membershipRepository.findPlayerIdsByInstance(target.instanceId()));
+            }
+
+            @Test
+            @DisplayName("Should add party member with no target row during floor transition preparation")
+            void shouldAddPartyMemberWithNoTargetRowDuringPreparation() throws SQLException {
+                UUID owner = UUID.randomUUID();
+                UUID added = UUID.randomUUID();
+                DungeonInstance target = testInstanceWithState("inst-target", "world-target", DungeonInstanceState.ACTIVE);
+                service.createInstance(target, List.of(owner));
+
+                DungeonInstanceService.FloorTransitionPreparation preparation =
+                    service.preparePartyAwareFloorTransition(target.instanceId(), Set.of(owner, added));
+
+                assertTrue(preparation.addedMembers().contains(added));
+                assertTrue(preparation.expandedPartyMembers().contains(added));
+                assertEquals(Set.of(owner, added), membershipRepository.findPlayerIdsByInstance(target.instanceId()));
+            }
+
+            @Test
+            @DisplayName("Should migrate party member from other safe active instance during preparation")
+            void shouldMigratePartyMemberFromOtherSafeActiveInstanceDuringPreparation() throws SQLException {
+                FakeRuntime runtime = new FakeRuntime();
+                service = new DungeonInstanceService(
+                    database, instanceRepository, membershipRepository, new PartyService(), floorConfigService, runtime);
+
+                UUID owner = UUID.randomUUID();
+                UUID member = UUID.randomUUID();
+                DungeonInstance target = testInstanceWithState("inst-target", "world-target", DungeonInstanceState.ACTIVE);
+                service.createInstance(target, List.of(owner));
+                service.createInstance(
+                    testInstanceWithState("inst-other", "world-other", DungeonInstanceState.ACTIVE),
+                    List.of(member));
+
+                DungeonInstanceService.FloorTransitionPreparation preparation =
+                    service.preparePartyAwareFloorTransition(target.instanceId(), Set.of(owner, member));
+
+                assertTrue(preparation.migratedMembers().contains(member));
+                assertEquals(Set.of(owner, member), membershipRepository.findPlayerIdsByInstance(target.instanceId()));
+                assertTrue(membershipRepository.findPlayerIdsByInstance("inst-other").isEmpty());
+                assertEquals(DungeonInstanceState.ENDED,
+                    instanceRepository.findById("inst-other").orElseThrow().state());
+                assertTrue(runtime.armedWorlds.contains("world-other"));
+            }
+
+            @Test
+            @DisplayName("Should reject unsafe prior transition state during preparation")
+            void shouldRejectUnsafePriorTransitionStateDuringPreparation() throws SQLException {
+                UUID owner = UUID.randomUUID();
+                UUID member = UUID.randomUUID();
+                DungeonInstance target = testInstanceWithState("inst-target", "world-target", DungeonInstanceState.ACTIVE);
+                service.createInstance(target, List.of(owner));
+                service.createInstance(
+                    testInstanceWithState("inst-other", "world-other", DungeonInstanceState.TRANSITIONING),
+                    List.of(member));
+
+                assertThrows(DungeonInstanceService.UnsafePriorInstanceException.class,
+                    () -> service.preparePartyAwareFloorTransition(target.instanceId(), Set.of(owner, member)));
+
+                assertEquals(Set.of(owner), membershipRepository.findPlayerIdsByInstance(target.instanceId()));
+                assertEquals(Set.of(member), membershipRepository.findPlayerIdsByInstance("inst-other"));
+            }
+
+            @Test
+            @DisplayName("Should reject capacity overflow during preparation without mutation")
+            void shouldRejectCapacityOverflowDuringPreparation() throws SQLException {
+                UUID owner = UUID.randomUUID();
+                UUID playerB = UUID.randomUUID();
+                UUID playerC = UUID.randomUUID();
+                UUID playerD = UUID.randomUUID();
+                UUID playerE = UUID.randomUUID();
+                UUID playerF = UUID.randomUUID();
+                UUID playerG = UUID.randomUUID();
+                DungeonInstance target = testInstanceWithState("inst-target", "world-target", DungeonInstanceState.ACTIVE);
+                service.createInstance(target, List.of(owner, playerB, playerC, playerD, playerE));
+
+                DungeonInstanceService.ContinueRosterExpansionException ex = assertThrows(
+                    DungeonInstanceService.ContinueRosterExpansionException.class,
+                    () -> service.preparePartyAwareFloorTransition(
+                        target.instanceId(),
+                        Set.of(owner, playerB, playerC, playerD, playerF, playerG)));
+
+                assertTrue(ex.isCapacityExceeded());
+                assertEquals(Set.of(owner, playerB, playerC, playerD, playerE),
+                    membershipRepository.findPlayerIdsByInstance(target.instanceId()));
+            }
+
+            @Test
+            @DisplayName("Should reject transfer players outside active roster")
+            void shouldRejectTransferPlayersOutsideActiveRoster() throws SQLException {
+                FakeRuntime runtime = new FakeRuntime();
+                service = new DungeonInstanceService(
+                    database, instanceRepository, membershipRepository, new PartyService(), floorConfigService, runtime);
+
+                UUID player = UUID.randomUUID();
+                UUID outsider = UUID.randomUUID();
+                DungeonInstance target = testInstanceWithState("inst-target", "world-target", DungeonInstanceState.ACTIVE);
+                service.createInstance(target, List.of(player));
+
+                IllegalArgumentException ex = assertThrows(IllegalArgumentException.class,
+                    () -> service.transitionFloor(new DungeonInstanceService.FloorTransitionRequest(
+                        target.instanceId(),
+                        Set.of(player, outsider))));
+
+                assertTrue(ex.getMessage().contains("not ACTIVE"));
+                assertTrue(runtime.teleportedPlayers.isEmpty());
+                assertEquals(DungeonInstanceState.ACTIVE,
+                    instanceRepository.findById(target.instanceId()).orElseThrow().state());
+            }
 
         @Test
         @DisplayName("Should reject transition when instance is not active")

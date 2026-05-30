@@ -8,6 +8,7 @@ import com.duntale.dungeongen.generator.GenerationOrchestrator;
 import com.duntale.dungeongen.generator.GenerationResult;
 import com.duntale.DuntalePlugin;
 import com.duntale.db.DatabaseProvider;
+import com.duntale.db.SqlFunction;
 import com.hypixel.hytale.assetstore.AssetRegistry;
 import com.hypixel.hytale.builtin.instances.config.InstanceWorldConfig;
 import com.hypixel.hytale.builtin.instances.removal.InstanceDataResource;
@@ -416,10 +417,10 @@ public class DungeonInstanceService {
      * <p>The target world is resolved before any membership mutation; if it is not loaded the call
      * fails without changing state. When the initiator is a solo player or a non-owner party member,
      * only the initiator is routed. When the initiator owns a party, currently-online party members
-     * are expanded into the instance subject to the {@link PartyService#MAX_PARTY_SIZE} active-member
-     * cap (all-or-nothing): members already active here are kept, members who previously
-     * {@code LEFT} are reactivated, members with no membership are added, and members locked into a
-     * different active instance block the expansion.
+    * are expanded into the instance subject to the {@link PartyService#MAX_PARTY_SIZE} active-member
+    * cap (all-or-nothing): members already active here are kept, members who previously
+    * {@code LEFT} are reactivated, members with no membership are added, and members in another
+    * safe active instance are migrated into this instance.
      *
      * @param playerId the initiating player UUID
      * @return a future that completes with the teleport outcome
@@ -457,9 +458,9 @@ public class DungeonInstanceService {
                 targets = Set.of(playerId);
                 ownerInitiated = false;
             } else {
-                ContinueExpansion expansion;
+                RosterExpansionResult expansion;
                 try {
-                    expansion = expandContinueRoster(instance, snapshot.get());
+                    expansion = expandRosterIntoInstance(instance, snapshot.get().members());
                 } catch (SQLException e) {
                     return CompletableFuture.failedFuture(e);
                 } catch (RuntimeException e) {
@@ -482,9 +483,8 @@ public class DungeonInstanceService {
     }
 
     /**
-     * Categorizes the owner's party members against the target instance and brings every eligible
-     * member into the instance atomically, enforcing the active-member cap as an all-or-nothing
-     * operation.
+     * Categorizes party members against the target instance and brings every eligible member into
+     * the instance atomically, enforcing the active-member cap as an all-or-nothing operation.
      *
      * <p>Members already {@code ACTIVE} in the target are left untouched. Members with a
      * {@code LEFT} row in the target are reactivated. Members with no membership are added. Members
@@ -494,98 +494,137 @@ public class DungeonInstanceService {
      * member whose prior instance is mid-creation or mid-transition cannot be migrated and fails
      * the whole expansion.
      *
-     * @param instance the target instance
-     * @param snapshot the owner-first party roster snapshot
-     * @return the expansion result holding the party roster and any prior-instance abandonments
+        * @param instance     the target instance
+        * @param partyMembers the party roster to expand into the instance
+        * @return the expansion result holding the target roster, membership changes, and abandonments
      * @throws SQLException                     if a database access error occurs
      * @throws ContinueRosterExpansionException if the expansion would exceed the active-member cap
      * @throws UnsafePriorInstanceException     if a member's prior instance is mid-creation or
      *                                          mid-transition
      */
     @Nonnull
-    private ContinueExpansion expandContinueRoster(
+    private RosterExpansionResult expandRosterIntoInstance(
             @Nonnull DungeonInstance instance,
-            @Nonnull PartyService.PartyRosterSnapshot snapshot
+            @Nonnull Set<UUID> partyMembers
     ) throws SQLException {
+        return database.transaction((SqlFunction<RosterExpansionResult>)
+            conn -> expandRosterIntoInstanceInTransaction(conn, instance, partyMembers));
+    }
+
+    @Nonnull
+    private RosterExpansionResult expandRosterIntoInstanceInTransaction(
+            @Nonnull Connection conn,
+            @Nonnull DungeonInstance instance,
+            @Nonnull Set<UUID> partyMembers
+    ) throws SQLException {
+        Objects.requireNonNull(conn, "conn");
+        Objects.requireNonNull(instance, "instance");
+        Objects.requireNonNull(partyMembers, "partyMembers");
         String instanceId = instance.instanceId();
-        Set<UUID> partyMembers = snapshot.members();
-        return database.transaction(conn -> {
-            List<UUID> reactivate = new ArrayList<>();
-            List<UUID> add = new ArrayList<>();
-            List<MigrationTarget> migrate = new ArrayList<>();
-            for (UUID member : partyMembers) {
-                Optional<DungeonMembershipRepository.MembershipState> stateHere =
-                        membershipRepository.findMembershipStateInTransaction(conn, instanceId, member);
-                if (stateHere.isPresent()
-                        && stateHere.get() == DungeonMembershipRepository.MembershipState.ACTIVE) {
-                    continue;
-                }
-
-                boolean reactivateHere = stateHere.isPresent()
-                        && stateHere.get() == DungeonMembershipRepository.MembershipState.LEFT;
-
-                Optional<String> otherActive =
-                        membershipRepository.findActiveNonEndedInstanceIdInTransaction(conn, member);
-                if (otherActive.isPresent() && !otherActive.get().equals(instanceId)) {
-                    String priorId = otherActive.get();
-                    DungeonInstance prior = instanceRepository.findByIdInTransaction(conn, priorId).orElse(null);
-                    if (prior != null
-                            && (prior.state() == DungeonInstanceState.CREATING
-                                || prior.state() == DungeonInstanceState.TRANSITIONING)) {
-                        throw new UnsafePriorInstanceException(member, priorId, prior.state());
-                    }
-                    migrate.add(new MigrationTarget(
-                            member, priorId, prior != null ? prior.worldName() : null));
-                }
-
-                if (reactivateHere) {
-                    reactivate.add(member);
-                } else {
-                    add.add(member);
-                }
+        List<UUID> reactivate = new ArrayList<>();
+        List<UUID> add = new ArrayList<>();
+        List<MigrationTarget> migrate = new ArrayList<>();
+        for (UUID member : partyMembers) {
+            Optional<DungeonMembershipRepository.MembershipState> stateHere =
+                    membershipRepository.findMembershipStateInTransaction(conn, instanceId, member);
+            if (stateHere.isPresent()
+                    && stateHere.get() == DungeonMembershipRepository.MembershipState.ACTIVE) {
+                continue;
             }
 
-            int activeCount = membershipRepository.countActiveMembersInTransaction(conn, instanceId);
-            if (activeCount + reactivate.size() + add.size() > PartyService.MAX_PARTY_SIZE) {
-                throw new ContinueRosterExpansionException(Set.of(), true);
+            boolean reactivateHere = stateHere.isPresent()
+                    && stateHere.get() == DungeonMembershipRepository.MembershipState.LEFT;
+
+            Optional<String> otherActive =
+                    membershipRepository.findActiveNonEndedInstanceIdInTransaction(conn, member);
+            if (otherActive.isPresent() && !otherActive.get().equals(instanceId)) {
+                String priorId = otherActive.get();
+                DungeonInstance prior = instanceRepository.findByIdInTransaction(conn, priorId).orElse(null);
+                if (prior != null
+                        && (prior.state() == DungeonInstanceState.CREATING
+                            || prior.state() == DungeonInstanceState.TRANSITIONING)) {
+                    throw new UnsafePriorInstanceException(member, priorId, prior.state());
+                }
+                migrate.add(new MigrationTarget(
+                        member, priorId, prior != null ? prior.worldName() : null));
             }
 
-            List<PreviousInstanceAbandonment> abandonments = new ArrayList<>();
-            for (MigrationTarget target : migrate) {
-                membershipRepository.markLeftInTransaction(conn, target.priorInstanceId(), target.member());
-                int remaining =
-                        membershipRepository.countActiveMembersInTransaction(conn, target.priorInstanceId());
-                boolean emptied = remaining == 0;
-                if (emptied) {
-                    instanceRepository.forceClaimEndStateInTransaction(conn, target.priorInstanceId());
-                }
-                if (target.priorWorldName() != null) {
-                    abandonments.add(new PreviousInstanceAbandonment(
-                            target.priorInstanceId(),
-                            target.priorWorldName(),
-                            Set.of(target.member()),
-                            emptied));
-                }
+            if (reactivateHere) {
+                reactivate.add(member);
+            } else {
+                add.add(member);
             }
+        }
 
-            for (UUID member : reactivate) {
-                membershipRepository.reactivateInTransaction(conn, instanceId, member);
+        int activeCount = membershipRepository.countActiveMembersInTransaction(conn, instanceId);
+        if (activeCount + reactivate.size() + add.size() > PartyService.MAX_PARTY_SIZE) {
+            throw new ContinueRosterExpansionException(Set.of(), true);
+        }
+
+        List<PreviousInstanceAbandonment> abandonments = new ArrayList<>();
+        for (MigrationTarget target : migrate) {
+            membershipRepository.markLeftInTransaction(conn, target.priorInstanceId(), target.member());
+            int remaining =
+                    membershipRepository.countActiveMembersInTransaction(conn, target.priorInstanceId());
+            boolean emptied = remaining == 0;
+            if (emptied) {
+                instanceRepository.forceClaimEndStateInTransaction(conn, target.priorInstanceId());
             }
-            for (UUID member : add) {
-                membershipRepository.addActiveMembershipInTransaction(conn, instanceId, member);
+            if (target.priorWorldName() != null) {
+                abandonments.add(new PreviousInstanceAbandonment(
+                        target.priorInstanceId(),
+                        target.priorWorldName(),
+                        Set.of(target.member()),
+                        emptied));
             }
-            return new ContinueExpansion(new LinkedHashSet<>(partyMembers), abandonments);
-        });
+        }
+
+        for (UUID member : reactivate) {
+            membershipRepository.reactivateInTransaction(conn, instanceId, member);
+        }
+        for (UUID member : add) {
+            membershipRepository.addActiveMembershipInTransaction(conn, instanceId, member);
+        }
+        Set<UUID> migrated = new LinkedHashSet<>();
+        for (MigrationTarget target : migrate) {
+            migrated.add(target.member());
+        }
+        return new RosterExpansionResult(
+                new LinkedHashSet<>(partyMembers),
+                new LinkedHashSet<>(reactivate),
+                new LinkedHashSet<>(add),
+                migrated,
+                abandonments);
     }
 
     /**
-     * Result of a Continue group expansion: the resolved party roster and any prior-instance
-     * abandonments produced by migrating members out of other active instances.
+     * Result of a party-to-instance expansion: the target roster, membership changes, and any
+     * prior-instance abandonments produced by migrating members out of other active instances.
      */
-    private record ContinueExpansion(
+    private record RosterExpansionResult(
             @Nonnull Set<UUID> targets,
+            @Nonnull Set<UUID> reactivatedMembers,
+            @Nonnull Set<UUID> addedMembers,
+            @Nonnull Set<UUID> migratedMembers,
             @Nonnull List<PreviousInstanceAbandonment> abandonments
     ) {
+
+        private RosterExpansionResult {
+            targets = Set.copyOf(targets);
+            reactivatedMembers = Set.copyOf(reactivatedMembers);
+            addedMembers = Set.copyOf(addedMembers);
+            migratedMembers = Set.copyOf(migratedMembers);
+            abandonments = List.copyOf(abandonments);
+        }
+
+        @Nonnull
+        private Set<UUID> expandedMembers() {
+            LinkedHashSet<UUID> expanded = new LinkedHashSet<>();
+            expanded.addAll(reactivatedMembers);
+            expanded.addAll(addedMembers);
+            expanded.addAll(migratedMembers);
+            return Set.copyOf(expanded);
+        }
     }
 
     /**
@@ -951,6 +990,100 @@ public class DungeonInstanceService {
     }
 
     /**
+     * Prepares a floor transition without party expansion.
+     *
+     * <p>This is the operator/admin preparation path: it validates that the instance is currently
+     * {@code ACTIVE} and returns the current active roster. Runtime code can then select the online
+     * members physically present in the old instance world before calling
+     * {@link #transitionFloor(FloorTransitionRequest)}.
+     *
+     * @param instanceId the ID of the instance to prepare
+     * @return the preparation result with the current active roster and no party mutations
+     * @throws SQLException          if a database access error occurs
+     * @throws IllegalStateException if the instance does not exist or is not {@code ACTIVE}
+     */
+    @Nonnull
+    public FloorTransitionPreparation prepareFloorTransition(@Nonnull String instanceId) throws SQLException {
+        Objects.requireNonNull(instanceId, "instanceId");
+        repairRuntimeActiveOverride(instanceId);
+
+        return database.transaction(conn -> {
+            DungeonInstance instance = requireActiveTransitionInstanceInTransaction(conn, instanceId);
+            Set<UUID> activeRoster = membershipRepository.findPlayerIdsByInstanceInTransaction(conn, instanceId);
+            return new FloorTransitionPreparation(
+                    instance,
+                    activeRoster,
+                    Set.of(),
+                    Set.of(),
+                    Set.of(),
+                    Set.of(),
+                    Set.of(),
+                    List.of());
+        });
+    }
+
+    /**
+     * Expands the trigger player's current party into an {@code ACTIVE} instance before a floor
+     * transition.
+     *
+     * <p>The expansion uses the same all-or-nothing membership rules as owner-initiated Continue:
+     * already-active members are kept, {@code LEFT} members are reactivated, new members are added,
+     * and members active in another safe instance are migrated out of that prior instance. Prior
+     * instances in {@code CREATING} or {@code TRANSITIONING} block the entire preparation.
+     *
+     * @param instanceId         the ID of the instance to prepare
+     * @param triggerPartyRoster the trigger player's current solo-or-party roster
+     * @return the preparation result after membership expansion
+     * @throws SQLException                       if a database access error occurs
+     * @throws IllegalStateException              if the instance does not exist or is not {@code ACTIVE}
+     * @throws ContinueRosterExpansionException   if expansion would exceed the active-member cap
+     * @throws UnsafePriorInstanceException       if a party member is active in an unsafe prior instance
+     */
+    @Nonnull
+    public FloorTransitionPreparation preparePartyAwareFloorTransition(
+            @Nonnull String instanceId,
+            @Nonnull Set<UUID> triggerPartyRoster
+    ) throws SQLException {
+        Objects.requireNonNull(instanceId, "instanceId");
+        Objects.requireNonNull(triggerPartyRoster, "triggerPartyRoster");
+        Set<UUID> partyRoster = normalizeRoster(triggerPartyRoster);
+        repairRuntimeActiveOverride(instanceId);
+
+        FloorTransitionPreparation preparation = database.transaction(conn -> {
+            DungeonInstance instance = requireActiveTransitionInstanceInTransaction(conn, instanceId);
+            RosterExpansionResult expansion = expandRosterIntoInstanceInTransaction(conn, instance, partyRoster);
+            Set<UUID> activeRoster = membershipRepository.findPlayerIdsByInstanceInTransaction(conn, instanceId);
+            return new FloorTransitionPreparation(
+                    instance,
+                    activeRoster,
+                    partyRoster,
+                    expansion.expandedMembers(),
+                    expansion.reactivatedMembers(),
+                    expansion.addedMembers(),
+                    expansion.migratedMembers(),
+                    expansion.abandonments());
+        });
+        scheduleAbandonmentCleanup(preparation.abandonments());
+        return preparation;
+    }
+
+    @Nonnull
+    private DungeonInstance requireActiveTransitionInstanceInTransaction(
+            @Nonnull Connection conn,
+            @Nonnull String instanceId
+    ) throws SQLException {
+        DungeonInstance instance = instanceRepository.findByIdInTransaction(conn, instanceId)
+                .orElseThrow(() -> new IllegalStateException(
+                        "Cannot transition instance " + instanceId
+                                + "; either it does not exist or is not in ACTIVE state"));
+        if (instance.state() != DungeonInstanceState.ACTIVE) {
+            throw new IllegalStateException(
+                    "Cannot transition instance " + instanceId + ": current state is " + instance.state());
+        }
+        return instance;
+    }
+
+    /**
      * Transitions a live dungeon instance from the current floor to floor {@code N + 1}.
      *
      * <p>The service marks the instance {@code TRANSITIONING}, creates a new world for the next
@@ -975,7 +1108,50 @@ public class DungeonInstanceService {
     public CompletableFuture<DungeonInstance> transitionFloor(@Nonnull String instanceId)
             throws SQLException {
         Objects.requireNonNull(instanceId, "instanceId");
+        FloorTransitionPreparation preparation = prepareFloorTransition(instanceId);
+        return transitionFloor(new FloorTransitionRequest(instanceId, preparation.activeRosterAfterExpansion()));
+        }
+
+        /**
+         * Transitions a live dungeon instance and teleports only the supplied runtime transfer players.
+         *
+         * <p>The transfer set must be the online/runtime-selected subset prepared by the caller. Every
+         * player in the set is validated against the instance's current {@code ACTIVE} membership before
+         * the service claims {@code TRANSITIONING}; invalid or empty transfer sets fail without changing
+         * floor metadata.
+         *
+         * @param instanceId       the ID of the instance to advance
+         * @param transferPlayers  the active players to teleport to the next floor
+         * @return a future that completes with the updated instance metadata after the transition
+         * @throws SQLException              if a database access error occurs during the initial state change
+         * @throws IllegalArgumentException  if the transfer set is empty or contains inactive players
+         * @throws IllegalStateException     if the instance is not in {@code ACTIVE} state
+         */
+        @Nonnull
+        public CompletableFuture<DungeonInstance> transitionFloor(
+            @Nonnull String instanceId,
+            @Nonnull Set<UUID> transferPlayers
+        ) throws SQLException {
+        return transitionFloor(new FloorTransitionRequest(instanceId, transferPlayers));
+        }
+
+        /**
+         * Transitions a live dungeon instance and teleports only the request's runtime transfer set.
+         *
+         * @param request the transition request containing the instance and transfer players
+         * @return a future that completes with the updated instance metadata after the transition
+         * @throws SQLException              if a database access error occurs during the initial state change
+         * @throws IllegalArgumentException  if the transfer set contains inactive players
+         * @throws IllegalStateException     if the instance is not in {@code ACTIVE} state
+         */
+        @Nonnull
+        public CompletableFuture<DungeonInstance> transitionFloor(@Nonnull FloorTransitionRequest request)
+            throws SQLException {
+        Objects.requireNonNull(request, "request");
+        String instanceId = request.instanceId();
+        Set<UUID> transferPlayers = request.transferPlayers();
         repairRuntimeActiveOverride(instanceId);
+        validateTransitionTransferPlayers(instanceId, transferPlayers);
 
         DungeonInstance claimed = instanceRepository.claimTransitionState(instanceId)
                 .orElseThrow(() -> new IllegalStateException(
@@ -988,14 +1164,14 @@ public class DungeonInstanceService {
         runtimeTransitionStates.put(instanceId, transitionState);
         Vec3i origin = new Vec3i(0, DEFAULT_INSTANCE_ORIGIN_Y, 0);
         String oldWorldName = claimed.worldName();
-        Set<UUID> roster = membershipRepository.findPlayerIdsByInstance(instanceId);
 
         LOGGER.at(Level.INFO).log(
-                "Starting floor transition for instance %s: floor %d → %d (newWorld=%s)",
+            "Starting floor transition for instance %s: floor %d → %d (newWorld=%s, transferPlayers=%d)",
                 instanceId,
                 claimed.floorLevel(),
                 nextFloor,
-                nextWorldName
+            nextWorldName,
+            transferPlayers.size()
         );
 
         String nextTheme = resolveActiveThemeForFloor(nextFloor);
@@ -1004,9 +1180,34 @@ public class DungeonInstanceService {
         return runtimeAdapter.createWorld(nextWorldName, nextFloor, claimed.seed(), origin, dayTime)
                 .thenCompose(newWorld -> runtimeAdapter.generate(config)
                         .thenCompose(result -> activateTransitionedFloor(
-                    newWorld, claimed, roster, nextFloor, nextTheme, origin, result, oldWorldName, transitionState)))
+                    newWorld,
+                    claimed,
+                    transferPlayers,
+                    nextFloor,
+                    nextTheme,
+                    origin,
+                    result,
+                    oldWorldName,
+                    transitionState)))
                 .exceptionallyCompose(throwable -> handleTransitionFailure(
                         claimed, nextWorldName, transitionState, throwable));
+    }
+
+    private void validateTransitionTransferPlayers(
+            @Nonnull String instanceId,
+            @Nonnull Set<UUID> transferPlayers
+    ) throws SQLException {
+        if (transferPlayers.isEmpty()) {
+            throw new IllegalArgumentException("transferPlayers must not be empty");
+        }
+        Set<UUID> activeRoster = membershipRepository.findPlayerIdsByInstance(instanceId);
+        LinkedHashSet<UUID> inactivePlayers = new LinkedHashSet<>(transferPlayers);
+        inactivePlayers.removeAll(activeRoster);
+        if (!inactivePlayers.isEmpty()) {
+            throw new IllegalArgumentException(
+                    "Cannot transition instance " + instanceId
+                            + ": transfer players are not ACTIVE members: " + inactivePlayers);
+        }
     }
 
     /**
@@ -2729,6 +2930,61 @@ public class DungeonInstanceService {
         @Nonnull
         public Set<UUID> getBlockedPlayers() {
             return blockedPlayers;
+        }
+    }
+
+    /**
+     * Database-side preparation result for a floor transition before runtime player filtering.
+     *
+     * @param instance                   the active instance metadata before transition claim
+     * @param activeRosterAfterExpansion the active roster after any party expansion
+     * @param triggerPartyRoster         the trigger player's current party roster, or empty for
+     *                                   non-party/admin preparations
+     * @param expandedPartyMembers       party members whose membership changed during expansion
+     * @param reactivatedMembers         party members reactivated from {@code LEFT}
+     * @param addedMembers               party members added with a new active membership
+     * @param migratedMembers            party members migrated out of another active instance
+     * @param abandonments               prior-instance abandonments produced by migration
+     */
+    public record FloorTransitionPreparation(
+            @Nonnull DungeonInstance instance,
+            @Nonnull Set<UUID> activeRosterAfterExpansion,
+            @Nonnull Set<UUID> triggerPartyRoster,
+            @Nonnull Set<UUID> expandedPartyMembers,
+            @Nonnull Set<UUID> reactivatedMembers,
+            @Nonnull Set<UUID> addedMembers,
+            @Nonnull Set<UUID> migratedMembers,
+            @Nonnull List<PreviousInstanceAbandonment> abandonments
+    ) {
+
+        /** Canonical constructor with defensive copying. */
+        public FloorTransitionPreparation {
+            Objects.requireNonNull(instance, "instance");
+            activeRosterAfterExpansion = Set.copyOf(activeRosterAfterExpansion);
+            triggerPartyRoster = Set.copyOf(triggerPartyRoster);
+            expandedPartyMembers = Set.copyOf(expandedPartyMembers);
+            reactivatedMembers = Set.copyOf(reactivatedMembers);
+            addedMembers = Set.copyOf(addedMembers);
+            migratedMembers = Set.copyOf(migratedMembers);
+            abandonments = List.copyOf(abandonments);
+        }
+    }
+
+    /**
+     * Runtime-selected floor transition request.
+     *
+     * @param instanceId      the instance to transition
+     * @param transferPlayers the active players to teleport to the next floor
+     */
+    public record FloorTransitionRequest(
+            @Nonnull String instanceId,
+            @Nonnull Set<UUID> transferPlayers
+    ) {
+
+        /** Canonical constructor with validation and defensive copying. */
+        public FloorTransitionRequest {
+            instanceId = Objects.requireNonNull(instanceId, "instanceId");
+            transferPlayers = normalizeRoster(transferPlayers);
         }
     }
 

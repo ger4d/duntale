@@ -114,6 +114,8 @@ import org.joml.Vector3d;
 
 import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
+import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.nio.file.Path;
 import java.sql.SQLException;
@@ -125,6 +127,7 @@ import java.util.concurrent.CompletionException;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.BiConsumer;
 
 public class DuntalePlugin extends JavaPlugin {
@@ -560,7 +563,12 @@ public class DuntalePlugin extends JavaPlugin {
         this.getCommandRegistry().registerCommand(new StatAssignCommand(rpgService));
         this.getCommandRegistry().registerCommand(new CompanionCommand(companionService));
         this.getCommandRegistry().registerCommand(
-            new DungeonCommand(dungeonInstanceService, floorConfigService, this::routePlayerToSharedWorld));
+            new DungeonCommand(
+                    dungeonInstanceService,
+                    floorConfigService,
+                    this::routePlayerToSharedWorld,
+                    this::selectAndPrepareFloorTransitionParticipantsInWorld,
+                    this::reEnablePreparedPlayersInOldWorld));
         this.getCommandRegistry().registerCommand(new PartyCommand(partyService));
 
         // ── Player join/leave events ─────────────────────────────────
@@ -888,18 +896,49 @@ public class DuntalePlugin extends JavaPlugin {
                 activeInstance.floorLevel()
         );
 
-        CompletableFuture<DungeonInstance> transitionFuture = runOnPlayerWorld(playerRef, (currentRef, currentStore) -> {
-            World currentWorld = currentStore.getExternalData().getWorld();
-            if (currentWorld != null && activeInstance.worldName().equalsIgnoreCase(currentWorld.getName())) {
-                clickToMoveManager.prepareForWorldTransition(playerRef.getUuid(), currentStore, currentRef, playerRef);
-            }
-        }).thenCompose(unused -> {
-            try {
-                return dungeonInstanceService.transitionFloor(activeInstance.instanceId());
-            } catch (SQLException e) {
-                return CompletableFuture.failedFuture(e);
-            }
-        });
+        AtomicReference<Set<UUID>> preparedParticipants = new AtomicReference<>(Set.of());
+        CompletableFuture<DungeonInstance> transitionFuture;
+        try {
+            Set<UUID> triggerPartyRoster = partyService.assembleRoster(playerRef.getUuid());
+            DungeonInstanceService.FloorTransitionPreparation preparation =
+                    dungeonInstanceService.preparePartyAwareFloorTransition(
+                            activeInstance.instanceId(),
+                            triggerPartyRoster);
+            transitionFuture = selectRuntimeFloorTransfer(preparation, activeInstance.worldName())
+                    .thenCompose(selection -> {
+                        if (selection.transferPlayers().isEmpty()) {
+                            return CompletableFuture.failedFuture(new IllegalStateException(
+                                    "No online players are eligible to transfer for instance "
+                                            + activeInstance.instanceId()));
+                        }
+                        LOGGER.atInfo().log(
+                                "Selected %d floor-transition participant(s) for instance %s "
+                                        + "(%d in old world, %d in trigger party)",
+                                selection.transferPlayers().size(),
+                                activeInstance.instanceId(),
+                                selection.inOldWorld().size(),
+                                selection.inTriggerParty().size());
+                        return prepareFloorTransitionParticipants(selection.transferPlayers());
+                    })
+                    .thenCompose(prepared -> {
+                        preparedParticipants.set(prepared);
+                        if (prepared.isEmpty()) {
+                            return CompletableFuture.failedFuture(new IllegalStateException(
+                                    "No selected players remained online for transition of instance "
+                                            + activeInstance.instanceId()));
+                        }
+                        try {
+                            return dungeonInstanceService.transitionFloor(
+                                    new DungeonInstanceService.FloorTransitionRequest(
+                                            activeInstance.instanceId(),
+                                            prepared));
+                        } catch (SQLException | RuntimeException e) {
+                            return CompletableFuture.failedFuture(e);
+                        }
+                    });
+        } catch (SQLException | RuntimeException e) {
+            transitionFuture = CompletableFuture.failedFuture(e);
+        }
 
         // runOnPlayerWorld(playerRef, this::closeCustomPage);
         // playerRef.sendMessage(Message.raw("Opening the next floor...").color("#FFD700"));
@@ -914,13 +953,10 @@ public class DuntalePlugin extends JavaPlugin {
                 )
                 .exceptionally(throwable -> {
                     Throwable cause = unwrapCompletionException(throwable);
-                    runOnPlayerWorld(playerRef, (currentRef, currentStore) -> {
-                        World currentWorld = currentStore.getExternalData().getWorld();
-                        if (currentWorld != null && activeInstance.worldName().equalsIgnoreCase(currentWorld.getName())) {
-                            dungeonEndPortalService.ensurePortal(currentWorld, currentStore, activeInstance);
-                            enableDungeonOverheadControls(playerRef.getUuid(), currentStore, currentRef, playerRef);
-                        }
-                    });
+                    reEnablePreparedPlayersInOldWorld(
+                            preparedParticipants.get(),
+                            activeInstance.worldName(),
+                            activeInstance);
                     LOGGER.atWarning()
                             .withCause(cause)
                             .log("Dungeon end portal transition failed for instance %s", activeInstance.instanceId());
@@ -1460,6 +1496,226 @@ public class DuntalePlugin extends JavaPlugin {
     private void routePlayerToSharedWorld(@Nonnull PlayerRef playerRef, @Nonnull Message statusMessage) {
         runOnPlayerWorld(playerRef, (currentRef, currentStore) ->
                 routeToSharedWorld(currentRef, currentStore, playerRef, statusMessage));
+    }
+
+    @Nonnull
+    private CompletableFuture<Set<UUID>> selectAndPrepareFloorTransitionParticipantsInWorld(
+            @Nonnull Set<UUID> candidateIds,
+            @Nonnull String sourceWorldName
+    ) {
+        return resolveOnlinePlayersInWorld(candidateIds, sourceWorldName)
+                .thenCompose(this::prepareFloorTransitionParticipants);
+    }
+
+    @Nonnull
+    private CompletableFuture<RuntimeFloorTransferSelection> selectRuntimeFloorTransfer(
+            @Nonnull DungeonInstanceService.FloorTransitionPreparation preparation,
+            @Nonnull String oldWorldName
+    ) {
+        Set<UUID> activeRoster = preparation.activeRosterAfterExpansion();
+        Set<UUID> activePartyMembers = intersect(preparation.triggerPartyRoster(), activeRoster);
+        CompletableFuture<Set<UUID>> inOldWorld = resolveOnlinePlayersInWorld(activeRoster, oldWorldName);
+        CompletableFuture<Set<UUID>> inTriggerParty = resolveOnlinePlayers(activePartyMembers);
+
+        return inOldWorld.thenCombine(inTriggerParty, (oldWorldMembers, partyMembers) -> {
+            LinkedHashSet<UUID> transferPlayers = new LinkedHashSet<>();
+            transferPlayers.addAll(oldWorldMembers);
+            transferPlayers.addAll(partyMembers);
+
+            LinkedHashSet<UUID> skippedOffline = new LinkedHashSet<>(activePartyMembers);
+            skippedOffline.removeAll(partyMembers);
+
+            LinkedHashSet<UUID> skippedOutOfWorldAndOutOfParty = new LinkedHashSet<>(activeRoster);
+            skippedOutOfWorldAndOutOfParty.removeAll(oldWorldMembers);
+            skippedOutOfWorldAndOutOfParty.removeAll(activePartyMembers);
+
+            return new RuntimeFloorTransferSelection(
+                    transferPlayers,
+                    oldWorldMembers,
+                    partyMembers,
+                    skippedOffline,
+                    skippedOutOfWorldAndOutOfParty);
+        });
+    }
+
+    @Nonnull
+    private CompletableFuture<Set<UUID>> resolveOnlinePlayersInWorld(
+            @Nonnull Set<UUID> candidateIds,
+            @Nonnull String worldName
+    ) {
+        Set<UUID> matches = ConcurrentHashMap.newKeySet();
+        Universe universe = Universe.get();
+        if (universe == null || candidateIds.isEmpty()) {
+            return CompletableFuture.completedFuture(Set.of());
+        }
+
+        List<CompletableFuture<Void>> futures = new ArrayList<>(candidateIds.size());
+        for (UUID candidateId : candidateIds) {
+            PlayerRef candidateRef = universe.getPlayer(candidateId);
+            if (candidateRef == null) {
+                continue;
+            }
+            futures.add(runOnPlayerWorld(candidateRef, (currentRef, currentStore) -> {
+                PlayerRef currentPlayerRef = (PlayerRef) currentStore.getComponent(
+                        currentRef,
+                        PlayerRef.getComponentType());
+                if (currentPlayerRef == null || !candidateId.equals(currentPlayerRef.getUuid())) {
+                    return;
+                }
+                World currentWorld = currentStore.getExternalData().getWorld();
+                if (currentWorld != null && worldName.equalsIgnoreCase(currentWorld.getName())) {
+                    matches.add(candidateId);
+                }
+            }).exceptionally(throwable -> {
+                LOGGER.atWarning()
+                        .withCause(unwrapCompletionException(throwable))
+                        .log("Failed to inspect transition participant %s", candidateId);
+                return null;
+            }));
+        }
+        return CompletableFuture.allOf(futures.toArray(CompletableFuture[]::new))
+                .thenApply(unused -> Set.copyOf(matches));
+    }
+
+    @Nonnull
+    private CompletableFuture<Set<UUID>> resolveOnlinePlayers(@Nonnull Set<UUID> candidateIds) {
+        Set<UUID> onlinePlayers = ConcurrentHashMap.newKeySet();
+        Universe universe = Universe.get();
+        if (universe == null || candidateIds.isEmpty()) {
+            return CompletableFuture.completedFuture(Set.of());
+        }
+
+        List<CompletableFuture<Void>> futures = new ArrayList<>(candidateIds.size());
+        for (UUID candidateId : candidateIds) {
+            PlayerRef candidateRef = universe.getPlayer(candidateId);
+            if (candidateRef == null) {
+                continue;
+            }
+            futures.add(runOnPlayerWorld(candidateRef, (currentRef, currentStore) -> {
+                PlayerRef currentPlayerRef = (PlayerRef) currentStore.getComponent(
+                        currentRef,
+                        PlayerRef.getComponentType());
+                if (currentPlayerRef == null || !candidateId.equals(currentPlayerRef.getUuid())) {
+                    return;
+                }
+                if (currentStore.getExternalData().getWorld() != null) {
+                    onlinePlayers.add(candidateId);
+                }
+            }).exceptionally(throwable -> {
+                LOGGER.atWarning()
+                        .withCause(unwrapCompletionException(throwable))
+                        .log("Failed to inspect online transition participant %s", candidateId);
+                return null;
+            }));
+        }
+        return CompletableFuture.allOf(futures.toArray(CompletableFuture[]::new))
+                .thenApply(unused -> Set.copyOf(onlinePlayers));
+    }
+
+    @Nonnull
+    private CompletableFuture<Set<UUID>> prepareFloorTransitionParticipants(
+            @Nonnull Set<UUID> participantIds
+    ) {
+        Set<UUID> prepared = ConcurrentHashMap.newKeySet();
+        Universe universe = Universe.get();
+        if (universe == null || participantIds.isEmpty()) {
+            return CompletableFuture.completedFuture(Set.of());
+        }
+
+        List<CompletableFuture<Void>> futures = new ArrayList<>(participantIds.size());
+        for (UUID participantId : participantIds) {
+            PlayerRef participantRef = universe.getPlayer(participantId);
+            if (participantRef == null) {
+                continue;
+            }
+            futures.add(runOnPlayerWorld(participantRef, (currentRef, currentStore) -> {
+                PlayerRef currentPlayerRef = (PlayerRef) currentStore.getComponent(
+                        currentRef,
+                        PlayerRef.getComponentType());
+                if (currentPlayerRef == null || !participantId.equals(currentPlayerRef.getUuid())) {
+                    return;
+                }
+                if (currentStore.getExternalData().getWorld() == null) {
+                    return;
+                }
+                clickToMoveManager.prepareForWorldTransition(
+                        participantId,
+                        currentStore,
+                        currentRef,
+                        currentPlayerRef);
+                prepared.add(participantId);
+            }).exceptionally(throwable -> {
+                LOGGER.atWarning()
+                        .withCause(unwrapCompletionException(throwable))
+                        .log("Failed to prepare transition camera for player %s", participantId);
+                return null;
+            }));
+        }
+        return CompletableFuture.allOf(futures.toArray(CompletableFuture[]::new))
+                .thenApply(unused -> Set.copyOf(prepared));
+    }
+
+    @Nonnull
+    private CompletableFuture<Void> reEnablePreparedPlayersInOldWorld(
+            @Nonnull Set<UUID> preparedPlayerIds,
+            @Nonnull String oldWorldName,
+            @Nonnull DungeonInstance instance
+    ) {
+        Universe universe = Universe.get();
+        if (universe == null || preparedPlayerIds.isEmpty()) {
+            return CompletableFuture.completedFuture(null);
+        }
+
+        List<CompletableFuture<Void>> futures = new ArrayList<>(preparedPlayerIds.size());
+        for (UUID playerId : preparedPlayerIds) {
+            PlayerRef playerRef = universe.getPlayer(playerId);
+            if (playerRef == null) {
+                continue;
+            }
+            futures.add(runOnPlayerWorld(playerRef, (currentRef, currentStore) -> {
+                PlayerRef currentPlayerRef = (PlayerRef) currentStore.getComponent(
+                        currentRef,
+                        PlayerRef.getComponentType());
+                if (currentPlayerRef == null || !playerId.equals(currentPlayerRef.getUuid())) {
+                    return;
+                }
+                World currentWorld = currentStore.getExternalData().getWorld();
+                if (currentWorld != null && oldWorldName.equalsIgnoreCase(currentWorld.getName())) {
+                    dungeonEndPortalService.ensurePortal(currentWorld, currentStore, instance);
+                    enableDungeonOverheadControls(playerId, currentStore, currentRef, currentPlayerRef);
+                }
+            }).exceptionally(throwable -> {
+                LOGGER.atWarning()
+                        .withCause(unwrapCompletionException(throwable))
+                        .log("Failed to recover dungeon controls for player %s", playerId);
+                return null;
+            }));
+        }
+        return CompletableFuture.allOf(futures.toArray(CompletableFuture[]::new));
+    }
+
+    @Nonnull
+    private static Set<UUID> intersect(@Nonnull Set<UUID> first, @Nonnull Set<UUID> second) {
+        LinkedHashSet<UUID> result = new LinkedHashSet<>(first);
+        result.retainAll(second);
+        return Set.copyOf(result);
+    }
+
+    private record RuntimeFloorTransferSelection(
+            @Nonnull Set<UUID> transferPlayers,
+            @Nonnull Set<UUID> inOldWorld,
+            @Nonnull Set<UUID> inTriggerParty,
+            @Nonnull Set<UUID> skippedOffline,
+            @Nonnull Set<UUID> skippedOutOfWorldAndOutOfParty
+    ) {
+
+        private RuntimeFloorTransferSelection {
+            transferPlayers = Set.copyOf(transferPlayers);
+            inOldWorld = Set.copyOf(inOldWorld);
+            inTriggerParty = Set.copyOf(inTriggerParty);
+            skippedOffline = Set.copyOf(skippedOffline);
+            skippedOutOfWorldAndOutOfParty = Set.copyOf(skippedOutOfWorldAndOutOfParty);
+        }
     }
 
     private void restoreBuiltInControls(

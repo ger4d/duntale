@@ -74,6 +74,8 @@ public class DungeonCommand extends CommandBase {
     private final DungeonInstanceService dungeonInstanceService;
     private final FloorConfigService floorConfigService;
     private final SharedWorldRouter sharedWorldRouter;
+    private final FloorTransitionParticipantPreparer floorTransitionParticipantPreparer;
+    private final FloorTransitionRecovery floorTransitionRecovery;
 
     /** Routes a player back to the shared hub world with a status message. */
     @FunctionalInterface
@@ -88,22 +90,68 @@ public class DungeonCommand extends CommandBase {
         void route(@Nonnull PlayerRef playerRef, @Nonnull Message statusMessage);
     }
 
+    /** Selects and camera-prepares runtime floor-transition participants. */
+    @FunctionalInterface
+    public interface FloorTransitionParticipantPreparer {
+
+        /**
+         * Selects online candidates in the source world and prepares them for a world transition.
+         *
+         * @param candidateIds     active members eligible for admin transition selection
+         * @param sourceWorldName  the world the players must currently occupy
+         * @return a future completing with the prepared transfer player UUIDs
+         */
+        @Nonnull
+        CompletableFuture<Set<UUID>> prepare(
+                @Nonnull Set<UUID> candidateIds,
+                @Nonnull String sourceWorldName
+        );
+    }
+
+    /** Re-enables dungeon controls for prepared players after a failed pre-transfer transition. */
+    @FunctionalInterface
+    public interface FloorTransitionRecovery {
+
+        /**
+         * Re-enables controls for prepared players who are still in the old world.
+         *
+         * @param preparedPlayerIds the players that received transition camera preparation
+         * @param sourceWorldName   the old instance world name
+         * @param instance          the instance metadata for portal restoration
+         * @return a future completing after recovery attempts have been queued
+         */
+        @Nonnull
+        CompletableFuture<Void> reEnable(
+                @Nonnull Set<UUID> preparedPlayerIds,
+                @Nonnull String sourceWorldName,
+                @Nonnull DungeonInstance instance
+        );
+    }
+
     /**
      * Creates the /dungeon admin command.
      *
      * @param dungeonInstanceService the dungeon instance service
      * @param floorConfigService     the floor config service for per-floor overrides
      * @param sharedWorldRouter      callback for routing players back to the shared world
+         * @param floorTransitionParticipantPreparer callback for runtime transition participant prep
+         * @param floorTransitionRecovery callback for restoring controls after failed transitions
      */
     public DungeonCommand(
             @Nonnull DungeonInstanceService dungeonInstanceService,
             @Nonnull FloorConfigService floorConfigService,
-            @Nonnull SharedWorldRouter sharedWorldRouter
+            @Nonnull SharedWorldRouter sharedWorldRouter,
+            @Nonnull FloorTransitionParticipantPreparer floorTransitionParticipantPreparer,
+            @Nonnull FloorTransitionRecovery floorTransitionRecovery
     ) {
         super("dungeon", "Manage dungeon instances");
         this.dungeonInstanceService = Objects.requireNonNull(dungeonInstanceService, "dungeonInstanceService");
         this.floorConfigService = Objects.requireNonNull(floorConfigService, "floorConfigService");
         this.sharedWorldRouter = Objects.requireNonNull(sharedWorldRouter, "sharedWorldRouter");
+        this.floorTransitionParticipantPreparer = Objects.requireNonNull(
+            floorTransitionParticipantPreparer,
+            "floorTransitionParticipantPreparer");
+        this.floorTransitionRecovery = Objects.requireNonNull(floorTransitionRecovery, "floorTransitionRecovery");
 
         this.addSubCommand(new ListSubCommand());
         this.addSubCommand(new InfoSubCommand());
@@ -634,18 +682,37 @@ public class DungeonCommand extends CommandBase {
 
             String instanceId = instance.instanceId();
 
-            try {
-                DungeonInstance result = dungeonInstanceService.transitionFloor(instanceId).join();
+                DungeonInstanceService.FloorTransitionPreparation preparation = null;
+                Set<UUID> transferPlayers = Set.of();
+                try {
+                preparation = dungeonInstanceService.prepareFloorTransition(instanceId);
+                transferPlayers = floorTransitionParticipantPreparer.prepare(
+                    preparation.activeRosterAfterExpansion(),
+                    preparation.instance().worldName()).join();
+                if (transferPlayers.isEmpty()) {
+                    context.sendMessage(
+                        Message.raw("Transition failed: no online active members are in world ")
+                            .color(RED)
+                            .insert(Message.raw(preparation.instance().worldName()).color(AQUA))
+                    );
+                    return;
+                }
+
+                DungeonInstance result = dungeonInstanceService.transitionFloor(
+                    new DungeonInstanceService.FloorTransitionRequest(instanceId, transferPlayers)).join();
                 context.sendMessage(
                         Message.raw("Transitioned instance ").color(GREEN)
                                 .insert(Message.raw(truncateId(instanceId)).color(AQUA).monospace(true))
-                                .insert(Message.raw(" to floor " + result.floorLevel() + ".").color(GREEN))
+                        .insert(Message.raw(" to floor " + result.floorLevel()
+                            + " with " + transferPlayers.size() + " transfer(s).").color(GREEN))
                 );
             } catch (CompletionException e) {
+                reEnablePreparedTransitionPlayers(transferPlayers, preparation);
                 context.sendMessage(
                         Message.raw("Transition failed: " + describeFailure(e)).color(RED)
                 );
             } catch (SQLException | IllegalArgumentException | IllegalStateException e) {
+                reEnablePreparedTransitionPlayers(transferPlayers, preparation);
                 context.sendMessage(
                         Message.raw("Transition failed: " + describeFailure(e)).color(RED)
                 );
@@ -847,6 +914,23 @@ public class DungeonCommand extends CommandBase {
                         .insert(Message.raw(truncateId(instanceId)).color(AQUA).monospace(true))
                         .insert(Message.raw(".").color(GREEN))
         );
+    }
+
+    private void reEnablePreparedTransitionPlayers(
+            @Nonnull Set<UUID> transferPlayers,
+            @Nullable DungeonInstanceService.FloorTransitionPreparation preparation
+    ) {
+        if (preparation == null || transferPlayers.isEmpty()) {
+            return;
+        }
+        try {
+            floorTransitionRecovery.reEnable(
+                    transferPlayers,
+                    preparation.instance().worldName(),
+                    preparation.instance()).join();
+        } catch (CompletionException ignored) {
+            // Command feedback should report the transition failure; recovery is best-effort.
+        }
     }
 
     @Nonnull
