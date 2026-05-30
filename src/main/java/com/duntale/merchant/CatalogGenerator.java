@@ -1,5 +1,7 @@
 package com.duntale.merchant;
 
+import com.hypixel.hytale.server.core.asset.type.item.config.Item;
+
 import javax.annotation.Nonnull;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -52,7 +54,20 @@ public class CatalogGenerator {
     /** Floor level at which the guaranteed health potion upgrades. */
     private static final int HEALTH_POTION_UPGRADE_FLOOR = 20;
 
-    private record ConsumableDef(@Nonnull String itemId, long price) {}
+    /**
+     * A consumable offer definition.
+     *
+     * @param itemId      the engine item ID to offer
+     * @param price       the per-unit price (or the fixed price when {@code forceSingle} is true)
+     * @param forceSingle when true, the entry is always offered as a single item at the
+     *                    exact {@code price}, bypassing the max-stack quantity/price multiply
+     *                    (used for non-stackable items such as backpack upgrades)
+     */
+    private record ConsumableDef(@Nonnull String itemId, long price, boolean forceSingle) {
+        private ConsumableDef(@Nonnull String itemId, long price) {
+            this(itemId, price, false);
+        }
+    }
 
     private static final ConsumableDef HEALTH_POTION_LOW = new ConsumableDef("Potion_Health", 50);
     private static final ConsumableDef HEALTH_POTION_HIGH = new ConsumableDef("Potion_Health_Greater", 150);
@@ -66,6 +81,19 @@ public class CatalogGenerator {
             new ConsumableDef("Potion_Stamina", 75),
             new ConsumableDef("Potion_Regen_Health", 100),
             new ConsumableDef("Potion_Antidote", 40),
+            // Backpack upgrades — non-stackable, fixed price (25,000 × tier), single item.
+            new ConsumableDef("Upgrade_Backpack_1", 25_000, true),
+            new ConsumableDef("Upgrade_Backpack_2", 50_000, true),
+            new ConsumableDef("Upgrade_Backpack_3", 75_000, true),
+            // Enchant books — PLACEHOLDER: existing spellbook weapons used as stand-in
+            // offers until a real enchantment system/assets exist. Single item, fixed
+            // price (forceSingle) so the buy handler never sees a 0 price or stack multiply.
+            new ConsumableDef("Weapon_Spellbook_Fire", 2_000, true),
+            new ConsumableDef("Weapon_Spellbook_Frost", 2_000, true),
+            new ConsumableDef("Weapon_Spellbook_Demon", 3_500, true),
+            new ConsumableDef("Weapon_Spellbook_Grimoire_Brown", 1_500, true),
+            new ConsumableDef("Weapon_Spellbook_Grimoire_Purple", 2_500, true),
+            new ConsumableDef("Weapon_Spellbook_Rekindle_Embers", 3_000, true),
     };
 
     private final MerchantPriceRegistry priceRegistry;
@@ -128,16 +156,37 @@ public class CatalogGenerator {
         // Guaranteed health potion
         ConsumableDef healthPotion = floorLevel >= HEALTH_POTION_UPGRADE_FLOOR
                 ? HEALTH_POTION_HIGH : HEALTH_POTION_LOW;
-        catalog.add(CatalogEntry.consumable(healthPotion.itemId(), healthPotion.price()));
+        catalog.add(toConsumableEntry(healthPotion));
 
         // 3 random consumables (no duplicates)
         List<ConsumableDef> pool = new ArrayList<>(List.of(CONSUMABLE_POOL));
         Collections.shuffle(pool, random);
         for (int i = 0; i < CONSUMABLE_SLOTS - 1 && i < pool.size(); i++) {
-            catalog.add(CatalogEntry.consumable(pool.get(i).itemId(), pool.get(i).price()));
+            catalog.add(toConsumableEntry(pool.get(i)));
         }
 
         return List.copyOf(catalog);
+    }
+
+    /**
+     * Builds a consumable catalog entry. By default the item is offered as a full
+     * stack, resolving the item's max stack size and scaling the per-unit price by
+     * that quantity. Definitions flagged {@link ConsumableDef#forceSingle()} are
+     * always offered as a single item at the exact fixed price, bypassing the
+     * max-stack multiply (used for non-stackable items such as backpack upgrades).
+     *
+     * @param def the consumable definition (item ID, price, and stacking behaviour)
+     * @return a catalog entry with the resolved quantity and price
+     */
+    @Nonnull
+    private static CatalogEntry toConsumableEntry(@Nonnull ConsumableDef def) {
+        if (def.forceSingle()) {
+            return CatalogEntry.consumable(def.itemId(), def.price(), 1);
+        }
+        Item item = Item.getAssetMap().getAsset(def.itemId());
+        int maxStack = item != null ? Math.max(1, item.getMaxStack()) : 1;
+        long stackPrice = def.price() * maxStack;
+        return CatalogEntry.consumable(def.itemId(), stackPrice, maxStack);
     }
 
     /**

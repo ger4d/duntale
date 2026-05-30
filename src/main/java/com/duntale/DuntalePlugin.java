@@ -70,6 +70,7 @@ import com.duntale.death.DungeonDeathContext;
 import com.duntale.death.DungeonDeathPage;
 import com.duntale.death.DungeonDeathScreenSystem;
 import com.duntale.death.DungeonRespawnService;
+import com.duntale.rpg.GameModeToggleStatMenuSystem;
 import com.duntale.rpg.RpgDamageScalingSystem;
 import com.duntale.rpg.RpgProfile;
 import com.duntale.rpg.RpgStat;
@@ -516,6 +517,7 @@ public class DuntalePlugin extends JavaPlugin {
         this.getEntityStoreRegistry().registerSystem(new GoldPickupSystem(goldService));
         this.getEntityStoreRegistry().registerSystem(new InventoryGoldConversionSystem(goldService));
         this.getEntityStoreRegistry().registerSystem(new RpgDamageScalingSystem(rpgService));
+        this.getEntityStoreRegistry().registerSystem(new GameModeToggleStatMenuSystem(rpgService));
         this.getEntityStoreRegistry().registerSystem(new DungeonDeathScreenSystem(dungeonRespawnService));
         this.getEntityStoreRegistry().registerSystem(
             new PlayerDeathCleanupSystem(this.clickToMoveManager, this.blockOcclusionManager));

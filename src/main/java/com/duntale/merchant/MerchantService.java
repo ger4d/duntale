@@ -54,6 +54,9 @@ public class MerchantService {
     /** Default number of sell-zone slots in the merchant container. */
     private static final short DEFAULT_SELL_SLOTS = 2;
 
+    /** Minimum fraction of the sell price retained when an item is fully broken (0 durability). */
+    private static final double MIN_DURABILITY_SELL_FACTOR = 0.05;
+
 
 
     /** Key for buy-price metadata on merchant display items. */
@@ -275,7 +278,17 @@ public class MerchantService {
         // Item placed — player is selling
         String itemId = item.getItemId();
         int dungeonLevel = getItemDungeonLevel(item);
-        long sellPrice = priceRegistry.getSellPrice(itemId, dungeonLevel);
+        long basePrice = priceRegistry.getSellPrice(itemId, dungeonLevel);
+        long sellPrice = basePrice;
+        double maxDur = item.getMaxDurability();
+        if (maxDur > 0.0) {
+            double ratio = Math.clamp(item.getDurability() / maxDur, 0.0, 1.0);
+            double factor = MIN_DURABILITY_SELL_FACTOR + (1.0 - MIN_DURABILITY_SELL_FACTOR) * ratio;
+            sellPrice = (long) Math.floor(basePrice * factor);
+            if (sellPrice < 1 && basePrice > 0) {
+                sellPrice = 1;
+            }
+        }
         if (sellPrice <= 0) {
             return;
         }
@@ -338,7 +351,7 @@ public class MerchantService {
         }
 
         long buyPrice = entry.buyPrice();
-        ItemStack stack = new ItemStack(item.getId(), 1);
+        ItemStack stack = new ItemStack(item.getId(), entry.quantity());
 
         // Add level metadata if this is a leveled item
         // (Merchant items don't have variance — they're display templates)

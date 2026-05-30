@@ -23,6 +23,7 @@ import com.hypixel.hytale.server.core.modules.entity.damage.ResistanceModifier;
 import com.hypixel.hytale.server.core.universe.world.storage.EntityStore;
 
 import javax.annotation.Nonnull;
+import javax.annotation.Nullable;
 import java.util.Map;
 import java.util.Set;
 
@@ -44,6 +45,9 @@ import java.util.Set;
 public class CombatScalingSystem extends DamageEventSystem {
 
     private static final HytaleLogger LOGGER = HytaleLogger.forEnclosingClass();
+
+    /** Effectiveness multiplier applied to a fully broken (0 durability) gear piece. */
+    private static final float BROKEN_GEAR_EFFECTIVENESS = 0.07f;
 
     @Nonnull
     @SuppressWarnings("deprecation")
@@ -134,9 +138,28 @@ public class CombatScalingSystem extends DamageEventSystem {
         if (targetScaling != null && !targetScaling.isCompanion()) {
             float weaponMult = computePlayerWeaponMult(attackerRef, store);
             if (weaponMult > 0f) {
+                // Step penalty: a fully broken weapon deals only 7% of its scaled damage.
+                weaponMult *= brokenFactor(InventoryComponent.getItemInHand(store, attackerRef));
                 damage.setAmount(damage.getAmount() * weaponMult);
             }
         }
+    }
+
+    /**
+     * Returns the effectiveness multiplier for a gear piece based on its durability.
+     *
+     * <p>Applies a step penalty: a breakable piece at 0 durability contributes only
+     * {@link #BROKEN_GEAR_EFFECTIVENESS}; all other cases (intact, unbreakable, or {@code null})
+     * return {@code 1f} so they are never penalized.
+     *
+     * @param stack the gear piece to evaluate, may be {@code null}
+     * @return {@link #BROKEN_GEAR_EFFECTIVENESS} when the piece is breakable and broken, otherwise {@code 1f}
+     */
+    private static float brokenFactor(@Nullable ItemStack stack) {
+        if (stack != null && stack.getMaxDurability() > 0.0 && stack.getDurability() <= 0.0) {
+            return BROKEN_GEAR_EFFECTIVENESS;
+        }
+        return 1f;
     }
 
     /**
@@ -217,6 +240,9 @@ public class CombatScalingSystem extends DamageEventSystem {
             if (variance != null) {
                 dr *= variance;
             }
+
+            // Step penalty: a fully broken armor piece contributes only 7% of its DR.
+            dr *= brokenFactor(piece);
 
             totalDr += dr;
         }

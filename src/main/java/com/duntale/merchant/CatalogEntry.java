@@ -13,11 +13,12 @@ import javax.annotation.Nonnull;
  * @param itemId   the item asset ID (e.g. {@code "Weapon_Axe_Crude"})
  * @param level    the gear level (0 for consumables/non-leveled, 1–60 for gear)
  * @param buyPrice the buy price in gold (pre-computed for the stamped level)
+ * @param quantity the stack quantity to offer (1 for gear, max-stack for consumables)
  */
-public record CatalogEntry(@Nonnull String itemId, int level, long buyPrice) {
+public record CatalogEntry(@Nonnull String itemId, int level, long buyPrice, int quantity) {
 
     /**
-     * Creates a catalog entry for a leveled gear item.
+     * Creates a catalog entry for a leveled gear item with a stack quantity of 1.
      *
      * @param itemId   the item asset ID
      * @param level    the gear level (1–60)
@@ -26,18 +27,32 @@ public record CatalogEntry(@Nonnull String itemId, int level, long buyPrice) {
      */
     @Nonnull
     public static CatalogEntry gear(@Nonnull String itemId, int level, long buyPrice) {
-        return new CatalogEntry(itemId, level, buyPrice);
+        return new CatalogEntry(itemId, level, buyPrice, 1);
     }
 
     /**
-     * Creates a catalog entry for a consumable with a fixed price.
+     * Creates a catalog entry for a consumable with a fixed price and a stack
+     * quantity of 1.
      *
      * @param itemId   the item asset ID
      * @param buyPrice the fixed buy price in gold
-     * @return a new catalog entry with level 0
+     * @return a new catalog entry with level 0 and quantity 1
      */
     @Nonnull
     public static CatalogEntry consumable(@Nonnull String itemId, long buyPrice) {
-        return new CatalogEntry(itemId, 0, buyPrice);
+        return new CatalogEntry(itemId, 0, buyPrice, 1);
+    }
+
+    /**
+     * Creates a catalog entry for a consumable offered as a stack.
+     *
+     * @param itemId   the item asset ID
+     * @param buyPrice the buy price in gold for the full stack
+     * @param quantity the stack quantity to offer
+     * @return a new catalog entry with level 0
+     */
+    @Nonnull
+    public static CatalogEntry consumable(@Nonnull String itemId, long buyPrice, int quantity) {
+        return new CatalogEntry(itemId, 0, buyPrice, quantity);
     }
 }

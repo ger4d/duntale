@@ -2185,7 +2185,7 @@ public class DungeonInstanceService {
             worldConfig.setSeed(resolveWorldSeed(seed));
             worldConfig.setWorldGenProvider(new VoidWorldGenProvider(null, null));
             worldConfig.setSpawnProvider(new GlobalSpawnProvider(toPlayerTransform(origin)));
-            worldConfig.setPvpEnabled(true);
+            worldConfig.setPvpEnabled(false);
             worldConfig.setFallDamageEnabled(true);
             worldConfig.setTicking(true);
             worldConfig.setBlockTicking(false);
