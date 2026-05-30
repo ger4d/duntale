@@ -35,7 +35,9 @@ import java.sql.Connection;
 import java.sql.SQLException;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.Collection;
+import java.util.HashSet;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Objects;
@@ -235,8 +237,38 @@ public class DungeonInstanceService {
             return CompletableFuture.failedFuture(e);
         }
 
-        DungeonConfig config = buildGenerationConfig(worldName, floorLevel, origin, activeTheme);
-        return runtimeAdapter.createWorld(worldName, floorLevel, pendingInstance.seed(), origin, dayTime)
+        return launchInstanceWorld(pendingInstance, roster, floorLevel, origin, activeTheme, dayTime);
+    }
+
+    /**
+     * Runs the asynchronous world-creation pipeline for an already-reserved pending instance.
+     *
+     * <p>Shared by both the strict-validation start path ({@link #createInstance(Collection, int)})
+     * and the migration-aware player start path ({@link #createInstanceForPlayer(UUID, int)}). The
+     * pending instance row and {@code ACTIVE} membership rows must already be persisted before this
+     * is called.
+     *
+     * @param pendingInstance the reserved {@code CREATING} instance
+     * @param roster          the starting roster
+     * @param floorLevel      the floor number
+     * @param origin          the world origin
+     * @param activeTheme     the resolved theme id
+     * @param dayTime         the resolved day time
+     * @return a future that completes with the activated instance
+     */
+    @Nonnull
+    private CompletableFuture<DungeonInstance> launchInstanceWorld(
+            @Nonnull DungeonInstance pendingInstance,
+            @Nonnull Set<UUID> roster,
+            int floorLevel,
+            @Nonnull Vec3i origin,
+            @Nonnull String activeTheme,
+            int dayTime
+    ) {
+        DungeonConfig config = buildGenerationConfig(
+                pendingInstance.worldName(), floorLevel, origin, activeTheme);
+        return runtimeAdapter.createWorld(
+                        pendingInstance.worldName(), floorLevel, pendingInstance.seed(), origin, dayTime)
                 .thenCompose(world -> runtimeAdapter.generate(config)
                         .thenCompose(result -> activateInstance(world, pendingInstance, roster, origin, result)))
                 .exceptionallyCompose(throwable -> handleCreationFailure(pendingInstance, throwable));
@@ -378,6 +410,260 @@ public class DungeonInstanceService {
     }
 
     /**
+     * Routes the initiating player (and, when they own a party, eligible party members) into their
+     * existing {@code ACTIVE} dungeon instance.
+     *
+     * <p>The target world is resolved before any membership mutation; if it is not loaded the call
+     * fails without changing state. When the initiator is a solo player or a non-owner party member,
+     * only the initiator is routed. When the initiator owns a party, currently-online party members
+     * are expanded into the instance subject to the {@link PartyService#MAX_PARTY_SIZE} active-member
+     * cap (all-or-nothing): members already active here are kept, members who previously
+     * {@code LEFT} are reactivated, members with no membership are added, and members locked into a
+     * different active instance block the expansion.
+     *
+     * @param playerId the initiating player UUID
+     * @return a future that completes with the teleport outcome
+     */
+    @Nonnull
+    public CompletableFuture<ContinueTeleportResult> continueInstanceForPlayer(@Nonnull UUID playerId) {
+        Objects.requireNonNull(playerId, "playerId");
+
+        DungeonInstance instance;
+        try {
+            instance = getActiveInstance(playerId);
+        } catch (SQLException e) {
+            return CompletableFuture.failedFuture(e);
+        }
+        if (instance == null || instance.state() != DungeonInstanceState.ACTIVE) {
+            return CompletableFuture.failedFuture(
+                    new IllegalStateException("No active dungeon instance to continue for player " + playerId));
+        }
+        if (!runtimeAdapter.isWorldLoaded(instance.worldName())) {
+            return CompletableFuture.failedFuture(new ContinueWorldUnavailableException(instance));
+        }
+
+        PartyService.StartRoster start;
+        try {
+            start = partyService.resolveStartRoster(playerId);
+        } catch (RuntimeException e) {
+            return CompletableFuture.failedFuture(e);
+        }
+
+        Set<UUID> targets;
+        boolean ownerInitiated;
+        if (start.status() == PartyService.StartRosterStatus.OWNER) {
+            Optional<PartyService.PartyRosterSnapshot> snapshot = partyService.tryGetOwnedRoster(playerId);
+            if (snapshot.isEmpty()) {
+                targets = Set.of(playerId);
+                ownerInitiated = false;
+            } else {
+                ContinueExpansion expansion;
+                try {
+                    expansion = expandContinueRoster(instance, snapshot.get());
+                } catch (SQLException e) {
+                    return CompletableFuture.failedFuture(e);
+                } catch (RuntimeException e) {
+                    return CompletableFuture.failedFuture(e);
+                }
+                scheduleAbandonmentCleanup(expansion.abandonments());
+                targets = expansion.targets();
+                ownerInitiated = true;
+            }
+        } else {
+            targets = Set.of(playerId);
+            ownerInitiated = false;
+        }
+
+        boolean owner = ownerInitiated;
+        return runtimeAdapter
+                .teleportTargetsIfOutsideWorld(targets, instance.worldName(), instance.entrancePosition())
+                .thenApply(outcome -> new ContinueTeleportResult(
+                        owner, outcome.teleported(), outcome.alreadyInWorld(), outcome.offlineSkipped()));
+    }
+
+    /**
+     * Categorizes the owner's party members against the target instance and brings every eligible
+     * member into the instance atomically, enforcing the active-member cap as an all-or-nothing
+     * operation.
+     *
+     * <p>Members already {@code ACTIVE} in the target are left untouched. Members with a
+     * {@code LEFT} row in the target are reactivated. Members with no membership are added. Members
+     * who are {@code ACTIVE} in a different non-ended instance are migrated: their prior membership
+     * is marked {@code LEFT} (force-ending and scheduling cleanup of any prior instance they empty)
+     * and they are added or reactivated here, mirroring the player-initiated start behavior. A
+     * member whose prior instance is mid-creation or mid-transition cannot be migrated and fails
+     * the whole expansion.
+     *
+     * @param instance the target instance
+     * @param snapshot the owner-first party roster snapshot
+     * @return the expansion result holding the party roster and any prior-instance abandonments
+     * @throws SQLException                     if a database access error occurs
+     * @throws ContinueRosterExpansionException if the expansion would exceed the active-member cap
+     * @throws UnsafePriorInstanceException     if a member's prior instance is mid-creation or
+     *                                          mid-transition
+     */
+    @Nonnull
+    private ContinueExpansion expandContinueRoster(
+            @Nonnull DungeonInstance instance,
+            @Nonnull PartyService.PartyRosterSnapshot snapshot
+    ) throws SQLException {
+        String instanceId = instance.instanceId();
+        Set<UUID> partyMembers = snapshot.members();
+        return database.transaction(conn -> {
+            List<UUID> reactivate = new ArrayList<>();
+            List<UUID> add = new ArrayList<>();
+            List<MigrationTarget> migrate = new ArrayList<>();
+            for (UUID member : partyMembers) {
+                Optional<DungeonMembershipRepository.MembershipState> stateHere =
+                        membershipRepository.findMembershipStateInTransaction(conn, instanceId, member);
+                if (stateHere.isPresent()
+                        && stateHere.get() == DungeonMembershipRepository.MembershipState.ACTIVE) {
+                    continue;
+                }
+
+                boolean reactivateHere = stateHere.isPresent()
+                        && stateHere.get() == DungeonMembershipRepository.MembershipState.LEFT;
+
+                Optional<String> otherActive =
+                        membershipRepository.findActiveNonEndedInstanceIdInTransaction(conn, member);
+                if (otherActive.isPresent() && !otherActive.get().equals(instanceId)) {
+                    String priorId = otherActive.get();
+                    DungeonInstance prior = instanceRepository.findByIdInTransaction(conn, priorId).orElse(null);
+                    if (prior != null
+                            && (prior.state() == DungeonInstanceState.CREATING
+                                || prior.state() == DungeonInstanceState.TRANSITIONING)) {
+                        throw new UnsafePriorInstanceException(member, priorId, prior.state());
+                    }
+                    migrate.add(new MigrationTarget(
+                            member, priorId, prior != null ? prior.worldName() : null));
+                }
+
+                if (reactivateHere) {
+                    reactivate.add(member);
+                } else {
+                    add.add(member);
+                }
+            }
+
+            int activeCount = membershipRepository.countActiveMembersInTransaction(conn, instanceId);
+            if (activeCount + reactivate.size() + add.size() > PartyService.MAX_PARTY_SIZE) {
+                throw new ContinueRosterExpansionException(Set.of(), true);
+            }
+
+            List<PreviousInstanceAbandonment> abandonments = new ArrayList<>();
+            for (MigrationTarget target : migrate) {
+                membershipRepository.markLeftInTransaction(conn, target.priorInstanceId(), target.member());
+                int remaining =
+                        membershipRepository.countActiveMembersInTransaction(conn, target.priorInstanceId());
+                boolean emptied = remaining == 0;
+                if (emptied) {
+                    instanceRepository.forceClaimEndStateInTransaction(conn, target.priorInstanceId());
+                }
+                if (target.priorWorldName() != null) {
+                    abandonments.add(new PreviousInstanceAbandonment(
+                            target.priorInstanceId(),
+                            target.priorWorldName(),
+                            Set.of(target.member()),
+                            emptied));
+                }
+            }
+
+            for (UUID member : reactivate) {
+                membershipRepository.reactivateInTransaction(conn, instanceId, member);
+            }
+            for (UUID member : add) {
+                membershipRepository.addActiveMembershipInTransaction(conn, instanceId, member);
+            }
+            return new ContinueExpansion(new LinkedHashSet<>(partyMembers), abandonments);
+        });
+    }
+
+    /**
+     * Result of a Continue group expansion: the resolved party roster and any prior-instance
+     * abandonments produced by migrating members out of other active instances.
+     */
+    private record ContinueExpansion(
+            @Nonnull Set<UUID> targets,
+            @Nonnull List<PreviousInstanceAbandonment> abandonments
+    ) {
+    }
+
+    /**
+     * A party member that must be migrated out of a prior active instance during a Continue
+     * expansion.
+     */
+    private record MigrationTarget(
+            @Nonnull UUID member,
+            @Nonnull String priorInstanceId,
+            @Nullable String priorWorldName
+    ) {
+    }
+
+    /**
+     * Removes the given player from their current {@code ACTIVE} dungeon instance by marking their
+    * membership {@code LEFT}. If no active members remain afterward, the instance is force-ended
+    * and its world is armed for engine-managed removal once empty.
+     *
+     * @param playerId the leaving player UUID
+     * @return a future that completes with the leave result
+     */
+    @Nonnull
+    public CompletableFuture<DungeonLeaveResult> leaveInstanceForPlayer(@Nonnull UUID playerId) {
+        Objects.requireNonNull(playerId, "playerId");
+
+        DungeonInstance instance;
+        try {
+            instance = getActiveInstance(playerId);
+        } catch (SQLException e) {
+            return CompletableFuture.failedFuture(e);
+        }
+        if (instance == null) {
+            return CompletableFuture.completedFuture(
+                    new DungeonLeaveResult(LeaveStatus.NOT_IN_INSTANCE, null));
+        }
+
+        String instanceId = instance.instanceId();
+        boolean emptied;
+        try {
+            emptied = database.transaction(conn -> {
+                membershipRepository.markLeftInTransaction(conn, instanceId, playerId);
+                int remaining = membershipRepository.countActiveMembersInTransaction(conn, instanceId);
+                if (remaining == 0) {
+                    instanceRepository.forceClaimEndStateInTransaction(conn, instanceId);
+                    return true;
+                }
+                return false;
+            });
+        } catch (SQLException e) {
+            return CompletableFuture.failedFuture(e);
+        }
+
+        if (emptied) {
+            try {
+            return runtimeAdapter.armWorldRemoval(instance.worldName())
+                .exceptionally(throwable -> {
+                    Throwable cleanupError = unwrapFailure(throwable);
+                    LOGGER.at(Level.WARNING)
+                        .withCause(cleanupError)
+                        .log("Failed to arm world %s for removal after last member left instance %s",
+                            instance.worldName(), instanceId);
+                    return null;
+                })
+                .thenApply(unused -> new DungeonLeaveResult(LeaveStatus.ENDED_LAST_MEMBER, instance));
+            } catch (Exception cleanupError) {
+            LOGGER.at(Level.WARNING)
+                .withCause(cleanupError)
+                .log("Failed to arm world %s for removal after last member left instance %s",
+                    instance.worldName(), instanceId);
+            return CompletableFuture.completedFuture(
+                new DungeonLeaveResult(LeaveStatus.ENDED_LAST_MEMBER, instance));
+            }
+        }
+        return CompletableFuture.completedFuture(
+                new DungeonLeaveResult(LeaveStatus.LEFT_WITH_REMAINING, instance));
+    }
+
+    /**
      * Returns the dungeon instance associated with the given world name, if one exists.
      *
      * <p>Lookups are DB-first in v1. A hot cache layer should only be added if profiling
@@ -447,7 +733,188 @@ public class DungeonInstanceService {
             int floorLevel
     ) {
         Objects.requireNonNull(playerId, "playerId");
-        return createInstance(partyService.assembleRoster(playerId), floorLevel);
+        if (floorLevel < 1) {
+            throw new IllegalArgumentException("floorLevel must be at least 1");
+        }
+
+        PartyService.StartRoster start;
+        try {
+            start = partyService.resolveStartRoster(playerId);
+        } catch (RuntimeException e) {
+            return CompletableFuture.failedFuture(e);
+        }
+        if (start.status() == PartyService.StartRosterStatus.NOT_OWNER) {
+            return CompletableFuture.failedFuture(new PartyStartPermissionException(playerId));
+        }
+
+        Set<UUID> roster;
+        try {
+            roster = normalizeRoster(start.roster());
+        } catch (RuntimeException e) {
+            return CompletableFuture.failedFuture(e);
+        }
+        if (roster.size() > PartyService.MAX_PARTY_SIZE) {
+            return CompletableFuture.failedFuture(new IllegalArgumentException(
+                    "start roster of " + roster.size() + " exceeds max party size " + PartyService.MAX_PARTY_SIZE));
+        }
+
+        return createMigratedInstance(roster, floorLevel);
+    }
+
+    /**
+     * Reserves a new instance for a player-initiated start, migrating each roster member out of
+     * any prior {@code ACTIVE} instance instead of rejecting the start.
+     *
+     * <p>For every roster member with an existing active membership, the member is marked
+     * {@code LEFT} in that prior instance; once a prior instance has no remaining active members,
+     * it is force-ended and its world scheduled for cleanup. Prior instances still in
+     * {@code CREATING} or {@code TRANSITIONING} state cannot be migrated from and fail the start.
+     *
+     * @param roster     the normalized owner-first roster
+     * @param floorLevel the floor number to generate
+     * @return a future that completes with the activated instance
+     */
+    @Nonnull
+    private CompletableFuture<DungeonInstance> createMigratedInstance(
+            @Nonnull Set<UUID> roster,
+            int floorLevel
+    ) {
+        String activeTheme = resolveActiveThemeForFloor(floorLevel);
+        int dayTime = resolveDayTimeForFloor(floorLevel);
+        Vec3i origin = new Vec3i(0, DEFAULT_INSTANCE_ORIGIN_Y, 0);
+        String instanceId = UUID.randomUUID().toString();
+        String worldName = INSTANCE_WORLD_PREFIX + instanceId;
+        DungeonInstance pendingInstance = new DungeonInstance(
+                instanceId,
+                worldName,
+                floorLevel,
+                origin.y(),
+                origin,
+                origin,
+                DungeonInstanceState.CREATING,
+                activeTheme,
+                null,
+                System.currentTimeMillis()
+        );
+
+        LOGGER.at(Level.INFO).log(
+                "Starting dungeon instance %s for %d players with migration (floor=%d, theme=%s)",
+                instanceId,
+                roster.size(),
+                floorLevel,
+                activeTheme
+        );
+
+        List<PreviousInstanceAbandonment> abandonments;
+        try {
+            prepareMigrationRuntime(roster);
+            abandonments = persistMigratedInstance(pendingInstance, roster);
+        } catch (SQLException | UnsafePriorInstanceException e) {
+            return CompletableFuture.failedFuture(e);
+        }
+
+        scheduleAbandonmentCleanup(abandonments);
+
+        return launchInstanceWorld(pendingInstance, roster, floorLevel, origin, activeTheme, dayTime);
+    }
+
+    /**
+     * Resolves any runtime ACTIVE overrides for prior instances of the roster before migration so
+     * the migration transaction observes a consistent persisted state.
+     *
+     * @param roster the roster being migrated
+     * @throws SQLException if a database access error occurs
+     */
+    private void prepareMigrationRuntime(@Nonnull Set<UUID> roster) throws SQLException {
+        Set<String> priorIds = new HashSet<>();
+        for (UUID member : roster) {
+            membershipRepository.findNonEndedInstanceIdByPlayer(member).ifPresent(priorIds::add);
+        }
+        for (String priorId : priorIds) {
+            repairRuntimeActiveOverride(priorId);
+        }
+    }
+
+    /**
+     * Persists the migrated reservation atomically: marks roster members {@code LEFT} in any prior
+     * active instance, force-ends now-empty prior instances, then creates the new instance row and
+     * its {@code ACTIVE} membership rows.
+     *
+     * @param instance the pending instance to create
+     * @param roster   the normalized roster
+     * @return the list of prior-instance abandonments produced by the migration
+     * @throws SQLException                  if a database access error occurs
+     * @throws UnsafePriorInstanceException  if a roster member's prior instance is mid-creation or
+     *                                       mid-transition
+     */
+    @Nonnull
+    private List<PreviousInstanceAbandonment> persistMigratedInstance(
+            @Nonnull DungeonInstance instance,
+            @Nonnull Set<UUID> roster
+    ) throws SQLException {
+        return database.transaction(conn -> {
+            List<PreviousInstanceAbandonment> abandonments = new ArrayList<>();
+            for (UUID member : roster) {
+                Optional<String> priorOpt =
+                        membershipRepository.findActiveNonEndedInstanceIdInTransaction(conn, member);
+                if (priorOpt.isEmpty()) {
+                    continue;
+                }
+                String priorId = priorOpt.get();
+                DungeonInstance prior = instanceRepository.findByIdInTransaction(conn, priorId).orElse(null);
+                if (prior == null) {
+                    continue;
+                }
+                if (prior.state() == DungeonInstanceState.CREATING
+                        || prior.state() == DungeonInstanceState.TRANSITIONING) {
+                    throw new UnsafePriorInstanceException(member, priorId, prior.state());
+                }
+
+                membershipRepository.markLeftInTransaction(conn, priorId, member);
+                int remaining = membershipRepository.countActiveMembersInTransaction(conn, priorId);
+                boolean emptied = remaining == 0;
+                if (emptied) {
+                    instanceRepository.forceClaimEndStateInTransaction(conn, priorId);
+                }
+                abandonments.add(new PreviousInstanceAbandonment(
+                        priorId, prior.worldName(), Set.of(member), emptied));
+            }
+
+            instanceRepository.createInTransaction(conn, instance);
+            membershipRepository.addMembershipsInTransaction(conn, instance.instanceId(), roster);
+            return abandonments;
+        });
+    }
+
+    /**
+    * Arms world removal for prior instances that became empty during a migration.
+     *
+     * @param abandonments the abandonments produced by a migration transaction
+     */
+    private void scheduleAbandonmentCleanup(@Nonnull List<PreviousInstanceAbandonment> abandonments) {
+        Set<String> emptiedWorlds = new HashSet<>();
+        for (PreviousInstanceAbandonment abandonment : abandonments) {
+            if (abandonment.emptiedInstance()) {
+                emptiedWorlds.add(abandonment.worldName());
+            }
+        }
+        for (String worldName : emptiedWorlds) {
+            try {
+                runtimeAdapter.armWorldRemoval(worldName)
+                        .exceptionally(throwable -> {
+                            Throwable cleanupError = unwrapFailure(throwable);
+                            LOGGER.at(Level.WARNING)
+                                    .withCause(cleanupError)
+                                    .log("Failed to arm emptied prior dungeon world %s for removal during migration",
+                                            worldName);
+                            return null;
+                        });
+            } catch (Exception cleanupError) {
+                LOGGER.at(Level.WARNING)
+                        .withCause(cleanupError)
+                        .log("Failed to arm emptied prior dungeon world %s for removal during migration", worldName);
+            }
+        }
     }
 
     /**
@@ -1144,7 +1611,7 @@ public class DungeonInstanceService {
         if (roster.isEmpty()) {
             throw new IllegalArgumentException("playerIds must not be empty");
         }
-        return Set.copyOf(roster);
+        return Collections.unmodifiableSet(roster);
     }
 
     @Nonnull
@@ -1432,6 +1899,30 @@ public class DungeonInstanceService {
                 @Nonnull Collection<UUID> playerIds,
                 @Nonnull String sourceWorldName
         );
+
+        /**
+         * Returns whether the named world is currently loaded in the runtime.
+         *
+         * @param worldName the world to check
+         * @return {@code true} if the world is loaded
+         */
+        boolean isWorldLoaded(@Nonnull String worldName);
+
+        /**
+         * Teleports the given players into the target world, skipping players who are already in
+         * it and players who are offline or invalid.
+         *
+         * @param playerIds        the players to route into the world
+         * @param targetWorldName  the destination world name
+         * @param entrancePosition the destination entrance position
+         * @return a future that completes with the per-player outcome
+         */
+        @Nonnull
+        CompletableFuture<TeleportOutcome> teleportTargetsIfOutsideWorld(
+                @Nonnull Collection<UUID> playerIds,
+                @Nonnull String targetWorldName,
+                @Nonnull Vec3i entrancePosition
+        );
     }
 
     /**
@@ -1658,6 +2149,72 @@ public class DungeonInstanceService {
                 futures.add(queueEvacuation(playerId, sourceWorldName, sharedWorld));
             }
             return CompletableFuture.allOf(futures.toArray(CompletableFuture[]::new));
+        }
+
+        @Override
+        public boolean isWorldLoaded(@Nonnull String worldName) {
+            Objects.requireNonNull(worldName, "worldName");
+            Universe universe = Universe.get();
+            return universe != null && universe.getWorld(worldName) != null;
+        }
+
+        @Nonnull
+        @Override
+        public CompletableFuture<TeleportOutcome> teleportTargetsIfOutsideWorld(
+                @Nonnull Collection<UUID> playerIds,
+                @Nonnull String targetWorldName,
+                @Nonnull Vec3i entrancePosition
+        ) {
+            Objects.requireNonNull(playerIds, "playerIds");
+            Objects.requireNonNull(targetWorldName, "targetWorldName");
+            Objects.requireNonNull(entrancePosition, "entrancePosition");
+
+            Universe universe = Universe.get();
+            if (universe == null) {
+                return CompletableFuture.failedFuture(
+                        new IllegalStateException("Universe is not available for dungeon teleport"));
+            }
+            World targetWorld = universe.getWorld(targetWorldName);
+            if (targetWorld == null) {
+                return CompletableFuture.failedFuture(
+                        new IllegalStateException("Target world " + targetWorldName + " is not loaded"));
+            }
+
+            Set<UUID> teleported = new LinkedHashSet<>();
+            Set<UUID> alreadyInWorld = new LinkedHashSet<>();
+            Set<UUID> offlineSkipped = new LinkedHashSet<>();
+            List<CompletableFuture<Void>> futures = new ArrayList<>(playerIds.size());
+
+            for (UUID playerId : playerIds) {
+                PlayerRef playerRef = universe.getPlayer(playerId);
+                if (playerRef == null) {
+                    offlineSkipped.add(playerId);
+                    continue;
+                }
+                Ref<EntityStore> reference = playerRef.getReference();
+                if (reference == null || !reference.isValid()) {
+                    offlineSkipped.add(playerId);
+                    continue;
+                }
+                Store<EntityStore> store = reference.getStore();
+                World currentWorld = store.getExternalData().getWorld();
+                if (currentWorld == null) {
+                    offlineSkipped.add(playerId);
+                    continue;
+                }
+                if (currentWorld != null && currentWorld.getName().equalsIgnoreCase(targetWorldName)) {
+                    alreadyInWorld.add(playerId);
+                    continue;
+                }
+                teleported.add(playerId);
+                futures.add(queueTeleport(playerId, targetWorld, entrancePosition));
+            }
+
+            return CompletableFuture.allOf(futures.toArray(CompletableFuture[]::new))
+                    .thenApply(unused -> new TeleportOutcome(
+                            Set.copyOf(teleported),
+                            Set.copyOf(alreadyInWorld),
+                            Set.copyOf(offlineSkipped)));
         }
 
         @Nonnull
@@ -2172,6 +2729,265 @@ public class DungeonInstanceService {
         @Nonnull
         public Set<UUID> getBlockedPlayers() {
             return blockedPlayers;
+        }
+    }
+
+    /**
+     * Records the effect of migrating a single roster member out of a prior active instance.
+     *
+     * @param instanceId      the prior instance the member left
+     * @param worldName       the prior instance world name
+     * @param playersLeft     the member(s) marked {@code LEFT} for this record
+     * @param emptiedInstance {@code true} if this departure left the prior instance with no
+     *                        remaining active members
+     */
+    public record PreviousInstanceAbandonment(
+            @Nonnull String instanceId,
+            @Nonnull String worldName,
+            @Nonnull Set<UUID> playersLeft,
+            boolean emptiedInstance
+    ) {
+
+        /** Canonical constructor with defensive copying. */
+        public PreviousInstanceAbandonment {
+            Objects.requireNonNull(instanceId, "instanceId");
+            Objects.requireNonNull(worldName, "worldName");
+            playersLeft = Set.copyOf(playersLeft);
+        }
+    }
+
+    /**
+     * Per-player outcome of a {@link RuntimeAdapter#teleportTargetsIfOutsideWorld} call.
+     *
+     * @param teleported     players for whom a teleport was queued
+     * @param alreadyInWorld players already located in the target world
+     * @param offlineSkipped players skipped because they were offline or invalid
+     */
+    public record TeleportOutcome(
+            @Nonnull Set<UUID> teleported,
+            @Nonnull Set<UUID> alreadyInWorld,
+            @Nonnull Set<UUID> offlineSkipped
+    ) {
+
+        /** Canonical constructor with defensive copying. */
+        public TeleportOutcome {
+            teleported = Set.copyOf(teleported);
+            alreadyInWorld = Set.copyOf(alreadyInWorld);
+            offlineSkipped = Set.copyOf(offlineSkipped);
+        }
+    }
+
+    /**
+     * Result of a {@link #continueInstanceForPlayer(UUID)} call.
+     *
+     * @param partyOwnerInitiated {@code true} when the initiator owned a party and group expansion
+     *                            was attempted
+     * @param teleported          players for whom a teleport was queued
+     * @param alreadyInWorld      players already located in the target world
+     * @param offlineSkipped      players skipped because they were offline or invalid
+     */
+    public record ContinueTeleportResult(
+            boolean partyOwnerInitiated,
+            @Nonnull Set<UUID> teleported,
+            @Nonnull Set<UUID> alreadyInWorld,
+            @Nonnull Set<UUID> offlineSkipped
+    ) {
+
+        /** Canonical constructor with defensive copying. */
+        public ContinueTeleportResult {
+            teleported = Set.copyOf(teleported);
+            alreadyInWorld = Set.copyOf(alreadyInWorld);
+            offlineSkipped = Set.copyOf(offlineSkipped);
+        }
+    }
+
+    /** Classification of a {@link #leaveInstanceForPlayer(UUID)} result. */
+    public enum LeaveStatus {
+
+        /** The player was not in any active instance. */
+        NOT_IN_INSTANCE,
+
+        /** The player left, but other active members remain in the instance. */
+        LEFT_WITH_REMAINING,
+
+        /** The player was the last active member, so the instance was ended. */
+        ENDED_LAST_MEMBER
+    }
+
+    /**
+     * Result of a {@link #leaveInstanceForPlayer(UUID)} call.
+     *
+     * @param status   the leave outcome classification
+     * @param instance the instance the player left, or {@code null} when not in an instance
+     */
+    public record DungeonLeaveResult(@Nonnull LeaveStatus status, @Nullable DungeonInstance instance) {
+
+        /** Canonical constructor validating the status. */
+        public DungeonLeaveResult {
+            Objects.requireNonNull(status, "status");
+        }
+    }
+
+    /**
+     * Thrown when a non-owner party member attempts to start a dungeon run. Only the current party
+     * owner may start a run for the party.
+     */
+    public static class PartyStartPermissionException extends RuntimeException {
+
+        private final UUID playerId;
+
+        /**
+         * Creates a new permission exception.
+         *
+         * @param playerId the non-owner player who attempted the start
+         */
+        public PartyStartPermissionException(@Nonnull UUID playerId) {
+            super("Player " + playerId + " is not the party owner and cannot start a dungeon run");
+            this.playerId = Objects.requireNonNull(playerId, "playerId");
+        }
+
+        /**
+         * Returns the non-owner player who attempted the start.
+         *
+         * @return the player UUID
+         */
+        @Nonnull
+        public UUID getPlayerId() {
+            return playerId;
+        }
+    }
+
+    /**
+     * Thrown when a roster member's prior instance is still {@code CREATING} or
+     * {@code TRANSITIONING} and therefore cannot be migrated from during a new start.
+     */
+    public static class UnsafePriorInstanceException extends RuntimeException {
+
+        private final UUID playerId;
+        private final String priorInstanceId;
+        private final transient DungeonInstanceState priorState;
+
+        /**
+         * Creates a new unsafe-prior-instance exception.
+         *
+         * @param playerId        the roster member with the unsafe prior instance
+         * @param priorInstanceId the prior instance identifier
+         * @param priorState      the prior instance state
+         */
+        public UnsafePriorInstanceException(
+                @Nonnull UUID playerId,
+                @Nonnull String priorInstanceId,
+                @Nonnull DungeonInstanceState priorState
+        ) {
+            super("Player " + playerId + " has a prior instance " + priorInstanceId
+                    + " in state " + priorState + " that cannot be migrated");
+            this.playerId = Objects.requireNonNull(playerId, "playerId");
+            this.priorInstanceId = Objects.requireNonNull(priorInstanceId, "priorInstanceId");
+            this.priorState = Objects.requireNonNull(priorState, "priorState");
+        }
+
+        /**
+         * Returns the roster member with the unsafe prior instance.
+         *
+         * @return the player UUID
+         */
+        @Nonnull
+        public UUID getPlayerId() {
+            return playerId;
+        }
+
+        /**
+         * Returns the prior instance identifier.
+         *
+         * @return the prior instance id
+         */
+        @Nonnull
+        public String getPriorInstanceId() {
+            return priorInstanceId;
+        }
+
+        /**
+         * Returns the prior instance state.
+         *
+         * @return the prior instance state
+         */
+        @Nonnull
+        public DungeonInstanceState getPriorState() {
+            return priorState;
+        }
+    }
+
+    /**
+     * Thrown when a Continue group expansion cannot proceed because bringing the owner's party into
+     * the instance would exceed the active member cap. Members active in a different instance are
+     * migrated rather than blocked, so this is now only raised for capacity.
+     */
+    public static class ContinueRosterExpansionException extends RuntimeException {
+
+        private final Set<UUID> blockedPlayers;
+        private final boolean capacityExceeded;
+
+        /**
+         * Creates a new expansion exception.
+         *
+         * @param blockedPlayers   the members locked into a different active instance
+         * @param capacityExceeded {@code true} when the expansion would exceed the active cap
+         */
+        public ContinueRosterExpansionException(@Nonnull Set<UUID> blockedPlayers, boolean capacityExceeded) {
+            super(capacityExceeded
+                    ? "Continue expansion would exceed the active member cap"
+                    : "Continue expansion blocked by members in another active instance: " + blockedPlayers);
+            this.blockedPlayers = Set.copyOf(blockedPlayers);
+            this.capacityExceeded = capacityExceeded;
+        }
+
+        /**
+         * Returns the members locked into a different active instance.
+         *
+         * @return immutable set of blocked player UUIDs
+         */
+        @Nonnull
+        public Set<UUID> getBlockedPlayers() {
+            return blockedPlayers;
+        }
+
+        /**
+         * Returns whether the failure was caused by exceeding the active member cap.
+         *
+         * @return {@code true} if the cap would have been exceeded
+         */
+        public boolean isCapacityExceeded() {
+            return capacityExceeded;
+        }
+    }
+
+    /**
+     * Thrown when a Continue request cannot proceed because the target dungeon world is not
+     * currently loaded. No membership changes are made when this is thrown.
+     */
+    public static class ContinueWorldUnavailableException extends RuntimeException {
+
+        private final transient DungeonInstance instance;
+
+        /**
+         * Creates a new world-unavailable exception.
+         *
+         * @param instance the instance whose world is not loaded
+         */
+        public ContinueWorldUnavailableException(@Nonnull DungeonInstance instance) {
+            super("Dungeon world " + instance.worldName() + " for instance "
+                    + instance.instanceId() + " is not loaded");
+            this.instance = Objects.requireNonNull(instance, "instance");
+        }
+
+        /**
+         * Returns the instance whose world is not loaded.
+         *
+         * @return the instance
+         */
+        @Nonnull
+        public DungeonInstance getInstance() {
+            return instance;
         }
     }
 }

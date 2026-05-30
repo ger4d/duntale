@@ -31,6 +31,7 @@ import java.time.Instant;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.List;
+import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
@@ -46,6 +47,7 @@ import java.util.concurrent.CompletionException;
  * /dungeon end <instanceId>
  * /dungeon player <uuid>
  * /dungeon start
+ * /dungeon leave
  * /dungeon tpout
  * /dungeon transition <instanceId>
  * /dungeon floorconfig [floor]
@@ -71,26 +73,44 @@ public class DungeonCommand extends CommandBase {
 
     private final DungeonInstanceService dungeonInstanceService;
     private final FloorConfigService floorConfigService;
+    private final SharedWorldRouter sharedWorldRouter;
+
+    /** Routes a player back to the shared hub world with a status message. */
+    @FunctionalInterface
+    public interface SharedWorldRouter {
+
+        /**
+         * Routes the given player to the shared world.
+         *
+         * @param playerRef the player to route
+         * @param statusMessage the message to send during routing
+         */
+        void route(@Nonnull PlayerRef playerRef, @Nonnull Message statusMessage);
+    }
 
     /**
      * Creates the /dungeon admin command.
      *
      * @param dungeonInstanceService the dungeon instance service
      * @param floorConfigService     the floor config service for per-floor overrides
+     * @param sharedWorldRouter      callback for routing players back to the shared world
      */
     public DungeonCommand(
             @Nonnull DungeonInstanceService dungeonInstanceService,
-            @Nonnull FloorConfigService floorConfigService
+            @Nonnull FloorConfigService floorConfigService,
+            @Nonnull SharedWorldRouter sharedWorldRouter
     ) {
         super("dungeon", "Manage dungeon instances");
-        this.dungeonInstanceService = dungeonInstanceService;
-        this.floorConfigService = floorConfigService;
+        this.dungeonInstanceService = Objects.requireNonNull(dungeonInstanceService, "dungeonInstanceService");
+        this.floorConfigService = Objects.requireNonNull(floorConfigService, "floorConfigService");
+        this.sharedWorldRouter = Objects.requireNonNull(sharedWorldRouter, "sharedWorldRouter");
 
         this.addSubCommand(new ListSubCommand());
         this.addSubCommand(new InfoSubCommand());
         this.addSubCommand(new EndSubCommand());
         this.addSubCommand(new PlayerSubCommand());
         this.addSubCommand(new StartSubCommand());
+        this.addSubCommand(new LeaveSubCommand());
         this.addSubCommand(new TpOutSubCommand());
         this.addSubCommand(new TransitionSubCommand());
         this.addSubCommand(new FloorConfigSubCommand());
@@ -99,7 +119,7 @@ public class DungeonCommand extends CommandBase {
     @Override
     protected void executeSync(@Nonnull CommandContext context) {
         context.sendMessage(
-            Message.raw("Usage: /dungeon list|info|end|player|start|tpout|transition|floorconfig").color(YELLOW)
+            Message.raw("Usage: /dungeon list|info|end|player|start|leave|tpout|transition|floorconfig").color(YELLOW)
         );
         context.sendMessage(
                 Message.raw("  list").color(GOLD)
@@ -120,6 +140,10 @@ public class DungeonCommand extends CommandBase {
         context.sendMessage(
             Message.raw("  start").color(GOLD)
                 .insert(Message.raw(" — start a dungeon instance (uses party or solo; theme comes from floor config)").color(GRAY))
+        );
+        context.sendMessage(
+            Message.raw("  leave").color(GOLD)
+                .insert(Message.raw(" — leave your active dungeon and return to the village").color(GRAY))
         );
         context.sendMessage(
             Message.raw("  tpout").color(GOLD)
@@ -394,7 +418,16 @@ public class DungeonCommand extends CommandBase {
                         while (cause instanceof CompletionException && cause.getCause() != null) {
                             cause = cause.getCause();
                         }
-                        if (cause instanceof DungeonInstanceService.RosterValidationException rve) {
+                        if (cause instanceof DungeonInstanceService.PartyStartPermissionException) {
+                            context.sendMessage(
+                                    Message.raw("Only the party owner can start a dungeon run.").color(RED)
+                            );
+                        } else if (cause instanceof DungeonInstanceService.UnsafePriorInstanceException) {
+                            context.sendMessage(
+                                    Message.raw("Cannot start: a party member is still entering or "
+                                            + "changing floors in another dungeon. Try again shortly.").color(RED)
+                            );
+                        } else if (cause instanceof DungeonInstanceService.RosterValidationException rve) {
                             StringBuilder names = new StringBuilder();
                             for (UUID blocked : rve.getBlockedPlayers()) {
                                 if (!names.isEmpty()) names.append(", ");
@@ -416,11 +449,54 @@ public class DungeonCommand extends CommandBase {
     }
 
     // ============================================
+    // leave
+    // ============================================
+
+    private class LeaveSubCommand extends AbstractPlayerCommand {
+
+        LeaveSubCommand() {
+            super("leave", "Leave your active dungeon instance");
+        }
+
+        @Override
+        protected void execute(
+                @Nonnull CommandContext context,
+                @Nonnull Store<EntityStore> store,
+                @Nonnull Ref<EntityStore> ref,
+                @Nonnull PlayerRef playerRef,
+                @Nonnull World world
+        ) {
+            UUID playerId = playerRef.getUuid();
+
+            dungeonInstanceService.leaveInstanceForPlayer(playerId)
+                    .thenAccept(result -> {
+                        switch (result.status()) {
+                            case NOT_IN_INSTANCE -> context.sendMessage(
+                                    Message.raw("You are not in an active dungeon.").color(YELLOW));
+                        case LEFT_WITH_REMAINING -> sharedWorldRouter.route(
+                            playerRef,
+                            Message.raw("You left the dungeon. Your party members can continue it.")
+                                .color(GREEN));
+                        case ENDED_LAST_MEMBER -> sharedWorldRouter.route(
+                            playerRef,
+                            Message.raw("You left the dungeon. As the last member, the run was ended.")
+                                .color(GREEN));
+                        }
+                    })
+                    .exceptionally(throwable -> {
+                        context.sendMessage(
+                                Message.raw("Failed to leave dungeon: " + describeFailure(throwable)).color(RED)
+                        );
+                        return null;
+                    });
+        }
+    }
+
+    // ============================================
     // tpout
     // ============================================
 
     private class TpOutSubCommand extends AbstractPlayerCommand {
-
         TpOutSubCommand() {
             super("tpout", "Teleport near your active dungeon floor exit");
         }

@@ -319,6 +319,7 @@ class DungeonInstanceServiceTest {
             UUID member = UUID.randomUUID();
             assertTrue(partyService.createParty(owner));
             assertEquals(PartyService.InviteResult.SUCCESS, partyService.invitePlayer(owner, member));
+            assertEquals(PartyService.InviteResponseResult.SUCCESS, partyService.acceptInvite(member, owner));
 
             DungeonInstance active = service.createInstanceForPlayer(owner, 1).join();
 
@@ -633,6 +634,7 @@ class DungeonInstanceServiceTest {
                     database, instanceRepository, membershipRepository, partyService, floorConfigService, runtime);
             assertTrue(partyService.createParty(playerA));
             assertEquals(PartyService.InviteResult.SUCCESS, partyService.invitePlayer(playerA, playerB));
+            assertEquals(PartyService.InviteResponseResult.SUCCESS, partyService.acceptInvite(playerB, playerA));
 
             DungeonInstance active = service.createInstanceForPlayer(playerA, 1).join();
             runtime.teleportedPlayers.clear();
@@ -1445,9 +1447,14 @@ class DungeonInstanceServiceTest {
             UUID newPartyMember = UUID.randomUUID();
             assertTrue(partyService.createParty(owner));
             assertEquals(PartyService.InviteResult.SUCCESS, partyService.invitePlayer(owner, originalMember));
+            assertEquals(PartyService.InviteResponseResult.SUCCESS,
+                partyService.acceptInvite(originalMember, owner));
             DungeonInstance original = service.createInstanceForPlayer(owner, 3).join();
-            assertTrue(partyService.leaveParty(originalMember));
+            assertEquals(PartyService.DepartureOutcome.LEFT_AS_MEMBER,
+                partyService.leaveParty(originalMember).outcome());
             assertEquals(PartyService.InviteResult.SUCCESS, partyService.invitePlayer(owner, newPartyMember));
+            assertEquals(PartyService.InviteResponseResult.SUCCESS,
+                partyService.acceptInvite(newPartyMember, owner));
 
             DungeonInstance restarted = service.restartInstanceAtFloor(original.instanceId(), 2).join();
 
@@ -1492,6 +1499,319 @@ class DungeonInstanceServiceTest {
                 instanceRepository.findById(original.instanceId()).orElseThrow().state());
         }
         }
+
+    // ============================================
+    // createInstanceForPlayer — ownership & migration
+    // ============================================
+
+    @Nested
+    @DisplayName("createInstanceForPlayer ownership & migration")
+    class CreateInstanceForPlayerFlow {
+
+        private PartyService partyService;
+        private FakeRuntime runtime;
+
+        @BeforeEach
+        void wire() {
+            runtime = new FakeRuntime();
+            partyService = new PartyService();
+            service = new DungeonInstanceService(
+                    database, instanceRepository, membershipRepository, partyService, floorConfigService, runtime);
+        }
+
+        private void join(UUID owner, UUID member) {
+            assertEquals(PartyService.InviteResult.SUCCESS, partyService.invitePlayer(owner, member));
+            assertEquals(PartyService.InviteResponseResult.SUCCESS, partyService.acceptInvite(member, owner));
+        }
+
+        @Test
+        @DisplayName("Should reject a non-owner party member starting a run")
+        void shouldRejectNonOwnerStart() {
+            UUID owner = UUID.randomUUID();
+            UUID member = UUID.randomUUID();
+            assertTrue(partyService.createParty(owner));
+            join(owner, member);
+
+            CompletionException ex = assertThrows(CompletionException.class,
+                    () -> service.createInstanceForPlayer(member, 1).join());
+
+            assertTrue(ex.getCause() instanceof DungeonInstanceService.PartyStartPermissionException);
+        }
+
+        @Test
+        @DisplayName("Should start a solo run for a player with no party")
+        void shouldStartSoloRun() throws SQLException {
+            UUID player = UUID.randomUUID();
+
+            DungeonInstance instance = service.createInstanceForPlayer(player, 1).join();
+
+            assertEquals(DungeonInstanceState.ACTIVE, instance.state());
+            assertEquals(Set.of(player), membershipRepository.findPlayerIdsByInstance(instance.instanceId()));
+        }
+
+        @Test
+        @DisplayName("Should migrate a solo player out of a prior active instance and end the emptied instance")
+        void shouldMigrateSoloPlayerAndEndEmptiedInstance() throws SQLException {
+            UUID player = UUID.randomUUID();
+            DungeonInstance first = service.createInstanceForPlayer(player, 1).join();
+
+            DungeonInstance second = service.createInstanceForPlayer(player, 2).join();
+
+            assertFalse(first.instanceId().equals(second.instanceId()));
+            assertEquals(DungeonInstanceState.ENDED,
+                    instanceRepository.findById(first.instanceId()).orElseThrow().state());
+            assertEquals(DungeonInstanceState.ACTIVE, second.state());
+            assertEquals(Set.of(player), membershipRepository.findPlayerIdsByInstance(second.instanceId()));
+            assertEquals(second.instanceId(),
+                    membershipRepository.findNonEndedInstanceIdByPlayer(player).orElse(null));
+                assertTrue(runtime.armedWorlds.contains(first.worldName()));
+                assertFalse(runtime.cleanedWorlds.contains(first.worldName()));
+        }
+
+        @Test
+        @DisplayName("Should migrate the whole party when the owner starts a fresh run")
+        void shouldMigratePartyOnOwnerRestart() throws SQLException {
+            UUID owner = UUID.randomUUID();
+            UUID member = UUID.randomUUID();
+            assertTrue(partyService.createParty(owner));
+            join(owner, member);
+            DungeonInstance first = service.createInstanceForPlayer(owner, 1).join();
+
+            DungeonInstance second = service.createInstanceForPlayer(owner, 2).join();
+
+            assertEquals(DungeonInstanceState.ENDED,
+                    instanceRepository.findById(first.instanceId()).orElseThrow().state());
+            assertEquals(Set.of(owner, member),
+                    membershipRepository.findPlayerIdsByInstance(second.instanceId()));
+        }
+    }
+
+    // ============================================
+    // continueInstanceForPlayer
+    // ============================================
+
+    @Nested
+    @DisplayName("continueInstanceForPlayer")
+    class ContinueInstanceForPlayerFlow {
+
+        private PartyService partyService;
+        private FakeRuntime runtime;
+
+        @BeforeEach
+        void wire() {
+            runtime = new FakeRuntime();
+            partyService = new PartyService();
+            service = new DungeonInstanceService(
+                    database, instanceRepository, membershipRepository, partyService, floorConfigService, runtime);
+        }
+
+        private void join(UUID owner, UUID member) {
+            assertEquals(PartyService.InviteResult.SUCCESS, partyService.invitePlayer(owner, member));
+            assertEquals(PartyService.InviteResponseResult.SUCCESS, partyService.acceptInvite(member, owner));
+        }
+
+        @Test
+        @DisplayName("Should fail when the player has no active instance")
+        void shouldFailWhenNoActiveInstance() {
+            UUID player = UUID.randomUUID();
+
+            CompletionException ex = assertThrows(CompletionException.class,
+                    () -> service.continueInstanceForPlayer(player).join());
+
+            assertTrue(ex.getCause() instanceof IllegalStateException);
+        }
+
+        @Test
+        @DisplayName("Should fail without mutation when the target world is not loaded")
+        void shouldFailWhenWorldUnloaded() throws SQLException {
+            UUID player = UUID.randomUUID();
+            DungeonInstance instance = service.createInstanceForPlayer(player, 1).join();
+            runtime.markWorldUnloaded(instance.worldName());
+
+            CompletionException ex = assertThrows(CompletionException.class,
+                    () -> service.continueInstanceForPlayer(player).join());
+
+            assertTrue(ex.getCause() instanceof DungeonInstanceService.ContinueWorldUnavailableException);
+            assertEquals(Set.of(player),
+                    membershipRepository.findPlayerIdsByInstance(instance.instanceId()));
+        }
+
+        @Test
+        @DisplayName("Should route only the initiator when they are not a party owner")
+        void shouldRouteOnlySelfForNonOwner() {
+            UUID player = UUID.randomUUID();
+            service.createInstanceForPlayer(player, 1).join();
+
+            DungeonInstanceService.ContinueTeleportResult result =
+                    service.continueInstanceForPlayer(player).join();
+
+            assertFalse(result.partyOwnerInitiated());
+            assertEquals(Set.of(player), result.teleported());
+        }
+
+        @Test
+        @DisplayName("Should reactivate a left member and add a new member when the owner continues")
+        void shouldReactivateAndAddOnOwnerContinue() throws SQLException {
+            UUID owner = UUID.randomUUID();
+            UUID member = UUID.randomUUID();
+            UUID added = UUID.randomUUID();
+            assertTrue(partyService.createParty(owner));
+            join(owner, member);
+            DungeonInstance instance = service.createInstanceForPlayer(owner, 1).join();
+            service.leaveInstanceForPlayer(member).join();
+            join(owner, added);
+
+            DungeonInstanceService.ContinueTeleportResult result =
+                    service.continueInstanceForPlayer(owner).join();
+
+            assertTrue(result.partyOwnerInitiated());
+            assertEquals(Set.of(owner, member, added),
+                    membershipRepository.findPlayerIdsByInstance(instance.instanceId()));
+        }
+
+        @Test
+        @DisplayName("Should migrate a member out of another active instance when the owner continues")
+        void shouldMigrateMemberFromAnotherInstanceOnContinue() throws SQLException {
+            UUID owner = UUID.randomUUID();
+            UUID member = UUID.randomUUID();
+            assertTrue(partyService.createParty(owner));
+            DungeonInstance ownerInstance = service.createInstanceForPlayer(owner, 1).join();
+            service.createInstance(
+                    testInstanceWithState("inst-other", "world-other", DungeonInstanceState.ACTIVE),
+                    List.of(member));
+            join(owner, member);
+
+            DungeonInstanceService.ContinueTeleportResult result =
+                    service.continueInstanceForPlayer(owner).join();
+
+            assertTrue(result.partyOwnerInitiated());
+            assertEquals(Set.of(owner, member),
+                    membershipRepository.findPlayerIdsByInstance(ownerInstance.instanceId()));
+            assertTrue(membershipRepository.findPlayerIdsByInstance("inst-other").isEmpty());
+            assertEquals(DungeonInstanceState.ENDED,
+                    instanceRepository.findById("inst-other").orElseThrow().state());
+            assertTrue(runtime.armedWorlds.contains("world-other"));
+        }
+
+        @Test
+        @DisplayName("Should fail without mutation when continuing would exceed the member cap")
+        void shouldFailWhenContinueExceedsCapacity() throws SQLException {
+            UUID owner = UUID.randomUUID();
+            UUID b = UUID.randomUUID();
+            UUID c = UUID.randomUUID();
+            UUID d = UUID.randomUUID();
+            UUID e = UUID.randomUUID();
+            UUID f = UUID.randomUUID();
+            UUID g = UUID.randomUUID();
+            DungeonInstance target = service.createInstance(List.of(owner, b, c, d, e), 1).join();
+            assertTrue(partyService.createParty(owner));
+            join(owner, b);
+            join(owner, c);
+            join(owner, d);
+            join(owner, f);
+            join(owner, g);
+
+            CompletionException ex = assertThrows(CompletionException.class,
+                    () -> service.continueInstanceForPlayer(owner).join());
+
+            DungeonInstanceService.ContinueRosterExpansionException cause =
+                    (DungeonInstanceService.ContinueRosterExpansionException) ex.getCause();
+            assertTrue(cause.isCapacityExceeded());
+            assertEquals(Set.of(owner, b, c, d, e),
+                    membershipRepository.findPlayerIdsByInstance(target.instanceId()));
+        }
+
+        @Test
+        @DisplayName("Should skip teleport for members already in the world or offline")
+        void shouldSkipAlreadyInWorldAndOffline() {
+            UUID owner = UUID.randomUUID();
+            UUID member = UUID.randomUUID();
+            assertTrue(partyService.createParty(owner));
+            join(owner, member);
+            DungeonInstance instance = service.createInstanceForPlayer(owner, 1).join();
+            runtime.setPlayerWorld(owner, instance.worldName());
+            runtime.markPlayerOffline(member);
+
+            DungeonInstanceService.ContinueTeleportResult result =
+                    service.continueInstanceForPlayer(owner).join();
+
+            assertTrue(result.alreadyInWorld().contains(owner));
+            assertTrue(result.offlineSkipped().contains(member));
+            assertTrue(result.teleported().isEmpty());
+        }
+    }
+
+    // ============================================
+    // leaveInstanceForPlayer
+    // ============================================
+
+    @Nested
+    @DisplayName("leaveInstanceForPlayer")
+    class LeaveInstanceForPlayerFlow {
+
+        private PartyService partyService;
+        private FakeRuntime runtime;
+
+        @BeforeEach
+        void wire() {
+            runtime = new FakeRuntime();
+            partyService = new PartyService();
+            service = new DungeonInstanceService(
+                    database, instanceRepository, membershipRepository, partyService, floorConfigService, runtime);
+        }
+
+        private void join(UUID owner, UUID member) {
+            assertEquals(PartyService.InviteResult.SUCCESS, partyService.invitePlayer(owner, member));
+            assertEquals(PartyService.InviteResponseResult.SUCCESS, partyService.acceptInvite(member, owner));
+        }
+
+        @Test
+        @DisplayName("Should report NOT_IN_INSTANCE when the player has no active instance")
+        void shouldReportNotInInstance() {
+            UUID player = UUID.randomUUID();
+
+            DungeonInstanceService.DungeonLeaveResult result =
+                    service.leaveInstanceForPlayer(player).join();
+
+            assertEquals(DungeonInstanceService.LeaveStatus.NOT_IN_INSTANCE, result.status());
+        }
+
+        @Test
+        @DisplayName("Should mark only the caller left while members remain")
+        void shouldLeaveWithRemaining() throws SQLException {
+            UUID owner = UUID.randomUUID();
+            UUID member = UUID.randomUUID();
+            assertTrue(partyService.createParty(owner));
+            join(owner, member);
+            DungeonInstance instance = service.createInstanceForPlayer(owner, 1).join();
+
+            DungeonInstanceService.DungeonLeaveResult result =
+                    service.leaveInstanceForPlayer(member).join();
+
+            assertEquals(DungeonInstanceService.LeaveStatus.LEFT_WITH_REMAINING, result.status());
+            assertNull(membershipRepository.findNonEndedInstanceIdByPlayer(member).orElse(null));
+            assertEquals(instance.instanceId(),
+                    membershipRepository.findNonEndedInstanceIdByPlayer(owner).orElse(null));
+            assertEquals(DungeonInstanceState.ACTIVE,
+                    instanceRepository.findById(instance.instanceId()).orElseThrow().state());
+        }
+
+        @Test
+        @DisplayName("Should end the instance and arm its world when the last member leaves")
+        void shouldEndInstanceOnLastMemberLeave() throws SQLException {
+            UUID player = UUID.randomUUID();
+            DungeonInstance instance = service.createInstanceForPlayer(player, 1).join();
+
+            DungeonInstanceService.DungeonLeaveResult result =
+                    service.leaveInstanceForPlayer(player).join();
+
+            assertEquals(DungeonInstanceService.LeaveStatus.ENDED_LAST_MEMBER, result.status());
+            assertEquals(DungeonInstanceState.ENDED,
+                    instanceRepository.findById(instance.instanceId()).orElseThrow().state());
+                assertTrue(runtime.armedWorlds.contains(instance.worldName()));
+                assertFalse(runtime.cleanedWorlds.contains(instance.worldName()));
+        }
+    }
 
     // ============================================
     // query helpers
@@ -1684,6 +2004,13 @@ class DungeonInstanceServiceTest {
         private boolean cleanupRequiresLoadedWorlds;
         private boolean worldsLoadedForCleanup = true;
 
+        private final java.util.Set<String> unloadedWorlds = new java.util.HashSet<>();
+        private final java.util.Map<UUID, String> playerWorlds = new java.util.HashMap<>();
+        private final java.util.Set<UUID> offlinePlayers = new java.util.HashSet<>();
+        private final List<UUID> outsideTeleportedPlayers = new ArrayList<>();
+        private final List<UUID> alreadyInWorldPlayers = new ArrayList<>();
+        private final List<UUID> offlineSkippedPlayers = new ArrayList<>();
+
         @Override
         public CompletableFuture<DungeonInstanceService.InstanceWorld> createWorld(
                 String worldName,
@@ -1763,6 +2090,55 @@ class DungeonInstanceServiceTest {
             evacuationSourceWorlds.add(sourceWorldName);
             evacuatedPlayers.addAll(playerIds);
             return CompletableFuture.completedFuture(null);
+        }
+
+        @Override
+        public boolean isWorldLoaded(String worldName) {
+            return !unloadedWorlds.contains(worldName);
+        }
+
+        @Override
+        public CompletableFuture<DungeonInstanceService.TeleportOutcome> teleportTargetsIfOutsideWorld(
+                Collection<UUID> playerIds,
+                String targetWorldName,
+                Vec3i entrancePosition
+        ) {
+            java.util.Set<UUID> teleported = new java.util.LinkedHashSet<>();
+            java.util.Set<UUID> alreadyInWorld = new java.util.LinkedHashSet<>();
+            java.util.Set<UUID> offlineSkipped = new java.util.LinkedHashSet<>();
+            for (UUID playerId : playerIds) {
+                if (offlinePlayers.contains(playerId)) {
+                    offlineSkipped.add(playerId);
+                    continue;
+                }
+                String currentWorld = playerWorlds.get(playerId);
+                if (targetWorldName.equalsIgnoreCase(currentWorld)) {
+                    alreadyInWorld.add(playerId);
+                } else {
+                    teleported.add(playerId);
+                    playerWorlds.put(playerId, targetWorldName);
+                }
+            }
+            outsideTeleportedPlayers.addAll(teleported);
+            alreadyInWorldPlayers.addAll(alreadyInWorld);
+            offlineSkippedPlayers.addAll(offlineSkipped);
+            return CompletableFuture.completedFuture(
+                    new DungeonInstanceService.TeleportOutcome(teleported, alreadyInWorld, offlineSkipped));
+        }
+
+        private FakeRuntime markWorldUnloaded(String worldName) {
+            unloadedWorlds.add(worldName);
+            return this;
+        }
+
+        private FakeRuntime setPlayerWorld(UUID playerId, String worldName) {
+            playerWorlds.put(playerId, worldName);
+            return this;
+        }
+
+        private FakeRuntime markPlayerOffline(UUID playerId) {
+            offlinePlayers.add(playerId);
+            return this;
         }
 
         private FakeRuntime requireLoadedWorldsForCleanup() {

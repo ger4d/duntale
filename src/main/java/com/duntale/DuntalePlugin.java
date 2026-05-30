@@ -559,7 +559,8 @@ public class DuntalePlugin extends JavaPlugin {
         this.getCommandRegistry().registerCommand(new MerchantCommand(merchantService, catalogGenerator));
         this.getCommandRegistry().registerCommand(new StatAssignCommand(rpgService));
         this.getCommandRegistry().registerCommand(new CompanionCommand(companionService));
-        this.getCommandRegistry().registerCommand(new DungeonCommand(dungeonInstanceService, floorConfigService));
+        this.getCommandRegistry().registerCommand(
+            new DungeonCommand(dungeonInstanceService, floorConfigService, this::routePlayerToSharedWorld));
         this.getCommandRegistry().registerCommand(new PartyCommand(partyService));
 
         // ── Player join/leave events ─────────────────────────────────
@@ -1167,12 +1168,35 @@ public class DuntalePlugin extends JavaPlugin {
         }
 
         closeCustomPage(ref, store);
-        store.addComponent(
-                ref,
-                Teleport.getComponentType(),
-                Teleport.createForPlayer(targetWorld, toPlayerTransform(continueRoute.instance().entrancePosition()))
-        );
-        playerRef.sendMessage(Message.raw("Continuing your dungeon run...").color("#FFD700"));
+        dungeonInstanceService.continueInstanceForPlayer(playerId)
+                .thenAccept(result -> playerRef.sendMessage(
+                        Message.raw("Continuing your dungeon run...").color("#FFD700")))
+                .exceptionally(throwable -> {
+                    Throwable cause = unwrapCompletionException(throwable);
+                    if (cause instanceof DungeonInstanceService.ContinueRosterExpansionException) {
+                        playerRef.sendMessage(Message.raw(
+                                "Cannot continue: your party would exceed the dungeon's member limit.")
+                                .color("#FF5555"));
+                    } else if (cause instanceof DungeonInstanceService.UnsafePriorInstanceException) {
+                        playerRef.sendMessage(Message.raw(
+                                "Cannot continue: a party member is still entering or changing floors in "
+                                        + "another dungeon. Try again shortly.")
+                                .color("#FF5555"));
+                    } else if (cause instanceof DungeonInstanceService.ContinueWorldUnavailableException) {
+                        playerRef.sendMessage(Message.raw(
+                                "Your dungeon world is no longer available. Routing to village.").color("#FF5555"));
+                        runOnPlayerWorld(playerRef, (currentRef, currentStore) ->
+                                routeToSharedWorld(currentRef, currentStore, playerRef,
+                                        Message.raw("Entering village.").color("#55FF55")));
+                    } else {
+                        LOGGER.atWarning()
+                                .withCause(cause)
+                                .log("Continue failed for player %s", playerId);
+                        playerRef.sendMessage(Message.raw(
+                                "Continue failed: " + describeFailure(throwable)).color("#FF5555"));
+                    }
+                    return null;
+                });
     }
 
     void handleEntryVillage(
@@ -1207,35 +1231,9 @@ public class DuntalePlugin extends JavaPlugin {
     ) {
         closeCustomPage(ref, store);
 
-        UUID playerId = playerRef.getUuid();
-        DungeonInstance activeInstance;
-        try {
-            activeInstance = dungeonInstanceService.getActiveInstance(playerId);
-        } catch (SQLException e) {
-            LOGGER.atWarning()
-                    .withCause(e)
-                    .log("Failed to resolve current dungeon before starting a new portal run for player %s", playerId);
-            playerRef.sendMessage(Message.raw("Unable to resolve your current dungeon run right now.").color(COLOR_RED));
-            return;
-        }
-
-        if (activeInstance == null) {
-            startDungeonInstanceForPortal(playerRef);
-            return;
-        }
-
-        try {
-            dungeonInstanceService.forceEndInstance(activeInstance.instanceId())
-                    .thenRun(() -> startDungeonInstanceForPortal(playerRef))
-                    .exceptionally(throwable -> {
-                        playerRef.sendMessage(
-                                Message.raw("Force-end failed: " + describeFailure(throwable)).color(COLOR_RED)
-                        );
-                        return null;
-                    });
-        } catch (SQLException | IllegalArgumentException | IllegalStateException e) {
-            playerRef.sendMessage(Message.raw("Force-end failed: " + describeFailure(e)).color(COLOR_RED));
-        }
+        // Player-initiated new runs migrate the caller (and owner-started party rosters) out of any
+        // prior active instance instead of force-ending a shared instance for remaining members.
+        startDungeonInstanceForPortal(playerRef);
     }
 
     void handlePortalCancel(@Nonnull Ref<EntityStore> ref, @Nonnull Store<EntityStore> store) {
@@ -1290,69 +1288,10 @@ public class DuntalePlugin extends JavaPlugin {
     }
 
     /**
-     * Handles the paid lower-floor restart action from the dungeon death page.
-     *
-     * @param ref the player's current entity reference
-     * @param store the player's current entity store
-     * @param playerRef the dead player's player reference
-     */
-    public void handleDungeonRespawnLowerFloor(
-            @Nonnull Ref<EntityStore> ref,
-            @Nonnull Store<EntityStore> store,
-            @Nonnull PlayerRef playerRef
-    ) {
-        DungeonDeathContext context = resolveLiveDungeonDeathContext(ref, store, playerRef);
-        if (context == null || !ensureDungeonDeathComponent(ref, store, playerRef)) {
-            return;
-        }
-        if (!context.lowerFloorAvailable()) {
-            playerRef.sendMessage(Message.raw("There is no lower dungeon floor to restart on.").color(COLOR_RED));
-            reopenDungeonDeathPage(ref, store, playerRef);
-            return;
-        }
-
-        UUID playerId = playerRef.getUuid();
-        long cost = context.lowerFloorCost();
-        int targetFloor = context.instance().floorLevel() - 1;
-        if (!dungeonRespawnService.chargeGold(playerId, cost)) {
-            sendInsufficientGold(playerRef, cost, context.balance());
-            reopenDungeonDeathPage(ref, store, playerRef);
-            return;
-        }
-
-        DeathComponent.respawn(store, ref)
-                .thenCompose(unused -> restartDungeonInstanceAtFloor(context.instance().instanceId(), targetFloor))
-                .thenCompose(newInstance -> runOnPlayerWorld(playerRef, (currentRef, currentStore) -> {
-                    closeCustomPage(currentRef, currentStore);
-                    playerRef.sendMessage(
-                            Message.raw("Restarting on Floor " + newInstance.floorLevel() + " for ")
-                                    .color(COLOR_GREEN)
-                                    .insert(Message.raw(formatGold(cost)).color("#FFD700").bold(true))
-                                    .insert(Message.raw(" gold. Balance: "
-                                            + formatGold(goldService.getBalance(playerId))).color(COLOR_GREEN))
-                    );
-                }))
-                .exceptionally(throwable -> {
-                    dungeonRespawnService.refundGold(playerId, cost);
-                    playerRef.sendMessage(
-                            Message.raw("Lower-floor restart failed: " + describeFailure(throwable)).color(COLOR_RED)
-                    );
-                    runOnPlayerWorld(playerRef, (currentRef, currentStore) -> {
-                        if (currentStore.getComponent(currentRef, DeathComponent.getComponentType()) != null) {
-                            reopenDungeonDeathPage(currentRef, currentStore, playerRef);
-                        } else {
-                            closeCustomPage(currentRef, currentStore);
-                        }
-                    });
-                    return null;
-                });
-    }
-
-    /**
      * Handles the free village retreat action from the dungeon death page.
      *
-        * <p>The village option ends the active dungeon through the same force-end lifecycle as
-        * {@code /dungeon end} after the player's respawn teleport has settled.
+        * <p>The village option marks the dead player as having left the active dungeon, ending the
+        * instance only when no active members remain, after the player's respawn teleport has settled.
      *
      * @param ref the player's current entity reference
      * @param store the player's current entity store
@@ -1394,9 +1333,16 @@ public class DuntalePlugin extends JavaPlugin {
                 .thenCompose(unused -> waitForRespawnTeleportToSettle(playerRef))
                 .thenCompose(unused -> runOnPlayerWorld(playerRef, (currentRef, currentStore) ->
                         restoreBuiltInControls(currentRef, currentStore, playerRef)))
-                .thenCompose(unused -> forceEndDungeonInstance(context.instance().instanceId()))
-                .thenCompose(unused -> runOnPlayerWorld(playerRef, (currentRef, currentStore) ->
-                        playerRef.sendMessage(Message.raw("Dungeon ended. Entering village.").color(COLOR_GREEN))))
+                .thenCompose(unused -> dungeonInstanceService.leaveInstanceForPlayer(playerRef.getUuid()))
+                .thenCompose(result -> runOnPlayerWorld(playerRef, (currentRef, currentStore) ->
+                    routeToSharedWorld(currentRef, currentStore, playerRef, switch (result.status()) {
+                            case ENDED_LAST_MEMBER ->
+                                    Message.raw("Dungeon ended. Entering village.").color(COLOR_GREEN);
+                            case LEFT_WITH_REMAINING ->
+                                    Message.raw("You left the dungeon. Entering village.").color(COLOR_GREEN);
+                            case NOT_IN_INSTANCE ->
+                                    Message.raw("Entering village.").color(COLOR_GREEN);
+                        })))
                 .exceptionally(throwable -> {
                     playerRef.sendMessage(
                             Message.raw("Dungeon end failed: " + describeFailure(throwable)).color(COLOR_RED)
@@ -1426,6 +1372,19 @@ public class DuntalePlugin extends JavaPlugin {
 
     private void sendDungeonInstanceStartFailure(@Nonnull PlayerRef playerRef, @Nonnull Throwable throwable) {
         Throwable cause = unwrapCompletionException(throwable);
+        if (cause instanceof DungeonInstanceService.PartyStartPermissionException) {
+            playerRef.sendMessage(
+                    Message.raw("Only the party owner can start a dungeon run.").color(COLOR_RED)
+            );
+            return;
+        }
+        if (cause instanceof DungeonInstanceService.UnsafePriorInstanceException) {
+            playerRef.sendMessage(
+                    Message.raw("Cannot start: a party member is still entering or changing floors in "
+                            + "another dungeon. Try again shortly.").color(COLOR_RED)
+            );
+            return;
+        }
         if (cause instanceof DungeonInstanceService.RosterValidationException rosterValidationException) {
             StringBuilder names = new StringBuilder();
             Universe universe = Universe.get();
@@ -1496,6 +1455,11 @@ public class DuntalePlugin extends JavaPlugin {
                 Teleport.createForPlayer(sharedWorld, resolveSpawnTransform(sharedWorld, ref, store))
         );
         playerRef.sendMessage(statusMessage);
+    }
+
+    private void routePlayerToSharedWorld(@Nonnull PlayerRef playerRef, @Nonnull Message statusMessage) {
+        runOnPlayerWorld(playerRef, (currentRef, currentStore) ->
+                routeToSharedWorld(currentRef, currentStore, playerRef, statusMessage));
     }
 
     private void restoreBuiltInControls(
@@ -1595,18 +1559,6 @@ public class DuntalePlugin extends JavaPlugin {
                 currentWorld != null ? currentWorld.getName() : null,
                 deathComponent != null ? deathComponent.getDeathMessage() : null
         ).orElse(null);
-    }
-
-    @Nonnull
-    private CompletableFuture<DungeonInstance> restartDungeonInstanceAtFloor(
-            @Nonnull String instanceId,
-            int floorLevel
-    ) {
-        try {
-            return dungeonRespawnService.restartInstanceAtFloor(instanceId, floorLevel);
-        } catch (SQLException | IllegalArgumentException | IllegalStateException e) {
-            return CompletableFuture.failedFuture(e);
-        }
     }
 
     @Nonnull

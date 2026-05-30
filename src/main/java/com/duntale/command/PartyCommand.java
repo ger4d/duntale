@@ -9,7 +9,7 @@ import com.hypixel.hytale.server.core.command.system.CommandContext;
 import com.hypixel.hytale.server.core.command.system.arguments.system.RequiredArg;
 import com.hypixel.hytale.server.core.command.system.arguments.types.ArgTypes;
 import com.hypixel.hytale.server.core.command.system.basecommands.AbstractPlayerCommand;
-import com.hypixel.hytale.server.core.command.system.basecommands.CommandBase;
+import com.hypixel.hytale.server.core.entity.entities.Player;
 import com.hypixel.hytale.server.core.universe.PlayerRef;
 import com.hypixel.hytale.server.core.universe.Universe;
 import com.hypixel.hytale.server.core.universe.world.World;
@@ -32,13 +32,13 @@ import java.util.UUID;
  * /party list
  * }</pre>
  *
+ * <p>Running bare {@code /party} opens the interactive {@link PartyPage} UI.
+ *
  * @since 1.6.0
  */
-public class PartyCommand extends CommandBase {
+public class PartyCommand extends AbstractPlayerCommand {
 
     private static final String GOLD = "#FFD700";
-    private static final String WHITE = "#FFFFFF";
-    private static final String GRAY = "#AAAAAA";
     private static final String YELLOW = "#FFEE55";
     private static final String GREEN = "#55FF55";
     private static final String RED = "#FF5555";
@@ -57,6 +57,8 @@ public class PartyCommand extends CommandBase {
 
         this.addSubCommand(new CreateSubCommand());
         this.addSubCommand(new InviteSubCommand());
+        this.addSubCommand(new AcceptSubCommand());
+        this.addSubCommand(new DeclineSubCommand());
         this.addSubCommand(new KickSubCommand());
         this.addSubCommand(new LeaveSubCommand());
         this.addSubCommand(new DisbandSubCommand());
@@ -64,34 +66,19 @@ public class PartyCommand extends CommandBase {
     }
 
     @Override
-    protected void executeSync(@Nonnull CommandContext context) {
-        context.sendMessage(
-                Message.raw("Usage: /party create|invite|kick|leave|disband|list").color(YELLOW)
-        );
-        context.sendMessage(
-                Message.raw("  create").color(GOLD)
-                        .insert(Message.raw(" — create a new party").color(GRAY))
-        );
-        context.sendMessage(
-                Message.raw("  invite <player>").color(GOLD)
-                        .insert(Message.raw(" — invite an online player").color(GRAY))
-        );
-        context.sendMessage(
-                Message.raw("  kick <player>").color(GOLD)
-                        .insert(Message.raw(" — kick a member (owner only)").color(GRAY))
-        );
-        context.sendMessage(
-                Message.raw("  leave").color(GOLD)
-                        .insert(Message.raw(" — leave your party").color(GRAY))
-        );
-        context.sendMessage(
-                Message.raw("  disband").color(GOLD)
-                        .insert(Message.raw(" — disband your party (owner only)").color(GRAY))
-        );
-        context.sendMessage(
-                Message.raw("  list").color(GOLD)
-                        .insert(Message.raw(" — show party members").color(GRAY))
-        );
+    protected void execute(
+            @Nonnull CommandContext context,
+            @Nonnull Store<EntityStore> store,
+            @Nonnull Ref<EntityStore> ref,
+            @Nonnull PlayerRef playerRef,
+            @Nonnull World world
+    ) {
+        Player player = store.getComponent(ref, Player.getComponentType());
+        if (player == null) {
+            context.sendMessage(Message.raw("Could not resolve player.").color(RED));
+            return;
+        }
+        player.getPageManager().openCustomPage(ref, store, new PartyPage(playerRef, partyService));
     }
 
     // ============================================
@@ -149,22 +136,150 @@ public class PartyCommand extends CommandBase {
                 return;
             }
 
-            UUID ownerId = playerRef.getUuid();
-            PartyService.InviteResult result = partyService.invitePlayer(ownerId, target.getUuid());
+            UUID inviterId = playerRef.getUuid();
+            PartyService.InviteResult result = partyService.invitePlayer(inviterId, target.getUuid());
             switch (result) {
-                case SUCCESS -> context.sendMessage(
-                        Message.raw("Invited ").color(GREEN)
-                                .insert(Message.raw(target.getUsername()).color(AQUA))
-                                .insert(Message.raw(" to the party.").color(GREEN))
-                );
+                case SUCCESS -> {
+                    context.sendMessage(
+                            Message.raw("Invite sent to ").color(GREEN)
+                                    .insert(Message.raw(target.getUsername()).color(AQUA))
+                                    .insert(Message.raw(". It expires in 60s.").color(GREEN))
+                    );
+                    String inviterName = playerRef.getUsername();
+                    target.sendMessage(
+                            Message.raw(inviterName).color(AQUA)
+                                    .insert(Message.raw(" invited you to their party. Use ").color(GOLD))
+                                    .insert(Message.raw("/party accept " + inviterName).color(GREEN))
+                                    .insert(Message.raw(" or ").color(GOLD))
+                                    .insert(Message.raw("/party decline " + inviterName).color(RED))
+                                    .insert(Message.raw(".").color(GOLD))
+                    );
+                }
                 case NO_PARTY -> context.sendMessage(
                         Message.raw("You don't own a party. Create one with /party create.").color(RED)
                 );
-                case ALREADY_IN_PARTY -> context.sendMessage(
+                case NOT_OWNER -> context.sendMessage(
+                        Message.raw("Only the party owner can invite players.").color(RED)
+                );
+                case SELF -> context.sendMessage(
+                        Message.raw("You cannot invite yourself.").color(RED)
+                );
+                case TARGET_ALREADY_IN_PARTY -> context.sendMessage(
                         Message.raw("That player is already in a party.").color(RED)
                 );
                 case PARTY_FULL -> context.sendMessage(
                         Message.raw("Party is full (max " + PartyService.MAX_PARTY_SIZE + ").").color(RED)
+                );
+                case ALREADY_PENDING -> context.sendMessage(
+                        Message.raw("You already have a pending invite for that player.").color(RED)
+                );
+            }
+        }
+    }
+
+    // ============================================
+    // accept
+    // ============================================
+
+    private class AcceptSubCommand extends AbstractPlayerCommand {
+
+        private final RequiredArg<String> ownerArg =
+                this.withRequiredArg("owner", "Owner name whose invite to accept", ArgTypes.STRING);
+
+        AcceptSubCommand() {
+            super("accept", "Accept a pending party invite");
+        }
+
+        @Override
+        protected void execute(
+                @Nonnull CommandContext context,
+                @Nonnull Store<EntityStore> store,
+                @Nonnull Ref<EntityStore> ref,
+                @Nonnull PlayerRef playerRef,
+                @Nonnull World world
+        ) {
+            String ownerName = ownerArg.get(context);
+            PlayerRef owner = Universe.get().getPlayerByUsername(ownerName, NameMatching.EXACT_IGNORE_CASE);
+            if (owner == null) {
+                context.sendMessage(Message.raw("That player is not online.").color(RED));
+                return;
+            }
+
+            UUID inviteeId = playerRef.getUuid();
+            UUID ownerId = owner.getUuid();
+            PartyService.InviteResponseResult result = partyService.acceptInvite(inviteeId, ownerId);
+            switch (result) {
+                case SUCCESS -> {
+                    context.sendMessage(
+                            Message.raw("You joined ").color(GREEN)
+                                    .insert(Message.raw(owner.getUsername()).color(AQUA))
+                                    .insert(Message.raw("'s party.").color(GREEN))
+                    );
+                    Message joined = Message.raw(playerRef.getUsername()).color(AQUA)
+                            .insert(Message.raw(" joined the party.").color(GREEN));
+                    for (UUID memberId : partyService.assembleRoster(ownerId)) {
+                        if (!memberId.equals(inviteeId)) {
+                            notifyPlayer(memberId, joined);
+                        }
+                    }
+                }
+                case NO_INVITE -> context.sendMessage(
+                        Message.raw("You have no pending invite from that player.").color(RED)
+                );
+                case EXPIRED -> context.sendMessage(
+                        Message.raw("That invite has expired.").color(RED)
+                );
+                case OWNER_NO_LONGER_HAS_PARTY -> context.sendMessage(
+                        Message.raw("That player no longer has a party.").color(RED)
+                );
+                case ALREADY_IN_PARTY -> context.sendMessage(
+                        Message.raw("You are already in a party.").color(RED)
+                );
+                case PARTY_FULL -> context.sendMessage(
+                        Message.raw("That party is now full.").color(RED)
+                );
+            }
+        }
+    }
+
+    // ============================================
+    // decline
+    // ============================================
+
+    private class DeclineSubCommand extends AbstractPlayerCommand {
+
+        private final RequiredArg<String> ownerArg =
+                this.withRequiredArg("owner", "Owner name whose invite to decline", ArgTypes.STRING);
+
+        DeclineSubCommand() {
+            super("decline", "Decline a pending party invite");
+        }
+
+        @Override
+        protected void execute(
+                @Nonnull CommandContext context,
+                @Nonnull Store<EntityStore> store,
+                @Nonnull Ref<EntityStore> ref,
+                @Nonnull PlayerRef playerRef,
+                @Nonnull World world
+        ) {
+            String ownerName = ownerArg.get(context);
+            PlayerRef owner = Universe.get().getPlayerByUsername(ownerName, NameMatching.EXACT_IGNORE_CASE);
+            if (owner == null) {
+                context.sendMessage(Message.raw("That player is not online.").color(RED));
+                return;
+            }
+
+            UUID inviteeId = playerRef.getUuid();
+            UUID ownerId = owner.getUuid();
+            if (partyService.declineInvite(inviteeId, ownerId)) {
+                context.sendMessage(Message.raw("Invite declined.").color(YELLOW));
+                notifyPlayer(ownerId,
+                        Message.raw(playerRef.getUsername()).color(AQUA)
+                                .insert(Message.raw(" declined your party invite.").color(YELLOW)));
+            } else {
+                context.sendMessage(
+                        Message.raw("You have no pending invite from that player.").color(RED)
                 );
             }
         }
@@ -223,6 +338,11 @@ public class PartyCommand extends CommandBase {
                                 .insert(Message.raw(target.getUsername()).color(AQUA))
                                 .insert(Message.raw(" from the party.").color(GREEN))
                 );
+                target.sendMessage(
+                        Message.raw("You were kicked from ").color(RED)
+                                .insert(Message.raw(playerRef.getUsername()).color(AQUA))
+                                .insert(Message.raw("'s party.").color(RED))
+                );
             } else {
                 context.sendMessage(Message.raw("Failed to kick that player.").color(RED));
             }
@@ -248,21 +368,36 @@ public class PartyCommand extends CommandBase {
                 @Nonnull World world
         ) {
             UUID playerId = playerRef.getUuid();
-            UUID ownerId = partyService.getPartyOwner(playerId).orElse(null);
-            if (ownerId == null) {
-                context.sendMessage(Message.raw("You are not in a party.").color(YELLOW));
-                return;
-            }
-
-            if (!partyService.leaveParty(playerId)) {
-                context.sendMessage(Message.raw("You are not in a party.").color(YELLOW));
-                return;
-            }
-
-            if (ownerId.equals(playerId)) {
-                context.sendMessage(Message.raw("Party disbanded.").color(GREEN));
-            } else {
-                context.sendMessage(Message.raw("You left the party.").color(GREEN));
+            PartyService.PartyDeparture departure = partyService.leaveParty(playerId);
+            switch (departure.outcome()) {
+                case NOT_IN_PARTY -> context.sendMessage(
+                        Message.raw("You are not in a party.").color(YELLOW)
+                );
+                case DISBANDED_EMPTY -> context.sendMessage(
+                        Message.raw("Party disbanded.").color(GREEN)
+                );
+                case LEFT_AS_MEMBER -> {
+                    context.sendMessage(Message.raw("You left the party.").color(GREEN));
+                    Message left = Message.raw(playerRef.getUsername()).color(AQUA)
+                            .insert(Message.raw(" left the party.").color(YELLOW));
+                    for (UUID memberId : departure.remainingMembers()) {
+                        notifyPlayer(memberId, left);
+                    }
+                }
+                case OWNERSHIP_TRANSFERRED -> {
+                    context.sendMessage(Message.raw("You left the party.").color(GREEN));
+                    UUID newOwnerId = departure.newOwnerId();
+                    Message left = Message.raw(playerRef.getUsername()).color(AQUA)
+                            .insert(Message.raw(" left the party.").color(YELLOW));
+                    for (UUID memberId : departure.remainingMembers()) {
+                        if (memberId.equals(newOwnerId)) {
+                            notifyPlayer(memberId, Message.raw(playerRef.getUsername()).color(AQUA)
+                                    .insert(Message.raw(" left. You are now the party owner.").color(GOLD)));
+                        } else {
+                            notifyPlayer(memberId, left);
+                        }
+                    }
+                }
             }
         }
     }
@@ -286,8 +421,19 @@ public class PartyCommand extends CommandBase {
                 @Nonnull World world
         ) {
             UUID playerId = playerRef.getUuid();
+            PartyService.PartyRosterSnapshot snapshot = partyService.tryGetOwnedRoster(playerId).orElse(null);
+            if (snapshot == null) {
+                context.sendMessage(Message.raw("You don't own a party.").color(RED));
+                return;
+            }
             if (partyService.disbandParty(playerId)) {
                 context.sendMessage(Message.raw("Party disbanded.").color(GREEN));
+                Message disbanded = Message.raw("Your party was disbanded by the owner.").color(YELLOW);
+                for (UUID memberId : snapshot.members()) {
+                    if (!memberId.equals(playerId)) {
+                        notifyPlayer(memberId, disbanded);
+                    }
+                }
             } else {
                 context.sendMessage(Message.raw("You don't own a party.").color(RED));
             }
@@ -346,5 +492,12 @@ public class PartyCommand extends CommandBase {
     private static String resolveName(@Nonnull UUID playerId) {
         PlayerRef ref = Universe.get().getPlayer(playerId);
         return ref != null ? ref.getUsername() : playerId.toString();
+    }
+
+    private static void notifyPlayer(@Nonnull UUID playerId, @Nonnull Message message) {
+        PlayerRef ref = Universe.get().getPlayer(playerId);
+        if (ref != null) {
+            ref.sendMessage(message);
+        }
     }
 }
