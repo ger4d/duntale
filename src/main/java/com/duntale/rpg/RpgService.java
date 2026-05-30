@@ -207,8 +207,8 @@ public class RpgService {
     /**
      * Pre-loads the player's RPG profile into the cache on join.
      *
-     * <p>Entity stat modifiers (Vitality, Stamina) will be applied in the plugin
-     * integration round once the player entity reference is available.
+     * <p>Entity stat modifiers (Vitality, Stamina) are applied separately by
+     * {@link RpgStatApplicator} once the player entity is ready in a world.
      *
      * @param playerId the player's UUID
      */

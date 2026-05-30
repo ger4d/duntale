@@ -72,6 +72,8 @@ import com.duntale.death.DungeonDeathScreenSystem;
 import com.duntale.death.DungeonRespawnService;
 import com.duntale.rpg.RpgDamageScalingSystem;
 import com.duntale.rpg.RpgProfile;
+import com.duntale.rpg.RpgStat;
+import com.duntale.rpg.RpgStatApplicator;
 import com.duntale.rpg.RpgRepository;
 import com.duntale.rpg.RpgService;
 import com.duntale.rpg.RpgStatCommand;
@@ -159,6 +161,7 @@ public class DuntalePlugin extends JavaPlugin {
     // RPG system
     private DatabaseProvider databaseProvider;
     private RpgService rpgService;
+    private RpgStatApplicator rpgStatApplicator;
     private GoldService goldService;
     private ProgressionService progressionService;
 
@@ -457,6 +460,7 @@ public class DuntalePlugin extends JavaPlugin {
             dungeonInstanceRepository = new DungeonInstanceRepository(databaseProvider);
             dungeonMembershipRepository = new DungeonMembershipRepository(databaseProvider);
         }
+        this.rpgStatApplicator = new RpgStatApplicator(this.rpgService);
         this.floorConfigService = new FloorConfigService(new FloorConfigAssetRepository());
         this.floorConfigService.loadOnStartup();
         this.villageWorldBootstrapService = new VillageWorldBootstrapService();
@@ -600,9 +604,17 @@ public class DuntalePlugin extends JavaPlugin {
         this.goldService.setChangeListener((playerId, newBalance) ->
                 updateScoreboard(playerId));
 
-        // ── Stat change listener: update scoreboard on stat changes ───
-        this.rpgService.setStatChangeListener((playerId, stat, newValue) ->
-                updateScoreboard(playerId));
+        // ── Stat change listener: update scoreboard + apply entity stat effects ───
+        this.rpgService.setStatChangeListener((playerId, stat, newValue) -> {
+            updateScoreboard(playerId);
+            if (stat == RpgStat.VITALITY || stat == RpgStat.STAMINA) {
+                PlayerRef playerRef = Universe.get().getPlayer(playerId);
+                if (playerRef != null) {
+                    runOnPlayerWorld(playerRef, (ref, store) ->
+                            rpgStatApplicator.applyDelta(playerId, stat, ref, store));
+                }
+            }
+        });
 
         // ── DynamicTooltipsLib integration (optional dependency) ──
         registerTooltipProvider();
@@ -1032,6 +1044,10 @@ public class DuntalePlugin extends JavaPlugin {
         player.getHudManager().addCustomHud(playerRef, scoreboard);
         scoreboard.updateData(buildScoreboardData(uuid));
         scoreboards.put(uuid, scoreboard);
+
+        // Re-assert Vitality/Stamina max modifiers — a freshly built EntityStatMap (world
+        // transition, relog) has no modifiers, so the bonus must be re-applied on every entry.
+        rpgStatApplicator.reassert(uuid, ref, store);
 
         // WorldConfig only seeds the player's mode when they do not already have one.
         // Players entering a dungeon from a Creative world keep Creative unless we
