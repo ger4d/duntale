@@ -10,6 +10,7 @@ import com.hypixel.hytale.logger.HytaleLogger;
 import com.hypixel.hytale.protocol.packets.interface_.CustomPageLifetime;
 import com.hypixel.hytale.protocol.packets.interface_.CustomUIEventBindingType;
 import com.hypixel.hytale.server.core.Message;
+import com.hypixel.hytale.server.core.NameMatching;
 import com.hypixel.hytale.server.core.entity.entities.player.pages.InteractiveCustomUIPage;
 import com.hypixel.hytale.server.core.ui.builder.EventData;
 import com.hypixel.hytale.server.core.ui.builder.UICommandBuilder;
@@ -27,11 +28,10 @@ import java.util.logging.Level;
 /**
  * Interactive UI page for managing the viewer's party.
  *
- * <p>Renders the current party roster (up to {@link PartyService#MAX_PARTY_SIZE} fixed
- * member rows), the viewer's pending incoming invites (up to {@link #INVITE_SLOTS} fixed
- * rows), and footer actions (leave / disband). Owners additionally see a per-member
- * "Kick" button. Sending invites is intentionally left to the chat command
- * {@code /party invite <name>} because it requires a target player name.
+ * <p>Two-panel layout: roster on the left, context-aware actions on the right.
+ * Three states are surfaced — Solo (invite + pending inbox), Leader (roster + kick +
+ * invite + disband), Member (read-only roster + leave). An in-page player-name field
+ * replaces the old requirement to use {@code /party invite <name>} from chat.
  *
  * <p>All party reads/writes go through {@link PartyService}, whose methods are
  * thread-safe. After any action the page rebuilds its command and event bindings and
@@ -69,6 +69,15 @@ public class PartyPage extends InteractiveCustomUIPage<PartyPage.PartyPageData> 
     public void build(@Nonnull Ref<EntityStore> ref, @Nonnull UICommandBuilder cmd,
                       @Nonnull UIEventBuilder events, @Nonnull Store<EntityStore> store) {
         cmd.append("Pages/Party/PartyPage.ui");
+
+        // Bind the invite action to capture text-field value on button click.
+        events.addEventBinding(
+                CustomUIEventBindingType.Activating,
+                "#InviteBtn",
+                EventData.of("Action", "Invite")
+                        .append("@InviteField", "#InviteField.Value"),
+                false);
+
         applyState(cmd, events);
     }
 
@@ -87,6 +96,8 @@ public class PartyPage extends InteractiveCustomUIPage<PartyPage.PartyPageData> 
             handleLeave(viewerId);
         } else if (data.disband != null) {
             handleDisband(viewerId);
+        } else if ("Invite".equals(data.action) && data.inviteField != null && !data.inviteField.isBlank()) {
+            handleInvite(viewerId, data.inviteField.trim());
         } else {
             return;
         }
@@ -208,6 +219,41 @@ public class PartyPage extends InteractiveCustomUIPage<PartyPage.PartyPageData> 
         }
     }
 
+    private void handleInvite(@Nonnull UUID inviterId, @Nonnull String targetName) {
+        PlayerRef target = Universe.get().getPlayerByUsername(targetName, NameMatching.EXACT_IGNORE_CASE);
+        if (target == null) {
+            playerRef.sendMessage(Message.raw("Player not found or offline.").color(COLOR_RED));
+            return;
+        }
+
+        PartyService.InviteResult result = partyService.invitePlayer(inviterId, target.getUuid());
+        switch (result) {
+            case SUCCESS -> playerRef.sendMessage(
+                    Message.raw("Invite sent to ").color(COLOR_GREEN)
+                            .insert(Message.raw(target.getUsername()).color(COLOR_AQUA))
+                            .insert(Message.raw(". It expires in 60s.").color(COLOR_GREEN))
+            );
+            case NO_PARTY -> playerRef.sendMessage(
+                    Message.raw("You don't own a party. This shouldn't happen — the invite auto-creates one.").color(COLOR_RED)
+            );
+            case NOT_OWNER -> playerRef.sendMessage(
+                    Message.raw("Only the party owner can invite players.").color(COLOR_RED)
+            );
+            case SELF -> playerRef.sendMessage(
+                    Message.raw("You cannot invite yourself.").color(COLOR_RED)
+            );
+            case TARGET_ALREADY_IN_PARTY -> playerRef.sendMessage(
+                    Message.raw("That player is already in a party.").color(COLOR_RED)
+            );
+            case PARTY_FULL -> playerRef.sendMessage(
+                    Message.raw("Party is full (max " + PartyService.MAX_PARTY_SIZE + ").").color(COLOR_RED)
+            );
+            case ALREADY_PENDING -> playerRef.sendMessage(
+                    Message.raw("You already have a pending invite for that player.").color(COLOR_RED)
+            );
+        }
+    }
+
     // ── Rendering ────────────────────────────────────────────────────
 
     /**
@@ -217,6 +263,13 @@ public class PartyPage extends InteractiveCustomUIPage<PartyPage.PartyPageData> 
     private void refreshDisplay() {
         UICommandBuilder cmd = new UICommandBuilder();
         UIEventBuilder events = new UIEventBuilder();
+        // Re-bind the invite action so the text-field value stays wired.
+        events.addEventBinding(
+                CustomUIEventBindingType.Activating,
+                "#InviteBtn",
+                EventData.of("Action", "Invite")
+                        .append("@InviteField", "#InviteField.Value"),
+                false);
         applyState(cmd, events);
         sendUpdate(cmd, events, false);
     }
@@ -224,6 +277,15 @@ public class PartyPage extends InteractiveCustomUIPage<PartyPage.PartyPageData> 
     /**
      * Populates labels, visibility flags, and event bindings for the current party
      * state. Used by both the initial {@code build} and every {@code refreshDisplay}.
+     *
+     * <p>The three page states:
+     * <ul>
+     *   <li><b>Solo</b> — not in a party: shows invite field + pending inbox.</li>
+     *   <li><b>Leader</b> — owns the party: shows roster with Kick buttons, invite
+     *       field, and danger zone with Leave + Disband.</li>
+     *   <li><b>Member</b> — in party but not owner: shows read-only roster with
+     *       "Managed by" label, and danger zone with only Leave.</li>
+     * </ul>
      *
      * @param cmd    the command builder to populate
      * @param events the event builder to (re)bind interactive elements against
@@ -238,29 +300,45 @@ public class PartyPage extends InteractiveCustomUIPage<PartyPage.PartyPageData> 
                 ? new ArrayList<>(partyService.assembleRoster(viewerId))
                 : List.of();
 
-        // Header / status line.
+        // ── Status strip ──────────────────────────────────────────
         if (!inParty) {
-            cmd.set("#StatusLine.Text", "You are not in a party.");
+            cmd.set("#StatusBadge.Text", "SOLO");
+            cmd.set("#StatusHelper.Text", "Invite a player below to start your party.");
         } else if (isOwner) {
-            cmd.set("#StatusLine.Text",
-                    "Your party (" + members.size() + "/" + PartyService.MAX_PARTY_SIZE + ") — you are the owner.");
+            cmd.set("#StatusBadge.Text", "LEADER");
+            cmd.set("#StatusHelper.Text",
+                    "Your party (" + members.size() + "/" + PartyService.MAX_PARTY_SIZE + ")");
         } else {
-            cmd.set("#StatusLine.Text",
-                    resolveName(ownerId) + "'s party (" + members.size() + "/" + PartyService.MAX_PARTY_SIZE + ").");
+            cmd.set("#StatusBadge.Text", "MEMBER");
+            cmd.set("#StatusHelper.Text",
+                    resolveName(ownerId) + "'s party (" + members.size() + "/" + PartyService.MAX_PARTY_SIZE + ")");
         }
 
-        cmd.set("#MembersHeader.Visible", inParty);
-        cmd.set("#NoPartyHint.Visible", !inParty);
+        // ── Roster panel ──────────────────────────────────────────
+        cmd.set("#MembersSection.Visible", inParty);
+        cmd.set("#ManagedByLabel.Visible", inParty && !isOwner);
+        if (inParty && !isOwner) {
+            cmd.set("#ManagedByLabel.Text", "Managed by " + resolveName(ownerId));
+        }
 
-        // Member rows (fixed slots).
         for (int i = 0; i < PartyService.MAX_PARTY_SIZE; i++) {
             String row = "#MemberRow" + i;
             if (i < members.size()) {
                 UUID memberId = members.get(i);
                 boolean isOwnerRow = memberId.equals(ownerId);
+                boolean isViewer = memberId.equals(viewerId);
+                String roleText;
+                if (isOwnerRow) {
+                    roleText = "Owner";
+                } else if (isViewer) {
+                    roleText = "You";
+                } else {
+                    roleText = "Member";
+                }
+
                 cmd.set(row + ".Visible", true);
                 cmd.set("#MemberName" + i + ".Text", resolveName(memberId));
-                cmd.set("#MemberRole" + i + ".Text", isOwnerRow ? "Owner" : "Member");
+                cmd.set("#MemberRole" + i + ".Text", roleText);
 
                 boolean kickVisible = isOwner && !isOwnerRow;
                 cmd.set("#MemberKick" + i + ".Visible", kickVisible);
@@ -277,12 +355,18 @@ public class PartyPage extends InteractiveCustomUIPage<PartyPage.PartyPageData> 
             }
         }
 
-        // Pending invites (only relevant when not already in a party).
+        // ── Actions panel ─────────────────────────────────────────
+        // Invite section: visible for solo & leader, hidden for member.
+        boolean showInvite = !inParty || isOwner;
+        cmd.set("#InviteSection.Visible", showInvite);
+        cmd.set("#InviteHint.Visible", !inParty);
+
+        // Pending invites: visible only for solo players who have invites.
         List<UUID> inviteOwners = inParty
                 ? List.of()
                 : new ArrayList<>(partyService.getPendingInviteOwners(viewerId));
         boolean hasInvites = !inviteOwners.isEmpty();
-        cmd.set("#InvitesHeader.Visible", hasInvites);
+        cmd.set("#InvitesSection.Visible", hasInvites);
 
         for (int i = 0; i < INVITE_SLOTS; i++) {
             String row = "#InviteRow" + i;
@@ -305,19 +389,29 @@ public class PartyPage extends InteractiveCustomUIPage<PartyPage.PartyPageData> 
             }
         }
 
-        // Footer actions.
-        cmd.set("#LeaveBtn.Visible", inParty);
-        cmd.set("#DisbandBtn.Visible", isOwner);
-        if (inParty) {
+        // Danger zone: visible when in party.
+        boolean showDanger = inParty;
+        cmd.set("#DangerSection.Visible", showDanger);
+        if (showDanger) {
+            cmd.set("#LeaveBtn.Visible", true);
+            cmd.set("#DisbandBtn.Visible", isOwner);
+            cmd.set("#DisbandWarning.Visible", isOwner);
+            if (isOwner) {
+                cmd.set("#DisbandWarning.Text",
+                        "Disbanding removes all members and cannot be undone.");
+            }
             events.addEventBinding(
                     CustomUIEventBindingType.Activating, "#LeaveBtn",
                     EventData.of("Leave", "1"), false);
+            if (isOwner) {
+                events.addEventBinding(
+                        CustomUIEventBindingType.Activating, "#DisbandBtn",
+                        EventData.of("Disband", "1"), false);
+            }
         }
-        if (isOwner) {
-            events.addEventBinding(
-                    CustomUIEventBindingType.Activating, "#DisbandBtn",
-                    EventData.of("Disband", "1"), false);
-        }
+
+        // Solo hint: only when solo and no pending invites.
+        cmd.set("#NoPartyHint.Visible", !inParty && !hasInvites);
     }
 
     // ── Helpers ──────────────────────────────────────────────────────
@@ -347,14 +441,16 @@ public class PartyPage extends InteractiveCustomUIPage<PartyPage.PartyPageData> 
     // ── Event Data ───────────────────────────────────────────────────
 
     /**
-     * Event data received from party UI button clicks. Exactly one field is set per
-     * event, identified by the binding key.
+     * Event data received from party UI button clicks. Exactly one action field
+     * is set per event, identified by the binding key.
      */
     public static class PartyPageData {
 
         /** Codec for deserialising party UI button click events. */
         public static final BuilderCodec<PartyPageData> CODEC = BuilderCodec.builder(
                         PartyPageData.class, PartyPageData::new)
+                .append(new KeyedCodec<>("Action", Codec.STRING),
+                        (e, v) -> e.action = v, e -> e.action).add()
                 .append(new KeyedCodec<>("Kick", Codec.STRING),
                         (e, v) -> e.kick = v, e -> e.kick).add()
                 .append(new KeyedCodec<>("Accept", Codec.STRING),
@@ -365,12 +461,16 @@ public class PartyPage extends InteractiveCustomUIPage<PartyPage.PartyPageData> 
                         (e, v) -> e.leave = v, e -> e.leave).add()
                 .append(new KeyedCodec<>("Disband", Codec.STRING),
                         (e, v) -> e.disband = v, e -> e.disband).add()
+                .append(new KeyedCodec<>("@InviteField", Codec.STRING),
+                        (e, v) -> e.inviteField = v, e -> e.inviteField).add()
                 .build();
 
+        String action;
         String kick;
         String accept;
         String decline;
         String leave;
         String disband;
+        String inviteField;
     }
 }

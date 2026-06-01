@@ -1,0 +1,447 @@
+// PartyPage.ui — Party management modal.
+// Two-panel layout: roster on the left, context-aware actions on the right.
+// Element IDs must stay in sync with PartyPage.java.
+
+$C = "../../Common.ui";
+
+$C.@PageOverlay {}
+
+$C.@DecoratedContainer {
+  Anchor: (Width: 680, Height: 580);
+
+  #Title {
+    Group {
+      $C.@Title { @Text = "Party"; }
+    }
+  }
+
+  #Content {
+    LayoutMode: Top;
+    Padding: (Horizontal: 22, Top: 12, Bottom: 18);
+
+    // ── Status strip ─────────────────────────────────────────────
+    Group #StatusStrip {
+      LayoutMode: Left;
+      Anchor: (Height: 28, Bottom: 12);
+
+      Label #StatusBadge {
+        Anchor: (Height: 26);
+        Text: "";
+        Background: (TexturePath: "../../Common/InputBoxSelected.png", Border: 16);
+        Padding: (Horizontal: 14);
+        Style: (FontSize: 13, TextColor: #E8A93B, RenderBold: true, Alignment: Center, VerticalAlignment: Center);
+        MaskTexturePath: $C.@TextHighlightGradientMask;
+      }
+
+      Label #StatusHelper {
+        FlexWeight: 1;
+        Anchor: (Left: 12);
+        Text: "";
+        Style: (FontSize: 13, TextColor: #96a9be, VerticalAlignment: Center);
+      }
+    }
+
+    // ── Two-panel body ───────────────────────────────────────────
+    Group #Body {
+      LayoutMode: Left;
+
+      // LEFT: Roster panel
+      Group #RosterPanel {
+        LayoutMode: Top;
+        Anchor: (Width: 320, Right: 10);
+
+        // Managed-by label (member only)
+        Label #ManagedByLabel {
+          Anchor: (Height: 22, Bottom: 8);
+          Text: "";
+          Style: (FontSize: 14, TextColor: #7a9cc6, RenderBold: true, VerticalAlignment: Center);
+        }
+
+        // Members section
+        $C.@SimpleContainer #MembersSection {
+          LayoutMode: Top;
+          Padding: (Horizontal: 14, Top: 10, Bottom: 10);
+
+          Group #MembersHeader {
+            LayoutMode: Top;
+            Anchor: (Height: 26, Bottom: 8);
+
+            Group {
+              LayoutMode: Left;
+              Anchor: (Height: 16, Bottom: 6);
+
+              Label {
+                Text: "MEMBERS";
+                Style: (FontSize: 13, TextColor: #E8A93B, RenderBold: true, RenderUppercase: true, VerticalAlignment: Center);
+                MaskTexturePath: $C.@TextHighlightGradientMask;
+              }
+            }
+
+            $C.@PanelSeparatorFancy {}
+          }
+
+          Group #MemberRow0 {
+            LayoutMode: Left;
+            Anchor: (Height: 38, Bottom: 6);
+
+            Group {
+              LayoutMode: Top;
+              FlexWeight: 1;
+              Anchor: (Right: 10);
+
+              Label #MemberName0 {
+                Anchor: (Height: 18, Bottom: 2);
+                Text: "";
+                Style: (FontSize: 15, TextColor: #ffffff, RenderBold: true, VerticalAlignment: Center);
+              }
+              Label #MemberRole0 {
+                Anchor: (Height: 14);
+                Text: "";
+                Style: (FontSize: 11, TextColor: #96a9be, VerticalAlignment: Center);
+              }
+            }
+
+            $C.@SmallSecondaryTextButton #MemberKick0 {
+              @Anchor = (Width: 84);
+              @Text = "Kick";
+            }
+          }
+
+          Group #MemberRow1 {
+            LayoutMode: Left;
+            Anchor: (Height: 38, Bottom: 6);
+
+            Group {
+              LayoutMode: Top;
+              FlexWeight: 1;
+              Anchor: (Right: 10);
+
+              Label #MemberName1 {
+                Anchor: (Height: 18, Bottom: 2);
+                Text: "";
+                Style: (FontSize: 15, TextColor: #ffffff, RenderBold: true, VerticalAlignment: Center);
+              }
+              Label #MemberRole1 {
+                Anchor: (Height: 14);
+                Text: "";
+                Style: (FontSize: 11, TextColor: #96a9be, VerticalAlignment: Center);
+              }
+            }
+
+            $C.@SmallSecondaryTextButton #MemberKick1 {
+              @Anchor = (Width: 84);
+              @Text = "Kick";
+            }
+          }
+
+          Group #MemberRow2 {
+            LayoutMode: Left;
+            Anchor: (Height: 38, Bottom: 6);
+
+            Group {
+              LayoutMode: Top;
+              FlexWeight: 1;
+              Anchor: (Right: 10);
+
+              Label #MemberName2 {
+                Anchor: (Height: 18, Bottom: 2);
+                Text: "";
+                Style: (FontSize: 15, TextColor: #ffffff, RenderBold: true, VerticalAlignment: Center);
+              }
+              Label #MemberRole2 {
+                Anchor: (Height: 14);
+                Text: "";
+                Style: (FontSize: 11, TextColor: #96a9be, VerticalAlignment: Center);
+              }
+            }
+
+            $C.@SmallSecondaryTextButton #MemberKick2 {
+              @Anchor = (Width: 84);
+              @Text = "Kick";
+            }
+          }
+
+          Group #MemberRow3 {
+            LayoutMode: Left;
+            Anchor: (Height: 38, Bottom: 6);
+
+            Group {
+              LayoutMode: Top;
+              FlexWeight: 1;
+              Anchor: (Right: 10);
+
+              Label #MemberName3 {
+                Anchor: (Height: 18, Bottom: 2);
+                Text: "";
+                Style: (FontSize: 15, TextColor: #ffffff, RenderBold: true, VerticalAlignment: Center);
+              }
+              Label #MemberRole3 {
+                Anchor: (Height: 14);
+                Text: "";
+                Style: (FontSize: 11, TextColor: #96a9be, VerticalAlignment: Center);
+              }
+            }
+
+            $C.@SmallSecondaryTextButton #MemberKick3 {
+              @Anchor = (Width: 84);
+              @Text = "Kick";
+            }
+          }
+
+          Group #MemberRow4 {
+            LayoutMode: Left;
+            Anchor: (Height: 38, Bottom: 6);
+
+            Group {
+              LayoutMode: Top;
+              FlexWeight: 1;
+              Anchor: (Right: 10);
+
+              Label #MemberName4 {
+                Anchor: (Height: 18, Bottom: 2);
+                Text: "";
+                Style: (FontSize: 15, TextColor: #ffffff, RenderBold: true, VerticalAlignment: Center);
+              }
+              Label #MemberRole4 {
+                Anchor: (Height: 14);
+                Text: "";
+                Style: (FontSize: 11, TextColor: #96a9be, VerticalAlignment: Center);
+              }
+            }
+
+            $C.@SmallSecondaryTextButton #MemberKick4 {
+              @Anchor = (Width: 84);
+              @Text = "Kick";
+            }
+          }
+
+          Group #MemberRow5 {
+            LayoutMode: Left;
+            Anchor: (Height: 38, Bottom: 6);
+
+            Group {
+              LayoutMode: Top;
+              FlexWeight: 1;
+              Anchor: (Right: 10);
+
+              Label #MemberName5 {
+                Anchor: (Height: 18, Bottom: 2);
+                Text: "";
+                Style: (FontSize: 15, TextColor: #ffffff, RenderBold: true, VerticalAlignment: Center);
+              }
+              Label #MemberRole5 {
+                Anchor: (Height: 14);
+                Text: "";
+                Style: (FontSize: 11, TextColor: #96a9be, VerticalAlignment: Center);
+              }
+            }
+
+            $C.@SmallSecondaryTextButton #MemberKick5 {
+              @Anchor = (Width: 84);
+              @Text = "Kick";
+            }
+          }
+        }
+      }
+
+      // RIGHT: Actions panel
+      Group #ActionsPanel {
+        LayoutMode: Top;
+        Anchor: (Width: 306);
+
+        // ── Invite section (solo & owner) ──────────────────────
+        Group #InviteSection {
+          LayoutMode: Top;
+          Anchor: (Bottom: 12);
+
+          Group {
+            LayoutMode: Top;
+            Anchor: (Height: 26, Bottom: 8);
+
+            Group {
+              LayoutMode: Left;
+              Anchor: (Height: 16, Bottom: 6);
+
+              Label {
+                Text: "INVITE PLAYER";
+                Style: (FontSize: 13, TextColor: #7a9cc6, RenderBold: true, RenderUppercase: true, VerticalAlignment: Center);
+                MaskTexturePath: $C.@TextHighlightGradientMask;
+              }
+            }
+
+            $C.@PanelSeparatorFancy {}
+          }
+
+          Group {
+            LayoutMode: Left;
+            Anchor: (Height: 38, Bottom: 6);
+
+            $C.@TextField #InviteField {
+              @Anchor = (Width: 176, Right: 8);
+              Value: "";
+              PlaceholderText: "Player name...";
+            }
+
+            $C.@SmallSecondaryTextButton #InviteBtn {
+              @Anchor = (Width: 80);
+              @Text = "Invite";
+            }
+          }
+
+          Label #InviteHint {
+            Anchor: (Height: 16);
+            Text: "Inviting a player creates your party automatically.";
+            Style: (FontSize: 11, TextColor: #96a9be, VerticalAlignment: Center);
+          }
+        }
+
+        // ── Pending invites (solo only) ────────────────────────
+        Group #InvitesSection {
+          LayoutMode: Top;
+          Anchor: (Bottom: 12);
+
+          Group #InvitesHeader {
+            LayoutMode: Top;
+            Anchor: (Height: 26, Bottom: 8);
+
+            Group {
+              LayoutMode: Left;
+              Anchor: (Height: 16, Bottom: 6);
+
+              Label {
+                Text: "PENDING INVITES";
+                Style: (FontSize: 13, TextColor: #7a9cc6, RenderBold: true, RenderUppercase: true, VerticalAlignment: Center);
+                MaskTexturePath: $C.@TextHighlightGradientMask;
+              }
+            }
+
+            Label #InvitesExpiryHint {
+              FlexWeight: 1;
+              Anchor: (Left: 12);
+              Text: "Expire in 60s";
+              Style: (FontSize: 11, TextColor: #E8A93B, VerticalAlignment: Center, Alignment: Center);
+            }
+
+            $C.@PanelSeparatorFancy {}
+          }
+
+          Group #InviteRow0 {
+            LayoutMode: Left;
+            Anchor: (Height: 42, Bottom: 6);
+
+            Label #InviteName0 {
+              FlexWeight: 1;
+              Anchor: (Right: 10);
+              Text: "";
+              Style: (FontSize: 14, TextColor: #ffffff, VerticalAlignment: Center);
+            }
+
+            $C.@SmallSecondaryTextButton #InviteAccept0 {
+              @Anchor = (Width: 90, Right: 8);
+              @Text = "Accept";
+            }
+            $C.@SmallTertiaryTextButton #InviteDecline0 {
+              @Anchor = (Width: 90);
+              @Text = "Decline";
+            }
+          }
+
+          Group #InviteRow1 {
+            LayoutMode: Left;
+            Anchor: (Height: 42, Bottom: 6);
+
+            Label #InviteName1 {
+              FlexWeight: 1;
+              Anchor: (Right: 10);
+              Text: "";
+              Style: (FontSize: 14, TextColor: #ffffff, VerticalAlignment: Center);
+            }
+
+            $C.@SmallSecondaryTextButton #InviteAccept1 {
+              @Anchor = (Width: 90, Right: 8);
+              @Text = "Accept";
+            }
+            $C.@SmallTertiaryTextButton #InviteDecline1 {
+              @Anchor = (Width: 90);
+              @Text = "Decline";
+            }
+          }
+
+          Group #InviteRow2 {
+            LayoutMode: Left;
+            Anchor: (Height: 42);
+
+            Label #InviteName2 {
+              FlexWeight: 1;
+              Anchor: (Right: 10);
+              Text: "";
+              Style: (FontSize: 14, TextColor: #ffffff, VerticalAlignment: Center);
+            }
+
+            $C.@SmallSecondaryTextButton #InviteAccept2 {
+              @Anchor = (Width: 90, Right: 8);
+              @Text = "Accept";
+            }
+            $C.@SmallTertiaryTextButton #InviteDecline2 {
+              @Anchor = (Width: 90);
+              @Text = "Decline";
+            }
+          }
+        }
+
+        // ── Danger zone (in party) ─────────────────────────────
+        Group #DangerSection {
+          LayoutMode: Top;
+          Anchor: (Top: 8);
+
+          Group {
+            LayoutMode: Top;
+            Anchor: (Height: 26, Bottom: 8);
+
+            Group {
+              LayoutMode: Left;
+              Anchor: (Height: 16, Bottom: 6);
+
+              Label {
+                Text: "DANGER ZONE";
+                Style: (FontSize: 13, TextColor: #FF5555, RenderBold: true, RenderUppercase: true, VerticalAlignment: Center);
+              }
+            }
+
+            $C.@PanelSeparatorFancy {}
+          }
+
+          Group {
+            LayoutMode: Top;
+            Anchor: (Bottom: 8);
+
+            $C.@SecondaryTextButton #LeaveBtn {
+              @Anchor = (Width: 200, Bottom: 8);
+              @Text = "Leave Party";
+            }
+
+            $C.@CancelTextButton #DisbandBtn {
+              @Anchor = (Width: 200);
+              @Text = "Disband Party";
+            }
+          }
+
+          Label #DisbandWarning {
+            Anchor: (Height: 16);
+            Text: "";
+            Style: (FontSize: 11, TextColor: #FF8888, Alignment: Center, VerticalAlignment: Center);
+          }
+        }
+
+        // ── Solo hint (no invites, not in party) ───────────────
+        Label #NoPartyHint {
+          Anchor: (Height: 18, Top: 10);
+          Text: "Use the panel above to invite a player and create your party. Incoming invites appear here.";
+          Style: (FontSize: 12, TextColor: #96a9be, Alignment: Center);
+        }
+      }
+    }
+  }
+}
+
+$C.@BackButton {}
