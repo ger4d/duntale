@@ -1,6 +1,8 @@
 package com.duntale.merchant;
 
+import com.duntale.ThirdPartyModAvailabilityService;
 import com.hypixel.hytale.server.core.asset.type.item.config.Item;
+import com.hypixel.hytale.common.plugin.PluginIdentifier;
 
 import javax.annotation.Nonnull;
 import java.util.ArrayList;
@@ -14,12 +16,18 @@ import java.util.Random;
  *
  * <p>A catalog consists of {@value #GEAR_SLOTS} gear items distributed across
  * 5 level tiers (weighted by floor proximity) plus {@value #CONSUMABLE_SLOTS}
- * consumable items (1 guaranteed health potion + 3 random from pool).
+ * consumable items (1 guaranteed health potion + 3 random from pool) and up to
+ * {@value #RESERVED_SCROLL_SLOTS} reserved enchant-scroll slot when
+ * SimpleEnchantments is available.
  *
  * @see CatalogEntry
  * @see MerchantPriceRegistry
  */
 public class CatalogGenerator {
+
+    private static final PluginIdentifier SIMPLE_ENCHANTMENTS_PLUGIN =
+            new PluginIdentifier("org.herolias", "SimpleEnchantments");
+    private static final String SIMPLE_ENCHANTMENTS_SCROLL_SENTINEL_ITEM_ID = "Scroll_Cleansing";
 
     /** Number of gear buy slots per merchant. */
     static final int GEAR_SLOTS = 21;
@@ -27,8 +35,11 @@ public class CatalogGenerator {
     /** Number of consumable buy slots per merchant. */
     static final int CONSUMABLE_SLOTS = 4;
 
+    /** Additional reserved buy slots that only roll enchant scrolls. */
+    static final int RESERVED_SCROLL_SLOTS = 1;
+
     /** Maximum total buy-zone slots. */
-    static final int MAX_BUY_SLOTS = GEAR_SLOTS + CONSUMABLE_SLOTS;
+    static final int MAX_BUY_SLOTS = GEAR_SLOTS + CONSUMABLE_SLOTS + RESERVED_SCROLL_SLOTS;
 
     /** Tier level ranges: [minLevel, maxLevel] for each of 5 tiers. */
     private static final int[][] TIER_RANGES = {{0, 10}, {10, 20}, {20, 30}, {30, 40}, {40, 50}};
@@ -92,15 +103,86 @@ public class CatalogGenerator {
             new ConsumableDef("Upgrade_Backpack_3", 75_000, 1),
     };
 
+        /** Full SimpleEnchantments scroll catalog offered in the reserved scroll slot. */
+    static final List<String> RESERVED_SCROLL_ITEM_IDS = List.of(
+            "Scroll_Absorption_I",
+            "Scroll_Absorption_II",
+            "Scroll_Absorption_III",
+            "Scroll_Burn_I",
+            "Scroll_Cleansing",
+            "Scroll_Coup_De_Grace_I",
+            "Scroll_Coup_De_Grace_II",
+            "Scroll_Coup_De_Grace_III",
+            "Scroll_Custom",
+            "Scroll_Dexterity_I",
+            "Scroll_Dexterity_II",
+            "Scroll_Dexterity_III",
+            "Scroll_Durability_I",
+            "Scroll_Durability_II",
+            "Scroll_Durability_III",
+            "Scroll_Eagles_Eye_I",
+            "Scroll_Eagles_Eye_II",
+            "Scroll_Eagles_Eye_III",
+            "Scroll_ElementalHeart_I",
+            "Scroll_Environmental_Protection_I",
+            "Scroll_Environmental_Protection_II",
+            "Scroll_Environmental_Protection_III",
+            "Scroll_Eternal_Shot_I",
+            "Scroll_Freeze_I",
+            "Scroll_Frenzy_I",
+            "Scroll_Frenzy_II",
+            "Scroll_Frenzy_III",
+            "Scroll_Knockback_I",
+            "Scroll_Knockback_II",
+            "Scroll_Knockback_III",
+            "Scroll_Life_Leech_I",
+            "Scroll_Night_Vision_I",
+            "Scroll_Poison_I",
+            "Scroll_Protection_I",
+            "Scroll_Protection_II",
+            "Scroll_Protection_III",
+            "Scroll_Ranged_Protection_I",
+            "Scroll_Ranged_Protection_II",
+            "Scroll_Ranged_Protection_III",
+            "Scroll_Reflection_I",
+            "Scroll_Reflection_II",
+            "Scroll_Reflection_III",
+            "Scroll_Regeneration_I",
+            "Scroll_Riposte_I",
+            "Scroll_Riposte_II",
+            "Scroll_Riposte_III",
+            "Scroll_Second_Stomach_I",
+            "Scroll_Second_Stomach_II",
+            "Scroll_Second_Stomach_III",
+            "Scroll_Sharpness_I",
+            "Scroll_Sharpness_II",
+            "Scroll_Sharpness_III",
+            "Scroll_Strength_I",
+            "Scroll_Strength_II",
+            "Scroll_Strength_III",
+            "Scroll_Sturdy_I",
+            "Scroll_Thrift_I",
+            "Scroll_Thrift_II",
+            "Scroll_Thrift_III"
+    );
+
+    private static final ConsumableDef[] SCROLL_POOL = RESERVED_SCROLL_ITEM_IDS.stream()
+            .map(CatalogGenerator::toScrollOffer)
+            .toArray(ConsumableDef[]::new);
+
     private final MerchantPriceRegistry priceRegistry;
+    private final ThirdPartyModAvailabilityService thirdPartyModAvailabilityService;
 
     /**
      * Creates a new catalog generator.
      *
-     * @param priceRegistry the price registry for item pricing and level lookups
+     * @param priceRegistry                  the price registry for item pricing and level lookups
+     * @param thirdPartyModAvailabilityService reports whether third-party mod integrations are available
      */
-    public CatalogGenerator(@Nonnull MerchantPriceRegistry priceRegistry) {
+    public CatalogGenerator(@Nonnull MerchantPriceRegistry priceRegistry,
+                            @Nonnull ThirdPartyModAvailabilityService thirdPartyModAvailabilityService) {
         this.priceRegistry = priceRegistry;
+        this.thirdPartyModAvailabilityService = thirdPartyModAvailabilityService;
     }
 
     /**
@@ -154,11 +236,23 @@ public class CatalogGenerator {
                 ? HEALTH_POTION_HIGH : HEALTH_POTION_LOW;
         catalog.add(toConsumableEntry(healthPotion));
 
-        // 3 random consumables (no duplicates)
+        // 3 random consumables from the standard pool
         List<ConsumableDef> pool = new ArrayList<>(List.of(CONSUMABLE_POOL));
         Collections.shuffle(pool, random);
         for (int i = 0; i < CONSUMABLE_SLOTS - 1 && i < pool.size(); i++) {
             catalog.add(toConsumableEntry(pool.get(i)));
+        }
+
+        if (thirdPartyModAvailabilityService.isAvailable(
+            SIMPLE_ENCHANTMENTS_PLUGIN,
+            SIMPLE_ENCHANTMENTS_SCROLL_SENTINEL_ITEM_ID
+        )) {
+            // Reserve one extra slot for enchant scrolls only when the mod is present.
+            List<ConsumableDef> scrollPool = new ArrayList<>(List.of(SCROLL_POOL));
+            Collections.shuffle(scrollPool, random);
+            for (int i = 0; i < RESERVED_SCROLL_SLOTS && i < scrollPool.size(); i++) {
+                catalog.add(toConsumableEntry(scrollPool.get(i)));
+            }
         }
 
         return List.copyOf(catalog);
@@ -186,6 +280,24 @@ public class CatalogGenerator {
         int maxStack = item != null ? Math.max(1, item.getMaxStack()) : 1;
         long stackPrice = def.unitPrice() * maxStack;
         return CatalogEntry.consumable(def.itemId(), stackPrice, maxStack);
+    }
+
+    @Nonnull
+    private static ConsumableDef toScrollOffer(@Nonnull String itemId) {
+        return new ConsumableDef(itemId, scrollUnitPrice(itemId), 1);
+    }
+
+    private static long scrollUnitPrice(@Nonnull String itemId) {
+        if ("Scroll_Custom".equals(itemId)) {
+            return 125_000L;
+        }
+        if (itemId.endsWith("_III")) {
+            return 175_000L;
+        }
+        if (itemId.endsWith("_II")) {
+            return 125_000L;
+        }
+        return 75_000L;
     }
 
     /**

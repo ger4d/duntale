@@ -18,9 +18,8 @@ import java.util.List;
  *
  * <p>Usage: {@code /merchant}
  *
- * <p>Opens a merchant with items sourced from the {@link MerchantPriceRegistry}.
- * Items are sorted by buy price (cheapest first) and capped at 24 slots to fit
- * the merchant container UI.
+ * <p>Opens a merchant with items sourced from the merchant catalog generator,
+ * capped at {@link CatalogGenerator#MAX_BUY_SLOTS} buy slots.
  */
 public class MerchantCommand extends AbstractPlayerCommand {
 

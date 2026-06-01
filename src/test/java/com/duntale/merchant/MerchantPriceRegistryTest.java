@@ -1,5 +1,6 @@
 package com.duntale.merchant;
 
+import com.duntale.ThirdPartyModAvailabilityService;
 import com.duntale.progression.AssetCatalog;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
@@ -91,7 +92,7 @@ class MerchantPriceRegistryTest {
                     ),
                     List.of()
             );
-            CatalogGenerator generator = new CatalogGenerator(registry);
+                    CatalogGenerator generator = generator(registry, false);
 
             List<CatalogEntry> catalog = generator.generate(20, 42L);
 
@@ -104,10 +105,10 @@ class MerchantPriceRegistryTest {
         }
 
         @Test
-        @DisplayName("Should keep curated foods, include the full arrow set, and remove spellbook consumables")
-        void shouldKeepCuratedFoodsIncludeFullArrowSetAndRemoveSpellbookConsumables() {
+        @DisplayName("Should keep curated foods, include arrows and enchant scrolls, and remove spellbook consumables")
+        void shouldKeepCuratedFoodsIncludeArrowsAndEnchantScrollsAndRemoveSpellbookConsumables() {
             MerchantPriceRegistry registry = initializedRegistry(List.of(), List.of());
-            CatalogGenerator generator = new CatalogGenerator(registry);
+            CatalogGenerator generator = generator(registry, true);
 
             Set<String> seenConsumables = new HashSet<>();
             for (long seed = 0; seed < 500; seed++) {
@@ -128,6 +129,7 @@ class MerchantPriceRegistryTest {
             assertTrue(seenConsumables.contains("Weapon_Deployable_Turret"));
             assertTrue(seenConsumables.contains("Weapon_Deployable_Healing_Totem"));
             assertTrue(seenConsumables.contains("Weapon_Deployable_Slowness_Totem"));
+            assertTrue(seenConsumables.stream().anyMatch(CatalogGenerator.RESERVED_SCROLL_ITEM_IDS::contains));
 
             assertFalse(seenConsumables.contains("Food_Bread"));
             assertFalse(seenConsumables.contains("Food_Fish_Grilled"));
@@ -143,7 +145,7 @@ class MerchantPriceRegistryTest {
         @DisplayName("Should offer repair kits as single kits or fixed five-packs instead of full stacks")
         void shouldOfferRepairKitsAsSingleKitsOrFixedFivePacksInsteadOfFullStacks() {
             MerchantPriceRegistry registry = initializedRegistry(List.of(), List.of());
-            CatalogGenerator generator = new CatalogGenerator(registry);
+            CatalogGenerator generator = generator(registry, false);
 
             boolean sawSingleKit = false;
             boolean sawFivePack = false;
@@ -170,6 +172,72 @@ class MerchantPriceRegistryTest {
             assertTrue(sawFivePack);
             assertFalse(sawFullStack);
         }
+
+        @Test
+        @DisplayName("Should skip the reserved scroll slot when SimpleEnchantments is unavailable")
+        void shouldSkipReservedScrollSlotWhenSimpleEnchantmentsIsUnavailable() {
+            MerchantPriceRegistry registry = initializedRegistry(List.of(), List.of());
+            CatalogGenerator generator = generator(registry, false);
+
+            for (long seed = 0; seed < 500; seed++) {
+                List<CatalogEntry> catalog = generator.generate(20, seed);
+                long consumableCount = catalog.stream()
+                        .filter(entry -> entry.level() == 0)
+                        .count();
+                long scrollCount = catalog.stream()
+                        .filter(MerchantPriceRegistryTest::isEnchantScroll)
+                        .count();
+
+                assertEquals(4L, consumableCount);
+                assertEquals(0L, scrollCount);
+            }
+        }
+
+        @Test
+        @DisplayName("Should reserve exactly one scroll slot in each generated catalog")
+        void shouldReserveExactlyOneScrollSlotInEachGeneratedCatalog() {
+            MerchantPriceRegistry registry = initializedRegistry(List.of(), List.of());
+            CatalogGenerator generator = generator(registry, true);
+
+            Set<String> seenScrollIds = new HashSet<>();
+
+            for (long seed = 0; seed < 10_000; seed++) {
+                List<CatalogEntry> catalog = generator.generate(20, seed);
+
+                long consumableCount = catalog.stream()
+                        .filter(entry -> entry.level() == 0)
+                        .count();
+                long scrollCount = catalog.stream()
+                        .filter(MerchantPriceRegistryTest::isEnchantScroll)
+                        .count();
+
+                assertEquals(5L, consumableCount);
+                assertEquals(1L, scrollCount);
+
+                CatalogEntry scrollEntry = catalog.stream()
+                        .filter(MerchantPriceRegistryTest::isEnchantScroll)
+                        .findFirst()
+                        .orElseThrow();
+                assertEquals(1, scrollEntry.quantity());
+
+                seenScrollIds.add(scrollEntry.itemId());
+            }
+
+            assertEquals(Set.copyOf(CatalogGenerator.RESERVED_SCROLL_ITEM_IDS), seenScrollIds);
+        }
+    }
+
+    private static boolean isEnchantScroll(@Nonnull CatalogEntry entry) {
+        return CatalogGenerator.RESERVED_SCROLL_ITEM_IDS.contains(entry.itemId());
+    }
+
+    @Nonnull
+    private static CatalogGenerator generator(@Nonnull MerchantPriceRegistry registry,
+                                              boolean simpleEnchantmentsAvailable) {
+        return new CatalogGenerator(
+                registry,
+            new ThirdPartyModAvailabilityService((pluginIdentifier, sentinelItemId) -> simpleEnchantmentsAvailable)
+        );
     }
 
     private static MerchantPriceRegistry initializedRegistry(

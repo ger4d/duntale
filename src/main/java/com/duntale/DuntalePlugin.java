@@ -174,6 +174,7 @@ public class DuntalePlugin extends JavaPlugin {
     private ComponentType<EntityStore, MerchantComponent> merchantComponentType;
     private MerchantNpcSpawner merchantNpcSpawner;
     private MerchantPriceRegistry merchantPriceRegistry;
+    private ThirdPartyModAvailabilityService thirdPartyModAvailabilityService;
     private CatalogGenerator catalogGenerator;
     private MerchantService merchantService;
 
@@ -490,7 +491,8 @@ public class DuntalePlugin extends JavaPlugin {
         // ── Merchant System ──────────────────────────────────────────
         this.merchantPriceRegistry = new MerchantPriceRegistry();
         // MerchantPriceRegistry.initialize() deferred to start() — depends on AssetCatalog
-        this.catalogGenerator = new CatalogGenerator(merchantPriceRegistry);
+        this.thirdPartyModAvailabilityService = new ThirdPartyModAvailabilityService();
+        this.catalogGenerator = new CatalogGenerator(merchantPriceRegistry, thirdPartyModAvailabilityService);
         this.merchantService = new MerchantService(merchantPriceRegistry, goldService);
 
         // ── ECS Component Registration ───────────────────────────────
