@@ -1,7 +1,7 @@
 # Dungeon Music
 
 Status: Current
-Last verified: 2026-05-15
+Last verified: 2026-06-01
 Source docs: environmental-background-music task
 Verified against: src/main/java/com/duntale/audio/BackgroundMusicService.java, src/main/java/com/duntale/DuntalePlugin.java, src/main/resources/Server/Audio/MusicContainers/Playlists/Duntale/MC_Duntale_Dungeon_Rotation.json, src/main/resources/Server/Audio/MusicContainers/Tracks/Duntale/Dungeon/, src/main/resources/Common/Music/Duntale/Dungeon/, src/test/java/com/duntale/audio/BackgroundMusicServiceTest.java
 
@@ -17,13 +17,19 @@ Document the current dungeon background-music setup and the exact authoring flow
 - The playlist uses `Type: Random`, `AudioCategory: AudioCat_Music`, `Mode: Random`, `LoopCount: 0`, and `AvoidRepeatCount: 3`.
 - Each playlist child inherits from a reusable `SingleTrack` music-container asset under `src/main/resources/Server/Audio/MusicContainers/Tracks/Duntale/Dungeon/`.
 - Each track asset points at a final `.ogg` file under `src/main/resources/Common/Music/Duntale/Dungeon/`.
-- The repository currently ships four dungeon songs:
+- The repository currently ships ten dungeon songs:
 
 | Track asset id | OGG path |
 | --- | --- |
+| `Track_Duntale_Dungeon_Cursed_Chambers_Fight` | `Music/Duntale/Dungeon/Cursed_Chambers_Fight.ogg` |
+| `Track_Duntale_Dungeon_Dungeon_Depths` | `Music/Duntale/Dungeon/Dungeon_Depths.ogg` |
 | `Track_Duntale_Dungeon_Dust_And_Amber_Light` | `Music/Duntale/Dungeon/Dust_And_Amber_Light.ogg` |
+| `Track_Duntale_Dungeon_Echoes_Of_The_Abyss` | `Music/Duntale/Dungeon/Echoes_Of_The_Abyss.ogg` |
+| `Track_Duntale_Dungeon_Echoes_Of_The_Labyrinth` | `Music/Duntale/Dungeon/Echoes_Of_The_Labyrinth.ogg` |
 | `Track_Duntale_Dungeon_Rootbound_Ruins` | `Music/Duntale/Dungeon/Rootbound_Ruins.ogg` |
+| `Track_Duntale_Dungeon_Shadows_In_The_Stone` | `Music/Duntale/Dungeon/Shadows_In_The_Stone.ogg` |
 | `Track_Duntale_Dungeon_Shadows_In_The_Vault_Loop` | `Music/Duntale/Dungeon/Shadows_In_The_Vault_Loop.ogg` |
+| `Track_Duntale_Dungeon_The_Hourglass_Breaks` | `Music/Duntale/Dungeon/The_Hourglass_Breaks.ogg` |
 | `Track_Duntale_Dungeon_The_Gates_Last_Stand` | `Music/Duntale/Dungeon/The_Gates_Last_Stand.ogg` |
 
 - The checked-in playlist currently adds a `SilenceAfter` window of `60-180` seconds to every child entry.

@@ -36,6 +36,54 @@
         "Min": 60,
         "Max": 180
       }
+    },
+    {
+      "Type": "SingleTrack",
+      "Parent": "Track_Duntale_Dungeon_Cursed_Chambers_Fight",
+      "SilenceAfter": {
+        "Min": 60,
+        "Max": 180
+      }
+    },
+    {
+      "Type": "SingleTrack",
+      "Parent": "Track_Duntale_Dungeon_Dungeon_Depths",
+      "SilenceAfter": {
+        "Min": 60,
+        "Max": 180
+      }
+    },
+    {
+      "Type": "SingleTrack",
+      "Parent": "Track_Duntale_Dungeon_Echoes_Of_The_Abyss",
+      "SilenceAfter": {
+        "Min": 60,
+        "Max": 180
+      }
+    },
+    {
+      "Type": "SingleTrack",
+      "Parent": "Track_Duntale_Dungeon_Echoes_Of_The_Labyrinth",
+      "SilenceAfter": {
+        "Min": 60,
+        "Max": 180
+      }
+    },
+    {
+      "Type": "SingleTrack",
+      "Parent": "Track_Duntale_Dungeon_Shadows_In_The_Stone",
+      "SilenceAfter": {
+        "Min": 60,
+        "Max": 180
+      }
+    },
+    {
+      "Type": "SingleTrack",
+      "Parent": "Track_Duntale_Dungeon_The_Hourglass_Breaks",
+      "SilenceAfter": {
+        "Min": 60,
+        "Max": 180
+      }
     }
   ]
 }
