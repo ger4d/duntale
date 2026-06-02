@@ -309,7 +309,7 @@ public class MerchantPriceRegistry {
     private static int resolvePricingLevel(@Nonnull PriceProfile profile, int requestedLevel) {
         int baseLevel = profile.itemLevel() > 0 ? profile.itemLevel() : 1;
         int rawLevel = requestedLevel > 0 ? requestedLevel : baseLevel;
-        return Math.clamp(rawLevel, 1, 60);
+        return CombatScaling.clampLevel(rawLevel);
     }
 
     private static double computeFallbackTierScore(int itemLevel, @Nullable String quality) {

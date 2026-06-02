@@ -20,7 +20,7 @@ import java.util.logging.Level;
  *
  * <p>Uses {@link NPCPlugin#spawnEntity} with pre/post callbacks to:
  * <ol>
- *   <li>Compute HP and damage multiplier via {@link CombatScaling}</li>
+    * @param level    the dungeon level within supported combat bounds
  *   <li>Apply an HP modifier via {@link EntityStatMap#putModifier}</li>
  *   <li>Attach a {@link CombatScalingComponent} for damage-time lookups</li>
  *   <li>Set a display name with level prefix and variant indicator</li>
@@ -48,7 +48,7 @@ public class LeveledNpcSpawner {
      * @param store    the entity store
      * @param roleName the NPC role name (e.g. "Zombie")
      * @param position the spawn position
-     * @param level    the dungeon level (1-60)
+    * @param level    the dungeon level within supported combat bounds
      * @param variant  the NPC variant (NORMAL, ELITE, or BOSS)
      * @return the spawned entity pair, or {@code null} if spawning failed
      */

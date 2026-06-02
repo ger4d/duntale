@@ -1,6 +1,7 @@
 package com.duntale.merchant;
 
 import com.duntale.ThirdPartyModAvailabilityService;
+import com.duntale.progression.CombatScaling;
 import com.hypixel.hytale.server.core.asset.type.item.config.Item;
 import com.hypixel.hytale.common.plugin.PluginIdentifier;
 
@@ -41,11 +42,14 @@ public class CatalogGenerator {
     /** Maximum total buy-zone slots. */
     static final int MAX_BUY_SLOTS = GEAR_SLOTS + CONSUMABLE_SLOTS + RESERVED_SCROLL_SLOTS;
 
+    /** Highest real base item level currently represented by available weapon assets. */
+    private static final int MAX_MERCHANT_BASE_ITEM_LEVEL = 75;
+
     /** Tier level ranges: [minLevel, maxLevel] for each of 5 tiers. */
-    private static final int[][] TIER_RANGES = {{0, 10}, {10, 20}, {20, 30}, {30, 40}, {40, 50}};
+    private static final int[][] TIER_RANGES = buildTierRanges(0, MAX_MERCHANT_BASE_ITEM_LEVEL, 5);
 
     /** Central level for each tier — used for weight calculation. */
-    private static final int[] TIER_CENTERS = {5, 15, 25, 35, 45};
+    private static final int[] TIER_CENTERS = buildTierCenters(TIER_RANGES);
 
     /** Weight curve peak value. */
     private static final double WEIGHT_PEAK = 10.0;
@@ -55,12 +59,6 @@ public class CatalogGenerator {
 
     /** Minimum weight to ensure all tiers get at least 1 slot. */
     private static final double WEIGHT_FLOOR = 0.5;
-
-    /** Minimum gear level that can be stamped on items. */
-    private static final int MIN_GEAR_LEVEL = 1;
-
-    /** Maximum gear level that can be stamped on items. */
-    private static final int MAX_GEAR_LEVEL = 60;
 
     /** Floor level at which the guaranteed health potion upgrades. */
     private static final int HEALTH_POTION_UPGRADE_FLOOR = 20;
@@ -216,9 +214,7 @@ public class CatalogGenerator {
                 String itemId = candidates.get(i);
 
                 // Random gear level in [floorLevel - 4, floorLevel + 10]
-                int gearLevel = (int) Math.clamp(
-                        (long) floorLevel - 4 + random.nextInt(15),
-                        MIN_GEAR_LEVEL, MAX_GEAR_LEVEL);
+                int gearLevel = CombatScaling.clampLevel(floorLevel - 4 + random.nextInt(15));
 
                 long levelPrice = priceRegistry.getBuyPrice(itemId, gearLevel);
                 catalog.add(CatalogEntry.gear(itemId, gearLevel, levelPrice));
@@ -298,6 +294,29 @@ public class CatalogGenerator {
             return 125_000L;
         }
         return 75_000L;
+    }
+
+    @Nonnull
+    private static int[][] buildTierRanges(int minLevel, int maxLevel, int tierCount) {
+        int[][] ranges = new int[tierCount][2];
+        int previousMax = minLevel - 1;
+        int span = maxLevel - minLevel;
+        for (int index = 0; index < tierCount; index++) {
+            int tierMax = minLevel + Math.round((float) span * (index + 1) / tierCount);
+            ranges[index][0] = index == 0 ? minLevel : previousMax + 1;
+            ranges[index][1] = tierMax;
+            previousMax = tierMax;
+        }
+        return ranges;
+    }
+
+    @Nonnull
+    private static int[] buildTierCenters(@Nonnull int[][] ranges) {
+        int[] centers = new int[ranges.length];
+        for (int index = 0; index < ranges.length; index++) {
+            centers[index] = (ranges[index][0] + ranges[index][1]) / 2;
+        }
+        return centers;
     }
 
     /**

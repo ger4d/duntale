@@ -6,6 +6,7 @@ import com.duntale.dungeon.DungeonInstanceService;
 import com.duntale.dungeon.DungeonInstanceState;
 import com.duntale.dungeon.FloorConfigAssetRepository;
 import com.duntale.dungeon.FloorConfigService;
+import com.duntale.progression.CombatScaling;
 import com.hypixel.hytale.math.vector.Transform;
 import com.hypixel.hytale.protocol.GameMode;
 import com.hypixel.hytale.server.core.Message;
@@ -743,9 +744,10 @@ public class DungeonCommand extends CommandBase {
                 @Nonnull PlayerRef playerRef,
                 @Nonnull World world
         ) {
-            int floorLevel = floorArg.provided(context) ? floorArg.get(context) : 1;
-            if (floorLevel < 1 || floorLevel > 60) {
-                context.sendMessage(Message.raw("Floor level must be between 1 and 60.").color(RED));
+            int floorLevel = floorArg.provided(context) ? floorArg.get(context) : CombatScaling.MIN_LEVEL;
+            if (!CombatScaling.isSupportedLevel(floorLevel)) {
+                context.sendMessage(Message.raw("Floor level must be between "
+                    + CombatScaling.MIN_LEVEL + " and " + CombatScaling.MAX_LEVEL + ".").color(RED));
                 return;
             }
 

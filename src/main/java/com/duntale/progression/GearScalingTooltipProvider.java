@@ -20,7 +20,6 @@ public class GearScalingTooltipProvider implements TooltipProvider {
 
     private static final String PROVIDER_ID = "duntale_gear_scaling";
 
-    private static final String COLOR_GOLD = "#FFD700";
     private static final String COLOR_CYAN = "#55FFFF";
     private static final String COLOR_GRAY = "#AAAAAA";
     private static final String COLOR_GREEN = "#55FF55";
@@ -64,7 +63,7 @@ public class GearScalingTooltipProvider implements TooltipProvider {
         }
 
         Integer level = extractLevel(metadata, hasWeapon ? "duntale_weapon_level" : "duntale_armor_level");
-        if (level == null || level < 1 || level > 60) {
+        if (level == null || !CombatScaling.isSupportedLevel(level)) {
             return null;
         }
 

@@ -73,6 +73,22 @@ class MerchantPriceRegistryTest {
             assertTrue(buyPrice > 0L);
             assertEquals((long) Math.floor(buyPrice * MerchantPriceRegistry.SELL_RATIO), sellPrice);
         }
+
+        @Test
+        @DisplayName("Should continue increasing merchant pricing above level 60 up to level 100")
+        void shouldContinueIncreasingMerchantPricingAboveLevelSixtyUpToLevelOneHundred() {
+            MerchantPriceRegistry registry = initializedRegistry(
+                    List.of(
+                            new AssetCatalog.WeaponBaseRow("Weapon Sword Onyxium", "Sword", "Epic", 45, 44.6667f)
+                    ),
+                    List.of()
+            );
+
+            long levelSixtyPrice = registry.getBuyPrice("Weapon_Sword_Onyxium", 60);
+            long levelHundredPrice = registry.getBuyPrice("Weapon_Sword_Onyxium", 100);
+
+            assertTrue(levelHundredPrice > levelSixtyPrice);
+        }
     }
 
     @Nested
@@ -102,6 +118,36 @@ class MerchantPriceRegistryTest {
                 }
                 assertEquals(registry.getBuyPrice(entry.itemId(), entry.level()), entry.buyPrice());
             }
+        }
+
+        @Test
+        @DisplayName("Should include the highest currently supported merchant tier on late floors")
+        void shouldIncludeHighestCurrentlySupportedMerchantTierOnLateFloors() {
+            MerchantPriceRegistry registry = initializedRegistry(
+                    List.of(
+                            new AssetCatalog.WeaponBaseRow("Weapon Sword Copper", "Sword", "Uncommon", 5, 12f),
+                            new AssetCatalog.WeaponBaseRow("Weapon Sword Iron", "Sword", "Common", 20, 18f),
+                            new AssetCatalog.WeaponBaseRow("Weapon Sword Steel", "Sword", "Rare", 35, 28f),
+                            new AssetCatalog.WeaponBaseRow("Weapon Sword Cobalt", "Sword", "Rare", 55, 36f),
+                            new AssetCatalog.WeaponBaseRow("Weapon Sword Mythril", "Sword", "Epic", 75, 44.6667f)
+                    ),
+                    List.of()
+            );
+            CatalogGenerator generator = generator(registry, false);
+
+            List<CatalogEntry> catalog = generator.generate(100, 42L);
+            Set<String> generatedItemIds = new HashSet<>();
+            for (CatalogEntry entry : catalog) {
+                if (entry.level() > 0) {
+                    generatedItemIds.add(entry.itemId());
+                }
+            }
+
+            assertTrue(generatedItemIds.contains("Weapon_Sword_Copper"));
+            assertTrue(generatedItemIds.contains("Weapon_Sword_Iron"));
+            assertTrue(generatedItemIds.contains("Weapon_Sword_Steel"));
+            assertTrue(generatedItemIds.contains("Weapon_Sword_Cobalt"));
+            assertTrue(generatedItemIds.contains("Weapon_Sword_Mythril"));
         }
 
         @Test

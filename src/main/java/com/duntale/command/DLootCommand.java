@@ -1,6 +1,7 @@
 package com.duntale.command;
 
 import com.duntale.loot.LootRollService;
+import com.duntale.progression.CombatScaling;
 import com.hypixel.hytale.component.Ref;
 import com.hypixel.hytale.component.Store;
 import com.hypixel.hytale.server.core.Message;
@@ -34,6 +35,10 @@ import java.util.Map;
  */
 public class DLootCommand extends CommandBase {
 
+    private static final String LEVEL_RANGE_LABEL = CombatScaling.MIN_LEVEL + "-" + CombatScaling.MAX_LEVEL;
+    private static final String LEVEL_RANGE_ERROR = "Level must be between "
+            + CombatScaling.MIN_LEVEL + " and " + CombatScaling.MAX_LEVEL + ".";
+
     private static final String GOLD = "#FFD700";
     private static final String WHITE = "#FFFFFF";
     private static final String GRAY = "#AAAAAA";
@@ -66,7 +71,7 @@ public class DLootCommand extends CommandBase {
         private final RequiredArg<String> tableArg =
                 this.withRequiredArg("npc", "NPC role or loot table ID", ArgTypes.STRING);
         private final RequiredArg<Integer> levelArg =
-                this.withRequiredArg("level", "NPC level (1-60)", ArgTypes.INTEGER);
+                this.withRequiredArg("level", "NPC level (" + LEVEL_RANGE_LABEL + ")", ArgTypes.INTEGER);
         private final OptionalArg<Integer> luckArg =
                 this.withOptionalArg("luck", "Luck level (default 0)", ArgTypes.INTEGER);
         private final OptionalArg<Integer> countArg =
@@ -92,8 +97,8 @@ public class DLootCommand extends CommandBase {
             int count = countArg.provided(context) ? countArg.get(context) : 1;
             boolean give = giveFlag.get(context);
 
-            if (npcLevel < 1 || npcLevel > 60) {
-                context.sendMessage(Message.raw("Level must be between 1 and 60.").color(RED));
+            if (!CombatScaling.isSupportedLevel(npcLevel)) {
+                context.sendMessage(Message.raw(LEVEL_RANGE_ERROR).color(RED));
                 return;
             }
             if (luckLevel < 0) {

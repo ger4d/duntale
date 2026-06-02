@@ -187,11 +187,11 @@ public class SpawnerTickSystem extends DelayedEntitySystem<EntityStore> {
         record SpawnRequest(String npcRole, Vector3d position, int level, CombatScaling.NpcVariant variant, int spawnerId) {}
         List<SpawnRequest> deferredSpawns = new ArrayList<>();
 
-        // Level = floorLevel ± levelVariance, clamped to [1, 60]
+        // Level = floorLevel ± levelVariance, clamped to supported combat bounds.
         int floorLevel = spawner.getDefinition().floorLevel();
         int variance = spawner.getDefinition().levelVariance();
-        int minLevel = Math.max(1, floorLevel - variance);
-        int maxLevel = Math.min(60, floorLevel + variance);
+        int minLevel = CombatScaling.clampLevel(floorLevel - variance);
+        int maxLevel = CombatScaling.clampLevel(floorLevel + variance);
 
         for (int i = 0; i < toSpawn; i++) {
             SpawnEntry picked = weightedPick(pool, totalWeight);

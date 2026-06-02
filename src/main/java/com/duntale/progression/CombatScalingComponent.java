@@ -58,7 +58,7 @@ public class CombatScalingComponent implements Component<EntityStore> {
     /**
      * Creates a combat scaling component with the specified values.
      *
-     * @param level            the NPC's level (1-60)
+     * @param level            the NPC's level within supported combat bounds
      * @param damageMultiplier the pre-computed damage multiplier
      * @param companion        {@code true} if this is a companion NPC
      */
@@ -69,7 +69,7 @@ public class CombatScalingComponent implements Component<EntityStore> {
     /**
      * Creates a combat scaling component with the specified values.
      *
-     * @param level            the NPC's level (1-60)
+     * @param level            the NPC's level within supported combat bounds
      * @param damageMultiplier the pre-computed damage multiplier
      * @param companion        {@code true} if this is a companion NPC
      * @param variant          the NPC variant recorded for downstream systems
@@ -94,7 +94,7 @@ public class CombatScalingComponent implements Component<EntityStore> {
         return DuntalePlugin.get().getCombatScalingComponentType();
     }
 
-    /** @return the NPC's level (1-60) */
+    /** @return the NPC's level within supported combat bounds */
     public int getLevel() {
         return level;
     }

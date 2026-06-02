@@ -42,7 +42,7 @@ public final class GearLevelService {
      * Returns a copy of the item stack with the weapon level set.
      *
      * @param stack the original item stack
-     * @param level the weapon level (1–60)
+     * @param level the weapon level within supported combat bounds
      * @return a new item stack with the metadata applied
      */
     @Nonnull
@@ -88,7 +88,7 @@ public final class GearLevelService {
      * Returns a copy of the item stack with the armor level set.
      *
      * @param stack the original item stack
-     * @param level the armor level (1–60)
+     * @param level the armor level within supported combat bounds
      * @return a new item stack with the metadata applied
      */
     @Nonnull

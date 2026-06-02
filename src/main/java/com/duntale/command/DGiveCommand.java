@@ -33,8 +33,11 @@ import javax.annotation.Nonnull;
  */
 public class DGiveCommand extends CommandBase {
 
+    private static final String LEVEL_RANGE_LABEL = CombatScaling.MIN_LEVEL + "-" + CombatScaling.MAX_LEVEL;
+    private static final String LEVEL_RANGE_ERROR = "Level must be between "
+            + CombatScaling.MIN_LEVEL + " and " + CombatScaling.MAX_LEVEL + ".";
+
     private static final String GOLD = "#FFD700";
-    private static final String WHITE = "#FFFFFF";
     private static final String GRAY = "#AAAAAA";
     private static final String YELLOW = "#FFEE55";
     private static final String GREEN = "#55FF55";
@@ -69,7 +72,7 @@ public class DGiveCommand extends CommandBase {
         private final RequiredArg<String> nameArg =
                 this.withRequiredArg("name", "Weapon asset ID (e.g. Weapon_Sword_Cobalt)", ArgTypes.STRING);
         private final RequiredArg<Integer> levelArg =
-                this.withRequiredArg("level", "Dungeon level (1-60)", ArgTypes.INTEGER);
+            this.withRequiredArg("level", "Dungeon level (" + LEVEL_RANGE_LABEL + ")", ArgTypes.INTEGER);
 
         WeaponSubCommand() {
             super("weapon", "Give a leveled weapon");
@@ -86,8 +89,8 @@ public class DGiveCommand extends CommandBase {
             String weaponId = nameArg.get(context);
             int level = levelArg.get(context);
 
-            if (level < 1 || level > 60) {
-                context.sendMessage(Message.raw("Level must be between 1 and 60.").color(RED));
+            if (!CombatScaling.isSupportedLevel(level)) {
+                context.sendMessage(Message.raw(LEVEL_RANGE_ERROR).color(RED));
                 return;
             }
 
@@ -144,7 +147,7 @@ public class DGiveCommand extends CommandBase {
         private final RequiredArg<String> nameArg =
                 this.withRequiredArg("name", "Armor asset ID (e.g. Armor_Chest_Cobalt)", ArgTypes.STRING);
         private final RequiredArg<Integer> levelArg =
-                this.withRequiredArg("level", "Dungeon level (1-60)", ArgTypes.INTEGER);
+            this.withRequiredArg("level", "Dungeon level (" + LEVEL_RANGE_LABEL + ")", ArgTypes.INTEGER);
 
         ArmorSubCommand() {
             super("armor", "Give a leveled armor piece");
@@ -161,8 +164,8 @@ public class DGiveCommand extends CommandBase {
             String armorId = nameArg.get(context);
             int level = levelArg.get(context);
 
-            if (level < 1 || level > 60) {
-                context.sendMessage(Message.raw("Level must be between 1 and 60.").color(RED));
+            if (!CombatScaling.isSupportedLevel(level)) {
+                context.sendMessage(Message.raw(LEVEL_RANGE_ERROR).color(RED));
                 return;
             }
 

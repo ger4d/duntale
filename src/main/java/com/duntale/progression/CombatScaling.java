@@ -10,16 +10,21 @@ import java.util.concurrent.ThreadLocalRandom;
  */
 public final class CombatScaling {
 
-    private static final int MIN_LEVEL = 1;
-    private static final int MAX_LEVEL = 60;
+    /** Minimum supported dungeon, NPC, and gear level. */
+    public static final int MIN_LEVEL = 1;
+
+    /** Maximum supported dungeon, NPC, and gear level. */
+    public static final int MAX_LEVEL = 100;
+
     private static final float SIGMOID_AT_MIN_LEVEL = rawSigmoid(MIN_LEVEL);
     private static final float SIGMOID_AT_MAX_LEVEL = rawSigmoid(MAX_LEVEL);
 
     private CombatScaling() {}
 
     // ── Sigmoid curve ────────────────────────────────────────────────
-    private static final float MIDPOINT = 30.0f;
-    private static final float STEEPNESS = 0.12f;
+    private static final float MIDPOINT = MAX_LEVEL / 2.0f;
+    // Preserve the old 60-floor curve shape while extending the playable ceiling.
+    private static final float STEEPNESS = 7.2f / MAX_LEVEL;
 
     // ── NPC scaling ──────────────────────────────────────────────────
     private static final float NPC_HP_K = 8.0f;
@@ -55,7 +60,7 @@ public final class CombatScaling {
     }
 
     private static float sigmoid(int level) {
-        int clampedLevel = Math.max(MIN_LEVEL, Math.min(level, MAX_LEVEL));
+        int clampedLevel = clampLevel(level);
         float raw = rawSigmoid(clampedLevel);
         float denominator = SIGMOID_AT_MAX_LEVEL - SIGMOID_AT_MIN_LEVEL;
         if (denominator <= 0f) {
@@ -64,13 +69,33 @@ public final class CombatScaling {
         return Math.max(0f, Math.min((raw - SIGMOID_AT_MIN_LEVEL) / denominator, 1f));
     }
 
+    /**
+     * Returns whether a level is within the supported dungeon, NPC, and gear bounds.
+     *
+     * @param level the level to check
+     * @return {@code true} when the level is supported
+     */
+    public static boolean isSupportedLevel(int level) {
+        return level >= MIN_LEVEL && level <= MAX_LEVEL;
+    }
+
+    /**
+     * Clamps a level to the supported dungeon, NPC, and gear bounds.
+     *
+     * @param level the requested level
+     * @return the clamped level
+     */
+    public static int clampLevel(int level) {
+        return Math.clamp(level, MIN_LEVEL, MAX_LEVEL);
+    }
+
     // ── NPC scaling ──────────────────────────────────────────────────
 
     /**
      * Computes the scaled HP for an NPC at the given level and variant.
      *
      * @param baseHp  the NPC's base HP from its role definition
-     * @param level   the dungeon level (1-60)
+    * @param level   the dungeon level ({@value #MIN_LEVEL}-{@value #MAX_LEVEL})
      * @param variant the NPC variant (NORMAL, ELITE, or BOSS)
      * @return the scaled HP value
      */
@@ -83,7 +108,7 @@ public final class CombatScaling {
     /**
      * Computes the damage multiplier for an NPC at the given level and variant.
      *
-     * @param level   the dungeon level (1-60)
+    * @param level   the dungeon level ({@value #MIN_LEVEL}-{@value #MAX_LEVEL})
      * @param variant the NPC variant
      * @return the damage multiplier (always >= 1.0)
      */
@@ -113,36 +138,45 @@ public final class CombatScaling {
 
     // Elite multipliers
     private static float eliteHpMultiplier(int level) {
-        if (level >= 45) return 3.0f;
-        if (level >= 30) return 2.5f;
-        if (level >= 20) return 2.0f;
-        if (level >= 10) return 1.5f;
+        if (level >= threshold(0.75f)) return 3.0f;
+        if (level >= threshold(0.50f)) return 2.5f;
+        if (level >= threshold(1.0f / 3.0f)) return 2.0f;
+        if (level >= threshold(1.0f / 6.0f)) return 1.5f;
         return 1.25f;
     }
 
     private static float eliteDamageMultiplier(int level) {
-        if (level >= 45) return 2.0f;
-        if (level >= 30) return 1.8f;
-        if (level >= 20) return 1.5f;
-        if (level >= 10) return 1.3f;
+        if (level >= threshold(0.75f)) return 2.0f;
+        if (level >= threshold(0.50f)) return 1.8f;
+        if (level >= threshold(1.0f / 3.0f)) return 1.5f;
+        if (level >= threshold(1.0f / 6.0f)) return 1.3f;
         return 1.1f;
     }
 
     // Boss multipliers
     private static float bossHpMultiplier(int level) {
-        if (level >= 45) return 4.75f;
-        if (level >= 30) return 4.0f;
-        if (level >= 20) return 3.25f;
-        if (level >= 10) return 2.5f;
-        return 1.75f;
+        // Old thresholds for reference:
+        // if (level >= threshold(0.75f)) return 4.75f;
+        // if (level >= threshold(0.50f)) return 4.0f;
+        // if (level >= threshold(1.0f / 3.0f)) return 3.25f;
+        // if (level >= threshold(1.0f / 6.0f)) return 2.5f;
+        if (level >= threshold(0.75f)) return 25f;
+        if (level >= threshold(0.50f)) return 22.5f;
+        if (level >= threshold(1.0f / 3.0f)) return 17.5f;
+        if (level >= threshold(1.0f / 6.0f)) return 15f;
+        return 10.f;
     }
 
     private static float bossDamageMultiplier(int level) {
-        if (level >= 45) return 2.5f;
-        if (level >= 30) return 2.0f;
-        if (level >= 20) return 1.7f;
-        if (level >= 10) return 1.4f;
-        return 1.2f;
+        if (level >= threshold(0.75f)) return 7.5f;
+        if (level >= threshold(0.50f)) return 6.0f;
+        if (level >= threshold(1.0f / 3.0f)) return 4.5f;
+        if (level >= threshold(1.0f / 6.0f)) return 3.0f;
+        return 2.0f;
+    }
+
+    private static int threshold(float ratio) {
+        return Math.max(MIN_LEVEL, Math.round(MAX_LEVEL * ratio));
     }
 
     // ── Companion scaling ────────────────────────────────────────────
@@ -151,7 +185,7 @@ public final class CombatScaling {
      * Computes the scaled HP for a companion at the given level.
      *
      * @param baseHp the companion's base HP from its role definition
-     * @param level  the player's level (1-60)
+    * @param level  the player's level ({@value #MIN_LEVEL}-{@value #MAX_LEVEL})
      * @return the scaled HP value
      */
     public static int companionScaledHp(int baseHp, int level) {
@@ -162,7 +196,7 @@ public final class CombatScaling {
     /**
      * Computes the damage multiplier for a companion at the given level.
      *
-     * @param level the player's level (1-60)
+    * @param level the player's level ({@value #MIN_LEVEL}-{@value #MAX_LEVEL})
      * @return the damage multiplier (always >= 1.0)
      */
     public static float companionDamageMult(int level) {
@@ -175,7 +209,7 @@ public final class CombatScaling {
      * Computes the weapon damage multiplier at the given level.
      * Uniform across all weapon types.
      *
-     * @param level the weapon's gear level (1-60)
+    * @param level the weapon's gear level ({@value #MIN_LEVEL}-{@value #MAX_LEVEL})
      * @return the damage multiplier (always >= 1.0)
      */
     public static float weaponMult(int level) {
@@ -187,7 +221,7 @@ public final class CombatScaling {
      *
      * @param baseResist sum of {@code DamageResistance.Physical[].Amount} from the item asset
      *                   (NOT {@code BaseDamageResistance}, which is 0 for most armor)
-     * @param level      the armor's gear level (1-60)
+    * @param level      the armor's gear level ({@value #MIN_LEVEL}-{@value #MAX_LEVEL})
      * @return the effective DR for this piece, capped at {@link #MAX_ARMOR_DR}
      */
     public static float armorDR(float baseResist, int level) {

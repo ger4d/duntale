@@ -9,6 +9,7 @@ import com.duntale.dungeongen.config.LayoutConfig;
 import com.duntale.dungeongen.config.PacingConfig;
 import com.duntale.dungeongen.config.ThemeConfig;
 import com.duntale.dungeongen.config.Vec3i;
+import com.duntale.progression.CombatScaling;
 import com.hypixel.hytale.assetstore.AssetPack;
 import com.hypixel.hytale.codec.Codec;
 import com.hypixel.hytale.codec.KeyedCodec;
@@ -69,8 +70,8 @@ public class FloorConfigPage extends InteractiveCustomUIPage<FloorConfigPage.Flo
     private static final HytaleLogger LOGGER = HytaleLogger.forEnclosingClass();
     private static final AtomicLong EVENT_SEQUENCE = new AtomicLong();
 
-    private static final int DEFAULT_FLOOR_LEVEL = 1;
-    private static final int MAX_FLOOR_LEVEL = 60;
+    private static final int DEFAULT_FLOOR_LEVEL = CombatScaling.MIN_LEVEL;
+    private static final int MAX_FLOOR_LEVEL = CombatScaling.MAX_LEVEL;
     private static final String GREEN = "#55FF55";
     private static final String RED = "#FF5555";
     private static final String SET_INDICATOR = "*";
