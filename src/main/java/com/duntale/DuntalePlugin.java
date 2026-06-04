@@ -64,6 +64,8 @@ import com.duntale.dungeon.DungeonInstanceState;
 import com.duntale.dungeon.DungeonInstanceService;
 import com.duntale.dungeon.DungeonMembershipRepository;
 import com.duntale.dungeon.FloorConfigService;
+import com.duntale.dungeon.ThemeAssetRepository;
+import com.duntale.dungeon.ThemeAssetService;
 import com.duntale.dungeon.PartyService;
 import com.duntale.dungeon.config.asset.FloorConfigDefaultAsset;
 import com.duntale.death.DungeonDeathContext;
@@ -189,6 +191,7 @@ public class DuntalePlugin extends JavaPlugin {
     // Dungeon instance flow
     private PartyService partyService;
     private FloorConfigService floorConfigService;
+    private ThemeAssetService themeAssetService;
     private DungeonInstanceService dungeonInstanceService;
     private DungeonRespawnService dungeonRespawnService;
     private DungeonEndPortalService dungeonEndPortalService;
@@ -465,6 +468,7 @@ public class DuntalePlugin extends JavaPlugin {
         this.rpgStatApplicator = new RpgStatApplicator(this.rpgService);
         this.floorConfigService = new FloorConfigService(new FloorConfigAssetRepository());
         this.floorConfigService.loadOnStartup();
+        this.themeAssetService = new ThemeAssetService(new ThemeAssetRepository());
         this.villageWorldBootstrapService = new VillageWorldBootstrapService();
         this.dungeonInstanceService = new DungeonInstanceService(
                 databaseProvider,
@@ -574,6 +578,7 @@ public class DuntalePlugin extends JavaPlugin {
             new DungeonCommand(
                     dungeonInstanceService,
                     floorConfigService,
+                    themeAssetService,
                     this::routePlayerToSharedWorld,
                     this::selectAndPrepareFloorTransitionParticipantsInWorld,
                     this::reEnablePreparedPlayersInOldWorld));

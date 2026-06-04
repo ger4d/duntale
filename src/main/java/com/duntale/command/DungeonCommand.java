@@ -6,6 +6,7 @@ import com.duntale.dungeon.DungeonInstanceService;
 import com.duntale.dungeon.DungeonInstanceState;
 import com.duntale.dungeon.FloorConfigAssetRepository;
 import com.duntale.dungeon.FloorConfigService;
+import com.duntale.dungeon.ThemeAssetService;
 import com.duntale.progression.CombatScaling;
 import com.hypixel.hytale.math.vector.Transform;
 import com.hypixel.hytale.protocol.GameMode;
@@ -74,6 +75,7 @@ public class DungeonCommand extends CommandBase {
 
     private final DungeonInstanceService dungeonInstanceService;
     private final FloorConfigService floorConfigService;
+    private final ThemeAssetService themeAssetService;
     private final SharedWorldRouter sharedWorldRouter;
     private final FloorTransitionParticipantPreparer floorTransitionParticipantPreparer;
     private final FloorTransitionRecovery floorTransitionRecovery;
@@ -134,6 +136,7 @@ public class DungeonCommand extends CommandBase {
      *
      * @param dungeonInstanceService the dungeon instance service
      * @param floorConfigService     the floor config service for per-floor overrides
+     * @param themeAssetService      the theme asset service for the theme authoring UI
      * @param sharedWorldRouter      callback for routing players back to the shared world
          * @param floorTransitionParticipantPreparer callback for runtime transition participant prep
          * @param floorTransitionRecovery callback for restoring controls after failed transitions
@@ -141,6 +144,7 @@ public class DungeonCommand extends CommandBase {
     public DungeonCommand(
             @Nonnull DungeonInstanceService dungeonInstanceService,
             @Nonnull FloorConfigService floorConfigService,
+            @Nonnull ThemeAssetService themeAssetService,
             @Nonnull SharedWorldRouter sharedWorldRouter,
             @Nonnull FloorTransitionParticipantPreparer floorTransitionParticipantPreparer,
             @Nonnull FloorTransitionRecovery floorTransitionRecovery
@@ -148,6 +152,7 @@ public class DungeonCommand extends CommandBase {
         super("dungeon", "Manage dungeon instances");
         this.dungeonInstanceService = Objects.requireNonNull(dungeonInstanceService, "dungeonInstanceService");
         this.floorConfigService = Objects.requireNonNull(floorConfigService, "floorConfigService");
+        this.themeAssetService = Objects.requireNonNull(themeAssetService, "themeAssetService");
         this.sharedWorldRouter = Objects.requireNonNull(sharedWorldRouter, "sharedWorldRouter");
         this.floorTransitionParticipantPreparer = Objects.requireNonNull(
             floorTransitionParticipantPreparer,
@@ -163,12 +168,13 @@ public class DungeonCommand extends CommandBase {
         this.addSubCommand(new TpOutSubCommand());
         this.addSubCommand(new TransitionSubCommand());
         this.addSubCommand(new FloorConfigSubCommand());
+        this.addSubCommand(new ThemeSubCommand());
     }
 
     @Override
     protected void executeSync(@Nonnull CommandContext context) {
         context.sendMessage(
-            Message.raw("Usage: /dungeon list|info|end|player|start|leave|tpout|transition|floorconfig").color(YELLOW)
+            Message.raw("Usage: /dungeon list|info|end|player|start|leave|tpout|transition|floorconfig|theme").color(YELLOW)
         );
         context.sendMessage(
                 Message.raw("  list").color(GOLD)
@@ -213,6 +219,10 @@ public class DungeonCommand extends CommandBase {
         context.sendMessage(
             Message.raw("  floorconfig packs").color(GOLD)
                 .insert(Message.raw(" — list asset packs that can store floor config overrides").color(GRAY))
+        );
+        context.sendMessage(
+            Message.raw("  theme [<themeId>]").color(GOLD)
+                .insert(Message.raw(" — open the theme authoring UI; clone an existing theme by ID").color(GRAY))
         );
     }
 
@@ -825,6 +835,40 @@ public class DungeonCommand extends CommandBase {
                     );
                 }
             }
+        }
+    }
+
+    // ── theme ────────────────────────────────────────────────────────
+
+    private class ThemeSubCommand extends AbstractPlayerCommand {
+
+        private final OptionalArg<String> themeIdArg =
+            this.withOptionalArg("themeId", "Existing theme ID to clone", ArgTypes.STRING);
+
+        ThemeSubCommand() {
+            super("theme", "Open the theme authoring UI");
+        }
+
+        @Override
+        protected void execute(
+                @Nonnull CommandContext context,
+                @Nonnull Store<EntityStore> store,
+                @Nonnull Ref<EntityStore> ref,
+                @Nonnull PlayerRef playerRef,
+                @Nonnull World world
+        ) {
+            Player player = store.getComponent(ref, Player.getComponentType());
+            if (player == null) {
+                return;
+            }
+            if (player.getGameMode() != GameMode.Creative) {
+                context.sendMessage(Message.raw("/dungeon theme requires Creative mode").color(RED));
+                return;
+            }
+
+            String seedThemeId = themeIdArg.provided(context) ? themeIdArg.get(context) : null;
+            player.getPageManager().openCustomPage(ref, store,
+                    new ThemeConfigPage(playerRef, seedThemeId, themeAssetService, floorConfigService));
         }
     }
 

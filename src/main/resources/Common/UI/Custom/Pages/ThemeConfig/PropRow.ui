@@ -1,0 +1,65 @@
+$C = "../../Common.ui";
+$W = "ThemeWidgets.ui";
+
+Group {
+  LayoutMode: Top;
+  Background: #0d1117(0.4);
+  Anchor: (Bottom: 6);
+  Padding: (Horizontal: 8, Top: 6, Bottom: 6);
+
+  // Block icon + name on its own line (full width — long block IDs no longer truncate).
+  Group {
+    LayoutMode: Left;
+    Anchor: (Height: 44, Bottom: 6);
+    ItemGrid #BlockSlot { Anchor: (Width: 34, Height: 34, Right: 8); SlotsPerRow: 1; Style: (SlotSize: 34, SlotIconSize: 34, SlotSpacing: 0, SlotBackground: "../../Common/BlockSelectorSlotBackground.png"); }
+    $C.@SecondaryTextButton #BlockButton { @Anchor = (Right: 8); FlexWeight: 1; Text: ""; }
+  }
+
+  // Placement + chest tier, each labelled. Sized dropdowns keep their popups inside the form pane.
+  Group {
+    LayoutMode: Left;
+    Anchor: (Height: 36, Bottom: 6);
+    Label { Text: "Placement"; Style: (FontSize: 12, TextColor: #96a9be, VerticalAlignment: Center); Anchor: (Width: 76); }
+    $W.@SizedDropdownBox #Placement {
+      @Width = 180;
+      @Anchor = (Right: 16);
+      Value: "FLOOR";
+      DropdownEntry { Value: "FLOOR"; Text: "Floor"; }
+      DropdownEntry { Value: "WALL_ALIGNED"; Text: "Wall Aligned"; }
+      DropdownEntry { Value: "CORNER"; Text: "Corner"; }
+      DropdownEntry { Value: "CENTER"; Text: "Center"; }
+      DropdownEntry { Value: "CEILING"; Text: "Ceiling"; }
+    }
+    Label { Text: "Chest"; Style: (FontSize: 12, TextColor: #96a9be, VerticalAlignment: Center); Anchor: (Width: 46); }
+    $W.@SizedDropdownBox #ChestTier {
+      @Width = 180;
+      Value: "";
+      DropdownEntry { Value: ""; Text: "No Chest"; }
+      DropdownEntry { Value: "Regular"; Text: "Regular"; }
+      DropdownEntry { Value: "Epic"; Text: "Epic"; }
+      DropdownEntry { Value: "Golden"; Text: "Golden"; }
+      DropdownEntry { Value: "Legendary"; Text: "Legendary"; }
+    }
+  }
+
+  // Chance / max-per-room / Y-offset / remove.
+  Group {
+    LayoutMode: Left;
+    Anchor: (Height: 40, Bottom: 6);
+    Label { Text: "Chance"; Style: (FontSize: 12, TextColor: #96a9be, VerticalAlignment: Center); Anchor: (Width: 60); }
+    $C.@FloatSlider #SpawnChance { @Anchor = (Width: 150, Right: 12); Min: 0.0; Max: 1.0; Value: 0.1; Step: 0.01; }
+    Label { Text: "Max"; Style: (FontSize: 12, TextColor: #96a9be, VerticalAlignment: Center); Anchor: (Width: 36); }
+    $C.@NumberField #MaxPerRoom { @Anchor = (Width: 64, Right: 12); Value: 1; Format: (MaxDecimalPlaces: 0, Step: 1, MinValue: 0, MaxValue: 20); }
+    Label { Text: "Y"; Style: (FontSize: 12, TextColor: #96a9be, VerticalAlignment: Center); Anchor: (Width: 18); }
+    $C.@NumberField #YOffset { @Anchor = (Width: 64, Right: 12); Value: 0; Format: (MaxDecimalPlaces: 0, Step: 1, MinValue: -16, MaxValue: 16); }
+    $C.@SmallSecondaryTextButton #RemoveButton { @Anchor = (Width: 90); Text: "Remove"; }
+  }
+
+  // Allowed room types.
+  Group {
+    LayoutMode: Left;
+    Anchor: (Height: 40);
+    Label { Text: "Rooms"; Style: (FontSize: 12, TextColor: #96a9be, VerticalAlignment: Center); Anchor: (Width: 60); }
+    $C.@TextField #RoomTypes { @Anchor = (Right: 8); FlexWeight: 1; Value: ""; }
+  }
+}

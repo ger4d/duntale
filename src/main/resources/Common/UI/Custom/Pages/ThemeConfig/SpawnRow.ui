@@ -1,0 +1,31 @@
+$C = "../../Common.ui";
+
+Group {
+  LayoutMode: Top;
+  Background: #0d1117(0.4);
+  Anchor: (Bottom: 6);
+  Padding: (Horizontal: 8, Top: 6, Bottom: 6);
+
+  Group {
+    LayoutMode: Left;
+    Anchor: (Height: 40, Bottom: 4);
+    Label { Text: "Role"; Style: (FontSize: 12, TextColor: #96a9be, VerticalAlignment: Center); Anchor: (Width: 44); }
+    $C.@TextField #NpcRole { @Anchor = (Width: 186, Right: 4); Value: ""; }
+    $C.@SmallSecondaryTextButton #RolePick { @Anchor = (Width: 30, Right: 12); Text: "..."; }
+    Label { Text: "Min"; Style: (FontSize: 12, TextColor: #96a9be, VerticalAlignment: Center); Anchor: (Width: 32); }
+    $C.@NumberField #MinFloor { @Anchor = (Width: 60, Right: 10); Value: 1; Format: (MaxDecimalPlaces: 0, Step: 1, MinValue: 1, MaxValue: 60); }
+    Label { Text: "Max"; Style: (FontSize: 12, TextColor: #96a9be, VerticalAlignment: Center); Anchor: (Width: 32); }
+    $C.@NumberField #MaxFloor { @Anchor = (Width: 60); Value: 1; Format: (MaxDecimalPlaces: 0, Step: 1, MinValue: 1, MaxValue: 60); }
+  }
+
+  Group {
+    LayoutMode: Left;
+    Anchor: (Height: 38);
+    Label { Text: "Weight"; Style: (FontSize: 12, TextColor: #96a9be, VerticalAlignment: Center); Anchor: (Width: 56); }
+    $C.@FloatSlider #Weight { @Anchor = (Width: 140, Right: 14); Min: 0.0; Max: 10.0; Value: 1.0; Step: 0.1; }
+    $C.@CheckBoxWithLabel #VarNormal { @Text = "Normal"; @Checked = true; Anchor: (Right: 8); }
+    $C.@CheckBoxWithLabel #VarElite { @Text = "Elite"; @Checked = false; Anchor: (Right: 8); }
+    $C.@CheckBoxWithLabel #VarBoss { @Text = "Boss"; @Checked = false; Anchor: (Right: 8); }
+    $C.@SmallSecondaryTextButton #RemoveButton { @Anchor = (Width: 90); Text: "Remove"; }
+  }
+}

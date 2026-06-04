@@ -1,0 +1,15 @@
+$C = "../../Common.ui";
+
+// Local widgets for the Theme Config pages.
+
+// Width-respecting dropdown. Same styling as $C.@DropdownBox, but width is controllable.
+// The stock macro hardcodes `Width: 330` after the @Anchor spread (and the spread must be
+// the first element of an anchor literal), so a caller's @Anchor width is always discarded.
+// Expose an explicit @Width parameter instead (default 330) and apply it after the spread,
+// mirroring the engine's own fixed-width button macros.
+@SizedDropdownBox = DropdownBox {
+  @Anchor = ();
+  @Width = 330;
+  Anchor: (...@Anchor, Width: @Width, Height: 32);
+  Style: $C.@DefaultDropdownBoxStyle;
+};

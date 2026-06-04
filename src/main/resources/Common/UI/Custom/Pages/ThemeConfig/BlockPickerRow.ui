@@ -1,0 +1,26 @@
+$C = "../../Common.ui";
+
+// Single icon cell for the block-picker grid. The block icon is rendered underneath a
+// transparent TextButton that owns the click (Activating) and the hover highlight; the
+// block ID is surfaced on hover via TooltipText (set per-cell from BlockPickerComponent),
+// since the grid intentionally shows no inline text.
+@CellButtonStyle = (
+  Hovered: (
+    Background: #ffffff(0.15),
+  )
+);
+
+Group {
+  Anchor: (Width: 40, Height: 40, Right: 6, Bottom: 6);
+
+  ItemGrid #Icon {
+    Anchor: (Width: 40, Height: 40);
+    SlotsPerRow: 1;
+    Style: (SlotSize: 40, SlotIconSize: 40, SlotSpacing: 0, SlotBackground: "../../Common/BlockSelectorSlotBackground.png");
+  }
+  TextButton #Button {
+    Anchor: (Full: 0);
+    Style: @CellButtonStyle;
+    TextTooltipStyle: $C.@DefaultTextTooltipStyle;
+  }
+}
