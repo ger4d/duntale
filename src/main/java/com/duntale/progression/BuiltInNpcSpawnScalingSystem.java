@@ -30,8 +30,13 @@ public class BuiltInNpcSpawnScalingSystem extends RefSystem<EntityStore> {
 
     private static final HytaleLogger LOGGER = HytaleLogger.forEnclosingClass();
 
+    // Built-in roles that spawn dynamically at runtime (mage/brood summons) rather than via the
+    // Duntale LeveledNpcSpawner, so they would otherwise reach the world at unscaled base stats.
+    // "Skeleton" and "Scarak_Louse" are summoned adds; the Wolf_* roles are the companions summoned
+    // by Template_Trork_Mage casters (Outlander_Sorcerer, Trork_Shaman) via their Combat.Summon state.
     @Nonnull
-    private static final Set<String> ALLOWLISTED_SPECIAL_ROLES = Set.of("Skeleton", "Scarak_Louse");
+    private static final Set<String> ALLOWLISTED_SPECIAL_ROLES =
+            Set.of("Skeleton", "Scarak_Louse", "Wolf_Outlander_Sorcerer", "Wolf_Trork_Shaman");
 
     private final ComponentType<EntityStore, CombatScalingComponent> combatScalingType;
     private final DungeonInstanceService dungeonInstanceService;

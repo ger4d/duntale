@@ -138,19 +138,19 @@ public final class CombatScaling {
 
     // Elite multipliers
     private static float eliteHpMultiplier(int level) {
-        if (level >= threshold(0.75f)) return 3.0f;
-        if (level >= threshold(0.50f)) return 2.5f;
-        if (level >= threshold(1.0f / 3.0f)) return 2.0f;
-        if (level >= threshold(1.0f / 6.0f)) return 1.5f;
-        return 1.25f;
+        if (level >= threshold(0.75f)) return 6.5f;
+        if (level >= threshold(0.50f)) return 5.5f;
+        if (level >= threshold(1.0f / 3.0f)) return 4.5f;
+        if (level >= threshold(1.0f / 6.0f)) return 3.5f;
+        return 2.5f;
     }
 
     private static float eliteDamageMultiplier(int level) {
-        if (level >= threshold(0.75f)) return 2.0f;
-        if (level >= threshold(0.50f)) return 1.8f;
-        if (level >= threshold(1.0f / 3.0f)) return 1.5f;
-        if (level >= threshold(1.0f / 6.0f)) return 1.3f;
-        return 1.1f;
+        if (level >= threshold(0.75f)) return 2.25f;
+        if (level >= threshold(0.50f)) return 2.f;
+        if (level >= threshold(1.0f / 3.0f)) return 1.75f;
+        if (level >= threshold(1.0f / 6.0f)) return 1.5f;
+        return 1.25f;
     }
 
     // Boss multipliers
@@ -168,10 +168,10 @@ public final class CombatScaling {
     }
 
     private static float bossDamageMultiplier(int level) {
-        if (level >= threshold(0.75f)) return 7.5f;
-        if (level >= threshold(0.50f)) return 6.0f;
-        if (level >= threshold(1.0f / 3.0f)) return 4.5f;
-        if (level >= threshold(1.0f / 6.0f)) return 3.0f;
+        if (level >= threshold(0.75f)) return 5.2f;
+        if (level >= threshold(0.50f)) return 4.5f;
+        if (level >= threshold(1.0f / 3.0f)) return 3.2f;
+        if (level >= threshold(1.0f / 6.0f)) return 2.5f;
         return 2.0f;
     }
 
