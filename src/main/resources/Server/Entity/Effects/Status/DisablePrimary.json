@@ -5,6 +5,13 @@
 			"Disabled": [
 				"Primary"
 			]
+		},
+		"MovementEffects": {
+			"DisableForward": true,
+			"DisableBackward": true,
+			"DisableLeft": true,
+			"DisableRight": true,
+			"DisableSprint": true
 		}
 	}
 }
