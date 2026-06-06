@@ -628,10 +628,7 @@ public class DuntalePlugin extends JavaPlugin {
 
         // ── XP grant listener: update scoreboard on every XP gain ─────
         this.progressionService.setXPGrantListener((playerId, amount, result) -> {
-            if (!result.leveledUp()) {
-                // Level-up already triggers updateScoreboard via the level-up listener
-                updateScoreboard(playerId);
-            }
+            updateScoreboard(playerId);
         });
 
         // ── Gold change listener: update scoreboard on gold mutations ─
@@ -2067,8 +2064,21 @@ public class DuntalePlugin extends JavaPlugin {
         RpgProfile profile = rpgService.getProfile(playerId);
         long gold = goldService.getBalance(playerId);
         int level = progressionService.getLevel(playerId);
-        long xp = progressionService.getXP(playerId);
-        long xpMax = progressionService.getXPForLevel(level + 1);
+        long totalXp = progressionService.getXP(playerId);
+        int maxLevel = progressionService.getMaxLevel();
+
+        long xp;
+        long xpMax;
+
+        if (level >= maxLevel) {
+            xp = Math.max(0, totalXp - progressionService.getXPForLevel(level));
+            xpMax = 0;
+        } else {
+            long currentLevelXpThreshold = progressionService.getXPForLevel(level);
+            long nextLevelXpThreshold = progressionService.getXPForLevel(level + 1);
+            xp = Math.max(0, totalXp - currentLevelXpThreshold);
+            xpMax = Math.max(1, nextLevelXpThreshold - currentLevelXpThreshold);
+        }
 
         return DuntaleScoreboardData.builder()
                 .gold(gold)

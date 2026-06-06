@@ -93,9 +93,9 @@ public class DuntaleScoreboard extends CustomUIHud {
             barAnchor.setWidth(Value.of(fillWidth));
             cmd.setObject("#XPBarFill.Anchor", barAnchor);
         } else {
-            cmd.set("#XPText.Text", "0 / 0 XP");
+            cmd.set("#XPText.Text", "MAX XP");
             Anchor barAnchor = new Anchor();
-            barAnchor.setWidth(Value.of(0));
+            barAnchor.setWidth(Value.of(XP_BAR_WIDTH));
             cmd.setObject("#XPBarFill.Anchor", barAnchor);
         }
 
