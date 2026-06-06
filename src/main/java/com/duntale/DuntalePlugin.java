@@ -614,6 +614,14 @@ public class DuntalePlugin extends JavaPlugin {
             rpgService.grantStatPoints(playerId, RpgService.POINTS_PER_LEVEL);
             updateScoreboard(playerId);
             sendLevelUpTitle(playerId, newLevel);
+
+            PlayerRef playerRef = Universe.get().getPlayer(playerId);
+            if (playerRef != null) {
+                runOnPlayerWorld(playerRef, (ref, store) -> {
+                    companionService.onPlayerLevelUp(store, playerId, newLevel);
+                });
+            }
+
             LOGGER.atInfo().log("Player %s reached level %d — granted %d stat points",
                     playerId, newLevel, RpgService.POINTS_PER_LEVEL);
         });

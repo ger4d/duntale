@@ -24,6 +24,7 @@ import com.hypixel.hytale.server.flock.FlockMembership;
 import com.hypixel.hytale.server.flock.FlockMembershipSystems;
 import com.hypixel.hytale.server.flock.FlockPlugin;
 import com.hypixel.hytale.server.npc.NPCPlugin;
+import com.hypixel.hytale.server.core.entity.nameplate.Nameplate;
 import com.hypixel.hytale.server.npc.entities.NPCEntity;
 import com.hypixel.hytale.server.npc.role.Role;
 import it.unimi.dsi.fastutil.Pair;
@@ -471,6 +472,21 @@ public class CompanionService {
         float newMult = CombatScaling.companionDamageMult(newLevel);
         store.putComponent(npcRef, CombatScalingComponent.getComponentType(),
                 new CombatScalingComponent(newLevel, newMult, true));
+
+        // Replace CompanionComponent with the new level
+        CompanionComponent comp = store.getComponent(npcRef, companionComponentType);
+        if (comp != null) {
+            store.putComponent(npcRef, companionComponentType,
+                    new CompanionComponent(playerId, comp.getRoleName(), newLevel));
+        }
+
+        // Re-apply Nameplate text
+        Nameplate nameplate = store.getComponent(npcRef, Nameplate.getComponentType());
+        if (nameplate != null && comp != null) {
+            CompanionPreference preference = loadPreference(playerId);
+            String nameplateText = CompanionSpawner.buildNameplateText(comp.getRoleName(), preference.displayName(), newLevel);
+            nameplate.setText(nameplateText);
+        }
 
         // Re-apply HP scaling
         NPCEntity npcEntity = store.getComponent(npcRef, NPCEntity.getComponentType());
