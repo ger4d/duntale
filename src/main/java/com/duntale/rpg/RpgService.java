@@ -88,7 +88,8 @@ public class RpgService {
      * @param value    the desired value (will be clamped)
      */
     public void setStat(@Nonnull UUID playerId, @Nonnull RpgStat stat, int value) {
-        int clamped = Math.clamp(value, RpgConstants.MIN_STAT, RpgConstants.MAX_STAT);
+        RpgConfigValues config = RpgConfig.values();
+        int clamped = Math.clamp(value, config.minStat(), config.maxStat());
         if (clamped != value) {
             LOGGER.at(Level.WARNING).log("Stat %s for %s clamped from %d to %d",
                     stat, playerId, value, clamped);
@@ -172,7 +173,7 @@ public class RpgService {
      */
     public boolean assignPoint(@Nonnull UUID playerId, @Nonnull RpgStat stat) {
         int currentStat = getStat(playerId, stat);
-        if (currentStat >= RpgConstants.MAX_STAT) {
+        if (currentStat >= RpgConfig.values().maxStat()) {
             return false;
         }
 

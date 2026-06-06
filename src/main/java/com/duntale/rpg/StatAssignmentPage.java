@@ -114,7 +114,7 @@ public class StatAssignmentPage extends InteractiveCustomUIPage<StatAssignmentPa
                 playerRef.sendMessage(Message.raw("No stat points available.").color(COLOR_RED));
             } else {
                 playerRef.sendMessage(
-                        Message.raw(stat.name() + " is already at max (" + RpgConstants.MAX_STAT + ").").color(COLOR_RED)
+                        Message.raw(stat.name() + " is already at max (" + RpgConfig.values().maxStat() + ").").color(COLOR_RED)
                 );
             }
         }

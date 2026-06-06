@@ -1,12 +1,13 @@
 package com.duntale.rpg;
 
-import static com.duntale.rpg.RpgConstants.*;
-
 /**
  * Static utility for computing effective gameplay values from RPG stat levels.
  *
  * <p>All formulas use a hyperbolic curve {@code maxBonus * (level / (level + halfPoint))}
  * to provide diminishing returns. Each stat maps to one or more gameplay values.
+ *
+ * <p>Tuning values are read live from {@link RpgConfig#values()} on every call, so changes to
+ * the {@code RpgConfig} asset (hot reload) take effect immediately.
  */
 public final class RpgStatEffects {
 
@@ -34,107 +35,112 @@ public final class RpgStatEffects {
     /**
      * Computes the effective move speed for the given Speed stat level.
      *
-     * <p>Formula: {@code SPEED_BASE + SPEED_MAX_BONUS * (level / (level + SPEED_HALF_POINT))}.
-     * At level 0 returns {@link RpgConstants#SPEED_BASE}.
+     * <p>Formula: {@code speedBase + speedMaxBonus * (level / (level + speedHalfPoint))}.
+     * At level 0 returns {@code speedBase}.
      *
      * @param speedLevel the Speed stat level
      * @return the effective move speed
      */
     public static float computeMoveSpeed(int speedLevel) {
-        return SPEED_BASE + hyperbolic(speedLevel, SPEED_MAX_BONUS, SPEED_HALF_POINT);
+        RpgConfigValues v = RpgConfig.values();
+        return v.speedBase() + hyperbolic(speedLevel, v.speedMaxBonus(), v.speedHalfPoint());
     }
 
     /**
      * Computes the outgoing damage multiplier for the given Strength stat level.
      *
-     * <p>Formula: {@code 1.0 + STRENGTH_MAX_BONUS * (level / (level + STRENGTH_HALF_POINT))}.
+     * <p>Formula: {@code 1.0 + strengthMaxBonus * (level / (level + strengthHalfPoint))}.
      * At level 0 returns {@code 1.0f} (no bonus).
      *
      * @param strengthLevel the Strength stat level
      * @return the damage multiplier (>= 1.0)
      */
     public static float computeStrengthMultiplier(int strengthLevel) {
-        return 1.0f + hyperbolic(strengthLevel, STRENGTH_MAX_BONUS, STRENGTH_HALF_POINT);
+        RpgConfigValues v = RpgConfig.values();
+        return 1.0f + hyperbolic(strengthLevel, v.strengthMaxBonus(), v.strengthHalfPoint());
     }
 
     /**
      * Computes the loot drop bonus chance for the given Luck stat level.
      *
-     * <p>Formula: {@code LUCK_MAX_DROP_BONUS * (level / (level + LUCK_HALF_POINT))}.
+     * <p>Formula: {@code luckMaxDropBonus * (level / (level + luckHalfPoint))}.
      * At level 0 returns {@code 0.0f}.
      *
      * @param luckLevel the Luck stat level
-     * @return the drop bonus as a fraction (0.0 to LUCK_MAX_DROP_BONUS)
+     * @return the drop bonus as a fraction (0.0 to luckMaxDropBonus)
      */
     public static float computeLuckDropBonus(int luckLevel) {
-        return hyperbolic(luckLevel, LUCK_MAX_DROP_BONUS, LUCK_HALF_POINT);
+        RpgConfigValues v = RpgConfig.values();
+        return hyperbolic(luckLevel, v.luckMaxDropBonus(), v.luckHalfPoint());
     }
 
     /**
      * Computes the number of bonus loot rolls for the given Luck stat level.
      *
-     * <p>Formula: {@code Math.floorDiv(luckLevel, LUCK_LEVELS_PER_BONUS_ROLL)}.
+     * <p>Formula: {@code Math.floorDiv(luckLevel, luckLevelsPerBonusRoll)}.
      * At level 0 returns {@code 0}.
      *
      * @param luckLevel the Luck stat level
      * @return the number of bonus rolls (>= 0)
      */
     public static int computeLuckBonusRolls(int luckLevel) {
-        return Math.floorDiv(luckLevel, LUCK_LEVELS_PER_BONUS_ROLL);
+        return Math.floorDiv(luckLevel, RpgConfig.values().luckLevelsPerBonusRoll());
     }
 
     /**
      * Computes the bonus stamina for the given Stamina stat level.
      *
-     * <p>Formula: {@code staminaLevel * STAMINA_PER_POINT}.
+     * <p>Formula: {@code staminaLevel * staminaPerPoint}.
      * At level 0 returns {@code 0.0f}.
      *
      * @param staminaLevel the Stamina stat level
      * @return the bonus stamina value
      */
     public static float computeStaminaBonus(int staminaLevel) {
-        return staminaLevel * STAMINA_PER_POINT;
+        return staminaLevel * RpgConfig.values().staminaPerPoint();
     }
 
     /**
      * Computes the attack throttle interval in nanoseconds for the given Agility stat level.
      *
-     * <p>Formula: {@code max(AGILITY_MIN_THROTTLE_NS,
-     * AGILITY_BASE_THROTTLE_NS * (1 - AGILITY_MAX_REDUCTION * (level / (level + AGILITY_HALF_POINT))))}.
-     * At level 0 returns {@link RpgConstants#AGILITY_BASE_THROTTLE_NS}.
+     * <p>Formula: {@code max(agilityMinThrottleNs,
+     * agilityBaseThrottleNs * (1 - agilityMaxReduction * (level / (level + agilityHalfPoint))))}.
+     * At level 0 returns {@code agilityBaseThrottleNs}.
      *
      * @param agilityLevel the Agility stat level
      * @return the attack throttle in nanoseconds
      */
     public static long computeAttackThrottleNs(int agilityLevel) {
-        float reduction = hyperbolic(agilityLevel, AGILITY_MAX_REDUCTION, AGILITY_HALF_POINT);
-        return Math.max(AGILITY_MIN_THROTTLE_NS,
-                (long) (AGILITY_BASE_THROTTLE_NS * (1.0f - reduction)));
+        RpgConfigValues v = RpgConfig.values();
+        float reduction = hyperbolic(agilityLevel, v.agilityMaxReduction(), v.agilityHalfPoint());
+        return Math.max(v.agilityMinThrottleNs(),
+                (long) (v.agilityBaseThrottleNs() * (1.0f - reduction)));
     }
 
     /**
      * Computes the damage reduction fraction for the given Resistance stat level.
      *
-     * <p>Formula: {@code RESISTANCE_MAX_DR * (level / (level + RESISTANCE_HALF_POINT))}.
+     * <p>Formula: {@code resistanceMaxDr * (level / (level + resistanceHalfPoint))}.
      * At level 0 returns {@code 0.0f}.
      *
      * @param resistanceLevel the Resistance stat level
-     * @return the damage reduction as a fraction (0.0 to RESISTANCE_MAX_DR)
+     * @return the damage reduction as a fraction (0.0 to resistanceMaxDr)
      */
     public static float computeResistanceDR(int resistanceLevel) {
-        return hyperbolic(resistanceLevel, RESISTANCE_MAX_DR, RESISTANCE_HALF_POINT);
+        RpgConfigValues v = RpgConfig.values();
+        return hyperbolic(resistanceLevel, v.resistanceMaxDr(), v.resistanceHalfPoint());
     }
 
     /**
      * Computes the bonus health for the given Vitality stat level.
      *
-     * <p>Formula: {@code vitalityLevel * VITALITY_HP_PER_POINT}.
+     * <p>Formula: {@code vitalityLevel * vitalityHpPerPoint}.
      * At level 0 returns {@code 0.0f}.
      *
      * @param vitalityLevel the Vitality stat level
      * @return the bonus health points
      */
     public static float computeVitalityBonus(int vitalityLevel) {
-        return vitalityLevel * VITALITY_HP_PER_POINT;
+        return vitalityLevel * RpgConfig.values().vitalityHpPerPoint();
     }
 }

@@ -1,0 +1,21 @@
+{
+	"MinStat": 0,
+	"MaxStat": 100,
+	"SpeedBase": 8.0,
+	"SpeedMaxBonus": 7.0,
+	"SpeedHalfPoint": 25.0,
+	"StrengthMaxBonus": 1.0,
+	"StrengthHalfPoint": 25.0,
+	"LuckMaxDropBonus": 0.30,
+	"LuckHalfPoint": 20.0,
+	"LuckLevelsPerBonusRoll": 15,
+	"StaminaPerPoint": 5.0,
+	"AgilityBaseThrottleNs": 400000000,
+	"AgilityMaxReduction": 0.65,
+	"AgilityHalfPoint": 25.0,
+	"AgilityMinThrottleNs": 140000000,
+	"ResistanceMaxDr": 0.40,
+	"ResistanceHalfPoint": 30.0,
+	"VitalityHpPerPoint": 10.0,
+	"MaxGoldBalance": 999999999
+}

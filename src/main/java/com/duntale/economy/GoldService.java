@@ -1,6 +1,6 @@
 package com.duntale.economy;
 
-import com.duntale.rpg.RpgConstants;
+import com.duntale.rpg.RpgConfig;
 import com.hypixel.hytale.logger.HytaleLogger;
 
 import javax.annotation.Nonnull;
@@ -73,7 +73,7 @@ public class GoldService {
 
         try {
             long oldBalance = repository.getBalance(playerId);
-            long newBalance = Math.min(oldBalance + amount, RpgConstants.MAX_GOLD_BALANCE);
+            long newBalance = Math.min(oldBalance + amount, RpgConfig.values().maxGoldBalance());
             repository.setBalance(playerId, newBalance);
 
             LOGGER.at(Level.INFO).log("addGold player=%s amount=%d old=%d new=%d",

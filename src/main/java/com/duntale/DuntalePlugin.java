@@ -8,6 +8,7 @@ import com.duntale.camera.ClickToMoveManager;
 import com.duntale.camera.ClickToMoveTickSystem;
 import com.duntale.camera.PlayerDeathCleanupSystem;
 import com.duntale.config.asset.CustomizeCharacterConfigAsset;
+import com.duntale.config.asset.RpgConfigAsset;
 import com.duntale.command.DGiveCommand;
 import com.duntale.command.DLootCommand;
 import com.duntale.command.DungeonCommand;
@@ -73,6 +74,7 @@ import com.duntale.death.DungeonDeathPage;
 import com.duntale.death.DungeonDeathScreenSystem;
 import com.duntale.death.DungeonRespawnService;
 import com.duntale.rpg.GameModeToggleStatMenuSystem;
+import com.duntale.rpg.RpgConfig;
 import com.duntale.rpg.RpgDamageScalingSystem;
 import com.duntale.rpg.RpgProfile;
 import com.duntale.rpg.RpgStat;
@@ -165,6 +167,7 @@ public class DuntalePlugin extends JavaPlugin {
     private DatabaseProvider databaseProvider;
     private RpgService rpgService;
     private RpgStatApplicator rpgStatApplicator;
+    private RpgConfig rpgConfig;
     private GoldService goldService;
     private ProgressionService progressionService;
 
@@ -425,6 +428,7 @@ public class DuntalePlugin extends JavaPlugin {
         AssetRegistry.register(FloorConfigDefaultAsset.assetStoreBuilder().build());
         AssetRegistry.register(CustomizeCharacterConfigAsset.assetStoreBuilder().build());
         AssetRegistry.register(LootTableConfig.assetStoreBuilder().build());
+        AssetRegistry.register(RpgConfigAsset.assetStoreBuilder().build());
 
         // ── RPG System ───────────────────────────────────────────────
         this.databaseProvider = new DatabaseProvider();
@@ -466,6 +470,19 @@ public class DuntalePlugin extends JavaPlugin {
             dungeonMembershipRepository = new DungeonMembershipRepository(databaseProvider);
         }
         this.rpgStatApplicator = new RpgStatApplicator(this.rpgService);
+
+        // Runtime-tunable RPG config (hot-reloadable asset, in-memory snapshot).
+        // On hot reload, re-assert Vitality/Stamina (entity-stat ceilings) for online players;
+        // all other stat values are computed live at point of use and need no reassertion.
+        this.rpgConfig = new RpgConfig();
+        this.rpgConfig.setReloadCallback(() -> {
+            for (PlayerRef playerRef : Universe.get().getPlayers()) {
+                UUID playerId = playerRef.getUuid();
+                runOnPlayerWorld(playerRef, (ref, store) ->
+                        rpgStatApplicator.reassert(playerId, ref, store));
+            }
+        });
+
         this.floorConfigService = new FloorConfigService(new FloorConfigAssetRepository());
         this.floorConfigService.loadOnStartup();
         this.themeAssetService = new ThemeAssetService(new ThemeAssetRepository());
@@ -634,6 +651,8 @@ public class DuntalePlugin extends JavaPlugin {
         // Asset stores are fully loaded after all plugins setup() — safe to scan now
         this.assetCatalog.initialize();
         this.merchantPriceRegistry.initialize(assetCatalog);
+        // Populate the RPG config snapshot from the now-loaded asset (falls back to defaults).
+        this.rpgConfig.refresh();
 
         // Initialize dungeon orchestrator here — asset stores are available after all plugins setup()
         this.dungeonOrchestrator = new GenerationOrchestrator(new BlockResolver());
@@ -655,6 +674,9 @@ public class DuntalePlugin extends JavaPlugin {
     protected void shutdown() {
         if (clickToMoveManager != null) {
             clickToMoveManager.shutdown();
+        }
+        if (rpgConfig != null) {
+            rpgConfig.shutdown();
         }
         if (blockOcclusionManager != null) {
             // Retrieve world from any online player; if no players remain the

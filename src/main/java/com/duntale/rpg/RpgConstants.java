@@ -1,7 +1,12 @@
 package com.duntale.rpg;
 
 /**
- * All tunable constants and stat bounds for the RPG system.
+ * Default values for all tunable constants and stat bounds of the RPG system.
+ *
+ * <p>These are the compile-time fallbacks. At runtime they may be overridden by the
+ * {@code Server/Configs/Rpg/RpgConfig.json} asset; the live values are read via
+ * {@link RpgConfig#values()} (see {@link RpgConfigValues#DEFAULTS}). Reference these constants
+ * only as defaults — gameplay code must read {@link RpgConfig#values()} so hot reloads take effect.
  */
 public final class RpgConstants {
     private RpgConstants() {}

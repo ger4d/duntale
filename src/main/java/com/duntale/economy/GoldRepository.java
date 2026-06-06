@@ -1,7 +1,7 @@
 package com.duntale.economy;
 
 import com.duntale.db.DatabaseProvider;
-import com.duntale.rpg.RpgConstants;
+import com.duntale.rpg.RpgConfig;
 import com.hypixel.hytale.logger.HytaleLogger;
 
 import javax.annotation.Nonnull;
@@ -142,7 +142,7 @@ public class GoldRepository {
             long toBalance = readBalance(conn, to);
 
             long newFromBalance = fromBalance - amount;
-            long newToBalance = Math.min(toBalance + amount, RpgConstants.MAX_GOLD_BALANCE);
+            long newToBalance = Math.min(toBalance + amount, RpgConfig.values().maxGoldBalance());
 
             try (PreparedStatement ps = conn.prepareStatement(UPSERT_BALANCE_SQL)) {
                 ps.setString(1, from.toString());
