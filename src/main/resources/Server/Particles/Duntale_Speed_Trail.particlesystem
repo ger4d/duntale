@@ -1,0 +1,9 @@
+{
+  "LifeSpan": 4.0,
+  "Spawners": [
+    {
+      "SpawnerId": "Duntale_Speed_Trail"
+    }
+  ],
+  "CullDistance": 48
+}

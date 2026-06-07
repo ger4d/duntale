@@ -77,7 +77,7 @@ public class SpeedBoostInteraction extends SimpleInstantInteraction {
             return;
         }
         DuntalePlugin.get().getSpeedBoostManager().apply(uuidComponent.getUuid(), this.bonus, this.durationSeconds);
-        ItemVfx.spawnConfirmation(commandBuffer, ref, CustomItems.SPEED_BOOST_VFX);
+        ItemVfx.applyFollowEffect(commandBuffer, ref, CustomItems.SPEED_BOOST_EFFECT, this.durationSeconds);
     }
 
     @Nonnull

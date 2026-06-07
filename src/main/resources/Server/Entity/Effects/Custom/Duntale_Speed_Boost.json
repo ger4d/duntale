@@ -1,0 +1,15 @@
+{
+  "Duration": 4.0,
+  "OverlapBehavior": "Overwrite",
+  "ApplicationEffects": {
+    "Particles": [
+      {
+        "SystemId": "Duntale_Speed_Trail",
+        "TargetEntityPart": "Entity",
+        "TargetNodeName": "Origin",
+        "DetachedFromModel": false,
+        "Scale": 1.0
+      }
+    ]
+  }
+}

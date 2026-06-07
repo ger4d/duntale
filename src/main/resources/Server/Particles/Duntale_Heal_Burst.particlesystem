@@ -1,0 +1,9 @@
+{
+  "LifeSpan": 0.7,
+  "Spawners": [
+    {
+      "SpawnerId": "Duntale_Heal_Burst"
+    }
+  ],
+  "CullDistance": 40
+}

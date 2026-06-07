@@ -1,0 +1,115 @@
+{
+  "RenderMode": "BlendAdd",
+  "ParticleRotationInfluence": "Billboard",
+  "LinearFiltering": true,
+  "LightInfluence": 0.0,
+  "ParticleRotateWithSpawner": false,
+  "TrailSpawnerPositionMultiplier": 0,
+  "TrailSpawnerRotationMultiplier": 0,
+  "SpawnBurst": false,
+  "SpawnRate": {
+    "Min": 50,
+    "Max": 50
+  },
+  "UseEmitDirection": false,
+  "MaxConcurrentParticles": 50,
+  "ParticleLifeSpan": {
+    "Min": 1.1,
+    "Max": 1.1
+  },
+  "EmitOffset": {
+    "X": {
+      "Min": 0.5,
+      "Max": 0.5
+    },
+    "Y": {
+      "Min": -1.2,
+      "Max": -1.2
+    },
+    "Z": {
+      "Min": 0.0,
+      "Max": 0.0
+    }
+  },
+  "InitialVelocity": {
+    "Speed": {
+      "Min": 2.5,
+      "Max": 2.5
+    },
+    "Yaw": {
+      "Min": 90.0,
+      "Max": 90.0
+    },
+    "Pitch": {
+      "Min": 45.0,
+      "Max": 45.0
+    }
+  },
+  "Attractors": [
+    {
+      "Position": {
+        "X": 0.0,
+        "Y": 0.0,
+        "Z": 0.0
+      },
+      "RadialAxis": {
+        "X": 0.0,
+        "Y": 1.0,
+        "Z": 0.0
+      },
+      "Radius": 0.0,
+      "RadialAcceleration": -30.0,
+      "RadialTangentAcceleration": 18.0,
+      "DampingMultiplier": {
+        "X": 0.9,
+        "Y": 1.0,
+        "Z": 0.9
+      }
+    }
+  ],
+  "Particle": {
+    "Texture": "Particles/Textures/Basic/Glow.png",
+    "ScaleRatioConstraint": "OneToOne",
+    "Animation": {
+      "0": {
+        "Opacity": 0.0,
+        "Color": "#ff6464",
+        "Scale": {
+          "X": {
+            "Min": 0.5,
+            "Max": 0.5
+          }
+        }
+      },
+      "20": {
+        "Opacity": 1.0,
+        "Color": "#ff9a6a",
+        "Scale": {
+          "X": {
+            "Min": 1.2,
+            "Max": 1.2
+          }
+        }
+      },
+      "100": {
+        "Opacity": 0.0,
+        "Color": "#ffd27a",
+        "Scale": {
+          "X": {
+            "Min": 0.4,
+            "Max": 0.4
+          }
+        }
+      }
+    },
+    "InitialAnimationFrame": {
+      "Scale": {
+        "X": {
+          "Min": 0.05,
+          "Max": 0.15
+        }
+      },
+      "Opacity": 1
+    }
+  }
+}

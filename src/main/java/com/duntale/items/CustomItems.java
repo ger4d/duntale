@@ -55,17 +55,25 @@ public final class CustomItems {
     public static final String HEALING_NECKLACE_II_EFFECT = "Healing_Necklace_II_Regen";
 
     // ============================================
-    // Confirmation particle VFX (ParticleSystem asset IDs)
+    // Activation VFX (custom EntityEffect / ParticleSystem asset IDs)
     // ============================================
 
-    /** Sprint-dust burst played when Speed Boots are activated. */
-    public static final String SPEED_BOOST_VFX = "Block_Sprint_Dust";
+    /**
+     * Cosmetic EntityEffect applied for the boost duration when Speed Boots are
+     * activated. It attaches a model-following blue/white speed trail at the
+     * player's feet ({@code Duntale_Speed_Trail}) and auto-detaches on expiry.
+     */
+    public static final String SPEED_BOOST_EFFECT = "Duntale_Speed_Boost";
 
-    /** Heal burst played when Vampire Juice successfully heals. */
-    public static final String VAMPIRE_JUICE_VFX = "Potion_Health_Heal";
+    /**
+     * Cosmetic EntityEffect applied on a successful Vampire Juice heal; attaches the
+     * model-following heal burst ({@code Duntale_Heal_Burst}) to the player's torso so
+     * the particles track the model for the effect's short duration.
+     */
+    public static final String VAMPIRE_HEAL_EFFECT = "Duntale_Heal_Aura";
 
-    /** Sparkle burst played when a stat point is granted. */
-    public static final String STAT_POINT_VFX = "Dust_Sparkles_Fine";
+    /** Custom short-lived sparkle burst played when a stat point is granted. */
+    public static final String STAT_POINT_VFX = "Duntale_Stat_Sparkle";
 
     // ============================================
     // Vampire Juice tuning (percent of max stat)
@@ -76,6 +84,14 @@ public final class CustomItems {
 
     /** Stamina drained per use, as a percentage of max stamina (also the minimum to use). */
     public static final float VAMPIRE_STAMINA_PCT = 10.0f;
+
+    /**
+     * Seconds to suppress stamina regeneration after the drain, applied by setting the
+     * {@code StaminaRegenDelay} stat to this many seconds negative (it climbs back to 0 at
+     * +1/s, gating stamina regen). Without it, natural stamina regen refills the drained
+     * stamina almost instantly, unlike dodge/block/bow which set this delay themselves.
+     */
+    public static final float VAMPIRE_STAMINA_REGEN_DELAY_SECONDS = 2.5f;
 
     // ============================================
     // Trap immunity

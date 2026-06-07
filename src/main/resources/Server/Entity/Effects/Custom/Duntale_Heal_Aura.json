@@ -1,0 +1,15 @@
+{
+  "Duration": 0.8,
+  "OverlapBehavior": "Overwrite",
+  "ApplicationEffects": {
+    "Particles": [
+      {
+        "SystemId": "Duntale_Heal_Burst",
+        "TargetEntityPart": "Entity",
+        "TargetNodeName": "Pelvis",
+        "DetachedFromModel": false,
+        "Scale": 1.0
+      }
+    ]
+  }
+}

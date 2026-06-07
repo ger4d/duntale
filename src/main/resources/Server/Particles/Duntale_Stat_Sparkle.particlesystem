@@ -1,0 +1,9 @@
+{
+  "LifeSpan": 0.7,
+  "Spawners": [
+    {
+      "SpawnerId": "Duntale_Stat_Sparkle"
+    }
+  ],
+  "CullDistance": 40
+}
