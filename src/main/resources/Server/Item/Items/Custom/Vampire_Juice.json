@@ -1,0 +1,46 @@
+{
+  "TranslationProperties": {
+    "Name": "server.items.Vampire_Juice.name",
+    "Description": "server.items.Vampire_Juice.description"
+  },
+  "Categories": [
+    "Items.Consumables"
+  ],
+  "Quality": "Epic",
+  "ItemLevel": 50,
+  "MaxStack": 1,
+  "Model": "Items/Consumables/Potions/Potion_Normal.blockymodel",
+  "Texture": "Items/Consumables/Potions/Potion_Textures/Red.png",
+  "PlayerAnimationsId": "Item",
+  "Icon": "Icons/Items/Duntale/Vampire_Juice.png",
+  "IconProperties": {
+    "Scale": 0.9,
+    "Rotation": [
+      22.5,
+      45,
+      22.5
+    ],
+    "Translation": [
+      0,
+      -9
+    ]
+  },
+  "Interactions": {
+    "Secondary": {
+      "Interactions": [
+        {
+          "Type": "Duntale_VampireJuice"
+        }
+      ],
+      "Cooldown": {
+        "Id": "Duntale_VampireJuice",
+        "Cooldown": 0.25
+      }
+    }
+  },
+  "Tags": {
+    "Type": [
+      "Consumable"
+    ]
+  }
+}

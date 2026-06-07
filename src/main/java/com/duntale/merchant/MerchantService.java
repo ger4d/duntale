@@ -288,6 +288,9 @@ public class MerchantService {
             if (sellPrice < 1 && basePrice > 0) {
                 sellPrice = 1;
             }
+        } else if (priceRegistry.isCustomItem(itemId)) {
+            // Fixed-price custom items sell per unit, so credit the whole stack.
+            sellPrice = basePrice * item.getQuantity();
         }
         if (sellPrice <= 0) {
             return;

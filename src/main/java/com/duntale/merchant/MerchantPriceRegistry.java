@@ -79,6 +79,13 @@ public class MerchantPriceRegistry {
     private final Map<String, PriceProfile> priceProfiles = new ConcurrentHashMap<>();
 
     /**
+     * Fixed unit buy prices for authored custom items. These are level-independent
+     * and resold at {@link #SELL_RATIO}. Kept separate from the stat-derived gear
+     * caches so {@link #initialize(AssetCatalog)} never clears them.
+     */
+    private final Map<String, Long> customBuyPrices = new ConcurrentHashMap<>();
+
+    /**
      * Populates the price cache from all weapons and armor in the asset catalog.
      *
      * @param assetCatalog the asset catalog (must already be initialised)
@@ -178,6 +185,10 @@ public class MerchantPriceRegistry {
      * @return the sell price in gold, or {@code 0} if the item is not in the registry
      */
     public long getSellPrice(@Nonnull String itemId) {
+        Long customBuy = customBuyPrices.get(itemId);
+        if (customBuy != null) {
+            return (long) Math.floor(customBuy * SELL_RATIO);
+        }
         long buyPrice = getBuyPrice(itemId);
         return buyPrice > 0 ? (long) Math.floor(buyPrice * SELL_RATIO) : 0L;
     }
@@ -193,6 +204,11 @@ public class MerchantPriceRegistry {
      * @return the level-adjusted sell price in gold
      */
     public long getSellPrice(@Nonnull String itemId, int dungeonLevel) {
+        Long customBuy = customBuyPrices.get(itemId);
+        if (customBuy != null) {
+            // Custom items use a fixed, level-independent price.
+            return (long) Math.floor(customBuy * SELL_RATIO);
+        }
         long buyPrice = getBuyPrice(itemId, dungeonLevel);
         return buyPrice > 0 ? (long) Math.floor(buyPrice * SELL_RATIO) : 0L;
     }
@@ -204,7 +220,31 @@ public class MerchantPriceRegistry {
      * @return {@code true} if the item is sellable
      */
     public boolean isSellable(@Nonnull String itemId) {
-        return priceProfiles.containsKey(itemId);
+        return priceProfiles.containsKey(itemId) || customBuyPrices.containsKey(itemId);
+    }
+
+    /**
+     * Registers a fixed unit buy price for an authored custom item, making it
+     * sellable at {@link #SELL_RATIO} of that price regardless of dungeon level.
+     *
+     * @param itemId   the custom item asset ID
+     * @param buyPrice the unit buy price in gold
+     */
+    public void registerCustomItem(@Nonnull String itemId, long buyPrice) {
+        customBuyPrices.put(itemId, buyPrice);
+    }
+
+    /**
+     * Returns whether the given item is an authored, fixed-price custom item.
+     *
+     * <p>Custom items are sold per unit at a fixed price, so a sold stack should be
+     * credited at the per-unit sell price multiplied by its quantity.
+     *
+     * @param itemId the item asset ID
+     * @return {@code true} if the item was registered via {@link #registerCustomItem(String, long)}
+     */
+    public boolean isCustomItem(@Nonnull String itemId) {
+        return customBuyPrices.containsKey(itemId);
     }
 
     /**

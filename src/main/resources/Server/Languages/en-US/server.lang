@@ -1,0 +1,25 @@
+# === Duntale custom items ===
+
+items.Immunity_Trap_Ring.name = Immunity Trap Ring
+items.Immunity_Trap_Ring.description = Negates damage from spike and snapjaw traps while carried.\n\n<i>Forged for those who must walk where others fear to tread.</i>
+
+items.Speed_Boots_I.name = Speed Boots I
+items.Speed_Boots_I.description = Right-click for a short burst of movement speed (4s, 5s cooldown).\n\n<i>Light on the feet, quick to the fray.</i>
+
+items.Speed_Boots_II.name = Speed Boots II
+items.Speed_Boots_II.description = Right-click for a strong burst of movement speed (4s, 5s cooldown).\n\n<i>Light on the feet, quick to the fray.</i>
+
+items.Speed_Boots_III.name = Speed Boots III
+items.Speed_Boots_III.description = Right-click for a powerful burst of movement speed (4s, 5s cooldown).\n\n<i>Light on the feet, quick to the fray.</i>
+
+items.Healing_Necklace_I.name = Healing Necklace I
+items.Healing_Necklace_I.description = Slowly restores health while carried (+1% max HP every 2s).\n\n<i>A faint warmth lingers against the skin.</i>
+
+items.Healing_Necklace_II.name = Healing Necklace II
+items.Healing_Necklace_II.description = Steadily restores health while carried (+3% max HP every 1.75s).\n\n<i>A faint warmth lingers against the skin.</i>
+
+items.Vampire_Juice.name = Vampire Juice
+items.Vampire_Juice.description = Right-click to drain stamina into health. Heals 5% max HP and costs 10% stamina; refuses below 10% stamina.\n\n<i>Bitter, but it keeps you standing.</i>
+
+items.Stat_Point_Token.name = +1 Stat Point Token
+items.Stat_Point_Token.description = Right-click to gain one unspent stat point. Consumes the token.\n\n<i>Distilled potential, waiting to be claimed.</i>

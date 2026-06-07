@@ -1,0 +1,10 @@
+{
+  "StatModifiers": {
+    "Health": 1
+  },
+  "ValueType": "Percent",
+  "DamageCalculatorCooldown": 2.0,
+  "Infinite": true,
+  "OverlapBehavior": "Overwrite",
+  "StatusEffectIcon": "Icons/ItemsGenerated/Potion_Health.png"
+}

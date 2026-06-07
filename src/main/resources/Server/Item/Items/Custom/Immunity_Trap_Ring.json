@@ -1,0 +1,33 @@
+{
+  "TranslationProperties": {
+    "Name": "server.items.Immunity_Trap_Ring.name",
+    "Description": "server.items.Immunity_Trap_Ring.description"
+  },
+  "Categories": [
+    "Items.Utility"
+  ],
+  "Quality": "Rare",
+  "ItemLevel": 35,
+  "MaxStack": 1,
+  "Model": "Resources/Crystals/Crystal_Fragment.blockymodel",
+  "Texture": "Resources/Crystals/Crystal_Fragment_Textures/Cyan.png",
+  "PlayerAnimationsId": "Item",
+  "Icon": "Icons/Items/Duntale/Immunity_Trap_Ring.png",
+  "IconProperties": {
+    "Scale": 0.75,
+    "Translation": [
+      -0.3,
+      0.3
+    ],
+    "Rotation": [
+      34.315,
+      29.815,
+      22.5
+    ]
+  },
+  "Tags": {
+    "Type": [
+      "Ingredient"
+    ]
+  }
+}

@@ -47,6 +47,13 @@ import com.duntale.merchant.MerchantPriceRegistry;
 import com.duntale.merchant.MerchantService;
 import com.duntale.merchant.BuilderActionOpenDungeonMerchant;
 import com.duntale.merchant.MerchantTooltipProvider;
+import com.duntale.items.CustomItems;
+import com.duntale.items.GrantStatPointInteraction;
+import com.duntale.items.HealingNecklaceSystem;
+import com.duntale.items.PlayerTrapImmunitySystem;
+import com.duntale.items.SpeedBoostInteraction;
+import com.duntale.items.SpeedBoostManager;
+import com.duntale.items.VampireJuiceInteraction;
 import com.duntale.portal.DungeonEndPortalService;
 import com.duntale.progression.AssetCatalog;
 import com.duntale.progression.BuiltInNpcSpawnScalingSystem;
@@ -107,6 +114,7 @@ import com.hypixel.hytale.server.core.event.events.player.RemovedPlayerFromWorld
 import com.hypixel.hytale.server.core.modules.entity.damage.DeathComponent;
 import com.hypixel.hytale.server.core.modules.entity.teleport.PendingTeleport;
 import com.hypixel.hytale.server.core.modules.entity.teleport.Teleport;
+import com.hypixel.hytale.server.core.modules.interaction.interaction.config.Interaction;
 import com.hypixel.hytale.server.core.plugin.JavaPlugin;
 import com.hypixel.hytale.server.core.plugin.JavaPluginInit;
 import com.hypixel.hytale.server.core.universe.PlayerRef;
@@ -151,6 +159,7 @@ public class DuntalePlugin extends JavaPlugin {
 
     private ClickToMoveManager clickToMoveManager;
     private BlockOcclusionManager blockOcclusionManager;
+    private SpeedBoostManager speedBoostManager;
 
     // Progression system
     private AssetCatalog assetCatalog;
@@ -352,6 +361,26 @@ public class DuntalePlugin extends JavaPlugin {
     }
 
     /**
+     * Returns the RPG service for stat and stat-point operations.
+     *
+     * @return the RPG service
+     */
+    @Nonnull
+    public RpgService getRpgService() {
+        return rpgService;
+    }
+
+    /**
+     * Returns the manager tracking transient Speed Boots move-speed bonuses.
+     *
+     * @return the speed boost manager
+     */
+    @Nonnull
+    public SpeedBoostManager getSpeedBoostManager() {
+        return speedBoostManager;
+    }
+
+    /**
      * Returns the catalog generator for merchant inventories.
      *
      * @return the catalog generator
@@ -419,8 +448,18 @@ public class DuntalePlugin extends JavaPlugin {
     protected void setup() {
         LOGGER.atInfo().log("Duntale Plugin Setting Up...");
 
+        // Register custom item-use interaction types before any item assets load,
+        // so item JSON referencing these Types (Secondary right-click) resolves.
+        this.getCodecRegistry(Interaction.CODEC)
+                .register("Duntale_SpeedBoost", SpeedBoostInteraction.class, SpeedBoostInteraction.CODEC);
+        this.getCodecRegistry(Interaction.CODEC)
+                .register("Duntale_VampireJuice", VampireJuiceInteraction.class, VampireJuiceInteraction.CODEC);
+        this.getCodecRegistry(Interaction.CODEC)
+                .register("Duntale_GrantStatPoint", GrantStatPointInteraction.class, GrantStatPointInteraction.CODEC);
+
         // Initialize managers
-        this.clickToMoveManager = new ClickToMoveManager();
+        this.speedBoostManager = new SpeedBoostManager();
+        this.clickToMoveManager = new ClickToMoveManager(speedBoostManager);
         this.blockOcclusionManager = new BlockOcclusionManager();
 
         LOGGER.atInfo().log("Data directory: %s", getDataDirectory().toAbsolutePath());
@@ -512,6 +551,8 @@ public class DuntalePlugin extends JavaPlugin {
         // ── Merchant System ──────────────────────────────────────────
         this.merchantPriceRegistry = new MerchantPriceRegistry();
         // MerchantPriceRegistry.initialize() deferred to start() — depends on AssetCatalog
+        // Register fixed resale prices for the authored custom items (kept across initialize()).
+        CustomItems.BUY_PRICES.forEach(this.merchantPriceRegistry::registerCustomItem);
         this.thirdPartyModAvailabilityService = new ThirdPartyModAvailabilityService();
         this.catalogGenerator = new CatalogGenerator(merchantPriceRegistry, thirdPartyModAvailabilityService);
         this.merchantService = new MerchantService(merchantPriceRegistry, goldService);
@@ -574,6 +615,10 @@ public class DuntalePlugin extends JavaPlugin {
         this.playerEntryService = new PlayerEntryService(companionService, dungeonInstanceService);
         this.backgroundMusicService = new BackgroundMusicService();
         this.getEntityStoreRegistry().registerSystem(new CompanionRespawnSystem(companionService));
+
+        // ── Custom Items System ──────────────────────────────────────
+        this.getEntityStoreRegistry().registerSystem(new PlayerTrapImmunitySystem());
+        this.getEntityStoreRegistry().registerSystem(new HealingNecklaceSystem());
 
         // -- Dungeon Generation ----------------------------------------
         // Deferred to start() — DungeonSettingsConfig asset store not available during setup()

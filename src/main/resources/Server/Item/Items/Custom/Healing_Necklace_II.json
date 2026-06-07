@@ -1,0 +1,33 @@
+{
+  "TranslationProperties": {
+    "Name": "server.items.Healing_Necklace_II.name",
+    "Description": "server.items.Healing_Necklace_II.description"
+  },
+  "Categories": [
+    "Items.Utility"
+  ],
+  "Quality": "Epic",
+  "ItemLevel": 70,
+  "MaxStack": 1,
+  "Model": "Resources/Crystals/Crystal_Fragment.blockymodel",
+  "Texture": "Resources/Crystals/Crystal_Fragment_Textures/Red.png",
+  "PlayerAnimationsId": "Item",
+  "Icon": "Icons/Items/Duntale/Healing_Necklace_II.png",
+  "IconProperties": {
+    "Scale": 0.75,
+    "Translation": [
+      -0.3,
+      0.3
+    ],
+    "Rotation": [
+      34.315,
+      29.815,
+      22.5
+    ]
+  },
+  "Tags": {
+    "Type": [
+      "Ingredient"
+    ]
+  }
+}

@@ -1,0 +1,46 @@
+{
+  "TranslationProperties": {
+    "Name": "server.items.Stat_Point_Token.name",
+    "Description": "server.items.Stat_Point_Token.description"
+  },
+  "Categories": [
+    "Items.Consumables"
+  ],
+  "Quality": "Rare",
+  "ItemLevel": 10,
+  "MaxStack": 99,
+  "Model": "Resources/Crystals/Crystal_Fragment.blockymodel",
+  "Texture": "Resources/Crystals/Crystal_Fragment_Textures/Yellow.png",
+  "PlayerAnimationsId": "Item",
+  "Icon": "Icons/Items/Duntale/Stat_Point_Token.png",
+  "IconProperties": {
+    "Scale": 0.75,
+    "Translation": [
+      -0.3,
+      0.3
+    ],
+    "Rotation": [
+      34.315,
+      29.815,
+      22.5
+    ]
+  },
+  "Interactions": {
+    "Secondary": {
+      "Interactions": [
+        {
+          "Type": "Duntale_GrantStatPoint"
+        }
+      ],
+      "Cooldown": {
+        "Id": "Duntale_StatPoint",
+        "Cooldown": 0.25
+      }
+    }
+  },
+  "Tags": {
+    "Type": [
+      "Ingredient"
+    ]
+  }
+}

@@ -41,6 +41,7 @@ import com.duntale.merchant.CatalogEntry;
 import com.duntale.companion.CompanionComponent;
 import com.duntale.merchant.MerchantComponent;
 import com.duntale.merchant.MerchantService;
+import com.duntale.items.SpeedBoostManager;
 import com.duntale.DuntalePlugin;
 import com.hypixel.hytale.protocol.SoundCategory;
 import com.hypixel.hytale.protocol.ClientCameraView;
@@ -164,6 +165,9 @@ public class ClickToMoveManager {
     private final Map<UUID, PlayerState> players = new ConcurrentHashMap<>();
     private final EventRegistry eventRegistry;
 
+    /** Tracks transient per-player Speed Boots bonuses added on top of the Speed stat. */
+    private final SpeedBoostManager speedBoostManager;
+
     /** RPG service for per-player speed and attack throttle scaling. */
     private RpgService rpgService;
 
@@ -186,7 +190,8 @@ public class ClickToMoveManager {
     // Constructor
     // ============================================
 
-    public ClickToMoveManager() {
+    public ClickToMoveManager(@Nonnull SpeedBoostManager speedBoostManager) {
+        this.speedBoostManager = Objects.requireNonNull(speedBoostManager, "speedBoostManager");
         this.eventRegistry = new EventRegistry(
                 new CopyOnWriteArrayList<>(), () -> true, "ClickToMoveManager",
                 HytaleServer.get().getEventBus()
@@ -850,7 +855,7 @@ public class ClickToMoveManager {
      */
     private double getPlayerMoveSpeed(@Nonnull UUID uuid) {
         int speedLevel = rpgService.getStat(uuid, RpgStat.SPEED);
-        return RpgStatEffects.computeMoveSpeed(speedLevel);
+        return RpgStatEffects.computeMoveSpeed(speedLevel) + speedBoostManager.getBonus(uuid);
     }
 
     /**

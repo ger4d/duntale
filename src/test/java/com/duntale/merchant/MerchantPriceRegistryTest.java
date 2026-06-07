@@ -1,6 +1,7 @@
 package com.duntale.merchant;
 
 import com.duntale.ThirdPartyModAvailabilityService;
+import com.duntale.items.CustomItems;
 import com.duntale.progression.AssetCatalog;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
@@ -270,6 +271,106 @@ class MerchantPriceRegistryTest {
             }
 
             assertEquals(Set.copyOf(CatalogGenerator.RESERVED_SCROLL_ITEM_IDS), seenScrollIds);
+        }
+    }
+
+    @Nested
+    @DisplayName("custom item resale")
+    class CustomItemResale {
+
+        @Test
+        @DisplayName("Should sell a registered custom item at 80% of its fixed buy price, level-independent")
+        void shouldSellRegisteredCustomItemAtEightyPercentOfBuyPrice() {
+            MerchantPriceRegistry registry = new MerchantPriceRegistry();
+            registry.registerCustomItem(CustomItems.VAMPIRE_JUICE, 50_000L);
+
+            long expected = (long) Math.floor(50_000L * MerchantPriceRegistry.SELL_RATIO);
+            assertEquals(expected, registry.getSellPrice(CustomItems.VAMPIRE_JUICE));
+            assertEquals(expected, registry.getSellPrice(CustomItems.VAMPIRE_JUICE, 25));
+            assertTrue(registry.isSellable(CustomItems.VAMPIRE_JUICE));
+            assertTrue(registry.isCustomItem(CustomItems.VAMPIRE_JUICE));
+        }
+
+        @Test
+        @DisplayName("Should treat an unregistered item as not sellable with zero sell price")
+        void shouldTreatUnregisteredItemAsNotSellable() {
+            MerchantPriceRegistry registry = new MerchantPriceRegistry();
+
+            assertEquals(0L, registry.getSellPrice("Not_A_Real_Item"));
+            assertEquals(0L, registry.getSellPrice("Not_A_Real_Item", 20));
+            assertFalse(registry.isSellable("Not_A_Real_Item"));
+            assertFalse(registry.isCustomItem("Not_A_Real_Item"));
+        }
+
+        @Test
+        @DisplayName("Should keep custom resale prices after initialize() rebuilds the gear caches")
+        void shouldKeepCustomResalePricesAfterInitialize() {
+            MerchantPriceRegistry registry = new MerchantPriceRegistry();
+            registry.registerCustomItem(CustomItems.STAT_POINT_TOKEN, 7_500L);
+            registry.initialize(new TestAssetCatalog(List.of(), List.of()));
+
+            assertTrue(registry.isCustomItem(CustomItems.STAT_POINT_TOKEN));
+            assertEquals((long) Math.floor(7_500L * MerchantPriceRegistry.SELL_RATIO),
+                    registry.getSellPrice(CustomItems.STAT_POINT_TOKEN));
+        }
+    }
+
+    @Nested
+    @DisplayName("custom item pool")
+    class CustomItemPool {
+
+        @Test
+        @DisplayName("Should offer every custom utility item in the consumable pool")
+        void shouldOfferEveryCustomUtilityItemInTheConsumablePool() {
+            MerchantPriceRegistry registry = initializedRegistry(List.of(), List.of());
+            CatalogGenerator generator = generator(registry, false);
+
+            Set<String> seenConsumables = new HashSet<>();
+            for (long seed = 0; seed < 2_000; seed++) {
+                for (CatalogEntry entry : generator.generate(20, seed)) {
+                    if (entry.level() == 0) {
+                        seenConsumables.add(entry.itemId());
+                    }
+                }
+            }
+
+            for (String customId : CustomItems.BUY_PRICES.keySet()) {
+                assertTrue(seenConsumables.contains(customId),
+                        "expected merchant pool to offer custom item " + customId);
+            }
+        }
+
+        @Test
+        @DisplayName("Should offer stat point tokens in stacks of 1, 5, and 10 priced at the unit price")
+        void shouldOfferStatPointTokensInStacksOfOneFiveAndTen() {
+            MerchantPriceRegistry registry = initializedRegistry(List.of(), List.of());
+            CatalogGenerator generator = generator(registry, false);
+
+            long unitPrice = CustomItems.BUY_PRICES.get(CustomItems.STAT_POINT_TOKEN);
+            boolean sawSingle = false;
+            boolean sawFivePack = false;
+            boolean sawTenPack = false;
+
+            for (long seed = 0; seed < 5_000; seed++) {
+                for (CatalogEntry entry : generator.generate(20, seed)) {
+                    if (!CustomItems.STAT_POINT_TOKEN.equals(entry.itemId())) {
+                        continue;
+                    }
+                    if (entry.quantity() == 1 && entry.buyPrice() == unitPrice) {
+                        sawSingle = true;
+                    }
+                    if (entry.quantity() == 5 && entry.buyPrice() == unitPrice * 5) {
+                        sawFivePack = true;
+                    }
+                    if (entry.quantity() == 10 && entry.buyPrice() == unitPrice * 10) {
+                        sawTenPack = true;
+                    }
+                }
+            }
+
+            assertTrue(sawSingle);
+            assertTrue(sawFivePack);
+            assertTrue(sawTenPack);
         }
     }
 

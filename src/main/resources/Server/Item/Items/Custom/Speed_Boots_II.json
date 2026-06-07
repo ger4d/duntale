@@ -1,0 +1,48 @@
+{
+  "TranslationProperties": {
+    "Name": "server.items.Speed_Boots_II.name",
+    "Description": "server.items.Speed_Boots_II.description"
+  },
+  "Categories": [
+    "Items.Utility"
+  ],
+  "Quality": "Rare",
+  "ItemLevel": 45,
+  "MaxStack": 1,
+  "Model": "Resources/Crystals/Crystal_Fragment.blockymodel",
+  "Texture": "Resources/Crystals/Crystal_Fragment_Textures/Green.png",
+  "PlayerAnimationsId": "Item",
+  "Icon": "Icons/Items/Duntale/Speed_Boots_II.png",
+  "IconProperties": {
+    "Scale": 0.75,
+    "Translation": [
+      -0.3,
+      0.3
+    ],
+    "Rotation": [
+      34.315,
+      29.815,
+      22.5
+    ]
+  },
+  "Interactions": {
+    "Secondary": {
+      "Interactions": [
+        {
+          "Type": "Duntale_SpeedBoost",
+          "Bonus": 3.0,
+          "DurationSeconds": 4.0
+        }
+      ],
+      "Cooldown": {
+        "Id": "Duntale_SpeedBoots",
+        "Cooldown": 5
+      }
+    }
+  },
+  "Tags": {
+    "Type": [
+      "Ingredient"
+    ]
+  }
+}

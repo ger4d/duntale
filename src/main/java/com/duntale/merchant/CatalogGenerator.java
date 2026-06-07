@@ -1,6 +1,7 @@
 package com.duntale.merchant;
 
 import com.duntale.ThirdPartyModAvailabilityService;
+import com.duntale.items.CustomItems;
 import com.duntale.progression.CombatScaling;
 import com.hypixel.hytale.server.core.asset.type.item.config.Item;
 import com.hypixel.hytale.common.plugin.PluginIdentifier;
@@ -71,7 +72,7 @@ public class CatalogGenerator {
      * @param fixedQuantity    optional fixed quantity override; {@code 0} means offer a full
      *                         max stack and multiply the price by that resolved stack size
      */
-    private record ConsumableDef(@Nonnull String itemId, long unitPrice, int fixedQuantity) {
+    record ConsumableDef(@Nonnull String itemId, long unitPrice, int fixedQuantity) {
         private ConsumableDef(@Nonnull String itemId, long unitPrice) {
             this(itemId, unitPrice, 0);
         }
@@ -80,7 +81,7 @@ public class CatalogGenerator {
     private static final ConsumableDef HEALTH_POTION_LOW = new ConsumableDef("Potion_Health", 50);
     private static final ConsumableDef HEALTH_POTION_HIGH = new ConsumableDef("Potion_Health_Greater", 150);
 
-    private static final ConsumableDef[] CONSUMABLE_POOL = {
+    static final ConsumableDef[] CONSUMABLE_POOL = {
             new ConsumableDef("Weapon_Arrow_Crude", 5),
             new ConsumableDef("Weapon_Arrow_Iron", 15),
             new ConsumableDef("Weapon_Arrow_Deadeye", 30),
@@ -99,6 +100,18 @@ public class CatalogGenerator {
             new ConsumableDef("Upgrade_Backpack_1", 25_000, 1),
             new ConsumableDef("Upgrade_Backpack_2", 50_000, 1),
             new ConsumableDef("Upgrade_Backpack_3", 75_000, 1),
+            // ── Custom utility items (prices sourced from CustomItems.BUY_PRICES) ──
+            new ConsumableDef(CustomItems.IMMUNITY_TRAP_RING, CustomItems.BUY_PRICES.get(CustomItems.IMMUNITY_TRAP_RING), 1),
+            new ConsumableDef(CustomItems.SPEED_BOOTS_I, CustomItems.BUY_PRICES.get(CustomItems.SPEED_BOOTS_I), 1),
+            new ConsumableDef(CustomItems.SPEED_BOOTS_II, CustomItems.BUY_PRICES.get(CustomItems.SPEED_BOOTS_II), 1),
+            new ConsumableDef(CustomItems.SPEED_BOOTS_III, CustomItems.BUY_PRICES.get(CustomItems.SPEED_BOOTS_III), 1),
+            new ConsumableDef(CustomItems.HEALING_NECKLACE_I, CustomItems.BUY_PRICES.get(CustomItems.HEALING_NECKLACE_I), 1),
+            new ConsumableDef(CustomItems.HEALING_NECKLACE_II, CustomItems.BUY_PRICES.get(CustomItems.HEALING_NECKLACE_II), 1),
+            new ConsumableDef(CustomItems.VAMPIRE_JUICE, CustomItems.BUY_PRICES.get(CustomItems.VAMPIRE_JUICE), 1),
+            // +1 Stat Point token offered in stacks of 1 / 5 / 10
+            new ConsumableDef(CustomItems.STAT_POINT_TOKEN, CustomItems.BUY_PRICES.get(CustomItems.STAT_POINT_TOKEN), 1),
+            new ConsumableDef(CustomItems.STAT_POINT_TOKEN, CustomItems.BUY_PRICES.get(CustomItems.STAT_POINT_TOKEN), 5),
+            new ConsumableDef(CustomItems.STAT_POINT_TOKEN, CustomItems.BUY_PRICES.get(CustomItems.STAT_POINT_TOKEN), 10),
     };
 
         /** Full SimpleEnchantments scroll catalog offered in the reserved scroll slot. */
