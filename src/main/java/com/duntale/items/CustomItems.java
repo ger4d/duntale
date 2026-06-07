@@ -80,10 +80,10 @@ public final class CustomItems {
     // ============================================
 
     /** Health restored per use, as a percentage of max health. */
-    public static final float VAMPIRE_HEAL_PCT = 5.0f;
+    public static final float VAMPIRE_HEAL_PCT = 7.5f;
 
     /** Stamina drained per use, as a percentage of max stamina (also the minimum to use). */
-    public static final float VAMPIRE_STAMINA_PCT = 10.0f;
+    public static final float VAMPIRE_STAMINA_PCT = 30.0f;
 
     /**
      * Seconds to suppress stamina regeneration after the drain, applied by setting the
