@@ -1,6 +1,7 @@
 package com.duntale.loot;
 
 import com.duntale.companion.CompanionComponent;
+import com.hypixel.hytale.builtin.deployables.component.DeployableComponent;
 import com.hypixel.hytale.component.Ref;
 import com.hypixel.hytale.component.Store;
 import com.hypixel.hytale.logger.HytaleLogger;
@@ -32,8 +33,9 @@ final class AttackerResolver {
     /**
      * Resolves the credited player UUID from a {@link DeathComponent}.
      *
-     * <p>Credits a direct player attacker by their own UUID, or credits a companion
-     * attacker to its owner UUID. Non-player, non-companion attackers yield {@code null}.
+     * <p>Credits a direct player attacker by their own UUID, a companion attacker to its owner
+     * UUID, or a deployable attacker (e.g. a player-deployed turret) to its owner UUID.
+     * Non-player, non-companion, non-deployable attackers yield {@code null}.
      *
      * @param deathComponent the death component of the dying NPC
      * @param store          the entity store used to look up attacker components
@@ -56,10 +58,12 @@ final class AttackerResolver {
             Player player = store.getComponent(attackerRef, Player.getComponentType());
             UUIDComponent uuidComp = store.getComponent(attackerRef, UUIDComponent.getComponentType());
             CompanionComponent companionComp = store.getComponent(attackerRef, CompanionComponent.getComponentType());
+            DeployableComponent deployableComp = store.getComponent(attackerRef, DeployableComponent.getComponentType());
 
             UUID directUuid = uuidComp != null ? uuidComp.getUuid() : null;
             UUID companionOwnerUuid = companionComp != null ? companionComp.getOwnerUuid() : null;
-            return resolveAttackerUuid(player != null, directUuid, companionOwnerUuid);
+            UUID deployableOwnerUuid = deployableComp != null ? deployableComp.getOwnerUUID() : null;
+            return resolveAttackerUuid(player != null, directUuid, companionOwnerUuid, deployableOwnerUuid);
         } catch (Exception e) {
             LOGGER.atWarning().log("Failed to resolve attacker from DeathComponent: %s", e.getMessage());
             return null;
@@ -69,22 +73,27 @@ final class AttackerResolver {
     /**
      * Resolves the credited player UUID from already-resolved attacker state.
      *
-     * <p>Priority: direct player entity → companion owner → {@code null}.
+     * <p>Priority: direct player entity → companion owner → deployable owner → {@code null}.
      *
      * @param hasPlayerComponent {@code true} if the attacker entity carries a {@code Player} component
      * @param directUuid         the attacker's own UUID, or {@code null} if {@code UUIDComponent} is absent
      * @param companionOwnerUuid the companion owner's UUID, or {@code null} if the attacker is not a companion
+     * @param deployableOwnerUuid the deployable owner's UUID, or {@code null} if the attacker is not a deployable
      * @return the credited player UUID, or {@code null} if the kill should not be credited to any player
      */
     @Nullable
     static UUID resolveAttackerUuid(boolean hasPlayerComponent,
                                     @Nullable UUID directUuid,
-                                    @Nullable UUID companionOwnerUuid) {
+                                    @Nullable UUID companionOwnerUuid,
+                                    @Nullable UUID deployableOwnerUuid) {
         if (hasPlayerComponent) {
             return directUuid;
         }
         if (companionOwnerUuid != null) {
             return companionOwnerUuid;
+        }
+        if (deployableOwnerUuid != null) {
+            return deployableOwnerUuid;
         }
         return null;
     }

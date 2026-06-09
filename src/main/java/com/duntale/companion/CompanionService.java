@@ -13,6 +13,7 @@ import com.hypixel.hytale.component.Store;
 import com.hypixel.hytale.component.query.Query;
 import com.hypixel.hytale.logger.HytaleLogger;
 import org.joml.Vector3d;
+import com.hypixel.hytale.server.core.entity.group.EntityGroup;
 import com.hypixel.hytale.server.core.modules.entity.component.TransformComponent;
 import com.hypixel.hytale.server.core.modules.entitystats.EntityStatMap;
 import com.hypixel.hytale.server.core.modules.entitystats.asset.EntityStatType;
@@ -32,6 +33,7 @@ import it.unimi.dsi.fastutil.Pair;
 import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
 import java.sql.SQLException;
+import java.util.ArrayList;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
@@ -269,6 +271,9 @@ public class CompanionService {
         Ref<EntityStore> flockRef = FlockPlugin.createFlock(store, npcEntity.getRole());
         FlockMembershipSystems.join(playerRef, flockRef, store);
         FlockMembershipSystems.join(npcRef, flockRef, store);
+
+        // Mark the companion as a teammate on the owner so owner-deployed turrets skip it.
+        bindCompanionToOwnerGroup(store, playerRef, npcRef);
 
         // Get the world for tracking
         World world = store.getExternalData().getWorld();
@@ -572,6 +577,9 @@ public class CompanionService {
         FlockMembershipSystems.join(playerRef, flockRef, store);
         FlockMembershipSystems.join(npcRef, flockRef, store);
 
+        // Re-establish team membership on the (possibly new) player entity after a reconnect.
+        bindCompanionToOwnerGroup(store, playerRef, npcRef);
+
         // Update cache
         activeCompanions.put(playerId, new ActiveCompanion(npcRef, flockRef, existing.world()));
 
@@ -687,6 +695,7 @@ public class CompanionService {
         }
 
         Ref<EntityStore> npcRef = companion.npcRef();
+        unbindCompanionFromOwnerGroup(store, playerRef, playerId, npcRef);
         if (npcRef.isValid() && npcRef.getStore() == store) {
             store.removeEntity(npcRef, RemoveReason.REMOVE);
         }
@@ -791,6 +800,78 @@ public class CompanionService {
                 commandBuffer.removeEntity(ref, RemoveReason.REMOVE);
                 removed.incrementAndGet();
             }
+        }
+    }
+
+    /**
+     * Adds the companion to the owner's personal {@link EntityGroup} so owner-deployed turrets
+     * (which honor {@code RespectTeams}) treat the companion as a teammate and never target it.
+     *
+     * <p>The flock's own {@code EntityGroup} lives on a separate flock entity, which deployables
+     * do not consult — they read the owner entity's group via {@code DeployableComponent.getOwner()}.
+     * This binds a lightweight group directly on the player entity. Stale (invalid) members are
+     * pruned on each bind so the set self-heals across companion re-summons.
+     *
+     * @param store       the entity store (must be on WorldThread)
+     * @param playerRef   the owning player's entity reference
+     * @param companionRef the companion NPC entity reference to mark as a teammate
+     */
+    private void bindCompanionToOwnerGroup(
+            @Nonnull Store<EntityStore> store,
+            @Nonnull Ref<EntityStore> playerRef,
+            @Nonnull Ref<EntityStore> companionRef
+    ) {
+        if (!playerRef.isValid() || !companionRef.isValid()) {
+            return;
+        }
+
+        EntityGroup group = store.getComponent(playerRef, EntityGroup.getComponentType());
+        if (group == null) {
+            group = new EntityGroup();
+            group.setLeaderRef(playerRef);
+            store.putComponent(playerRef, EntityGroup.getComponentType(), group);
+        }
+
+        // Prune stale members so the set never accumulates invalid refs across re-summons.
+        for (Ref<EntityStore> member : new ArrayList<>(group.getMemberList())) {
+            if (!member.isValid()) {
+                group.remove(member);
+            }
+        }
+
+        if (!group.isMember(companionRef)) {
+            group.add(companionRef);
+        }
+    }
+
+    /**
+     * Removes the companion from the owner's personal {@link EntityGroup} when it is dismissed.
+     *
+     * <p>Best-effort: resolves the player entity from {@code playerId} when {@code playerRef} is
+     * unavailable, and no-ops if the player or the group is gone. Any residual stale members are
+     * also self-healed by {@link #bindCompanionToOwnerGroup} on the next summon.
+     *
+     * @param store        the entity store (must be on WorldThread)
+     * @param playerRef    the owning player's entity reference, or {@code null} if not at hand
+     * @param playerId     the owning player's UUID, used to resolve the player when {@code playerRef} is null
+     * @param companionRef the companion NPC entity reference to clear from the group
+     */
+    private void unbindCompanionFromOwnerGroup(
+            @Nonnull Store<EntityStore> store,
+            @Nullable Ref<EntityStore> playerRef,
+            @Nonnull UUID playerId,
+            @Nonnull Ref<EntityStore> companionRef
+    ) {
+        Ref<EntityStore> ownerRef = (playerRef != null && playerRef.isValid())
+                ? playerRef
+                : store.getExternalData().getRefFromUUID(playerId);
+        if (ownerRef == null || !ownerRef.isValid()) {
+            return;
+        }
+
+        EntityGroup group = store.getComponent(ownerRef, EntityGroup.getComponentType());
+        if (group != null && group.isMember(companionRef)) {
+            group.remove(companionRef);
         }
     }
 

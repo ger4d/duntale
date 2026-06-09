@@ -21,6 +21,7 @@ import com.duntale.command.WeaponCommand;
 import com.duntale.companion.CompanionCommand;
 import com.duntale.companion.CompanionComponent;
 import com.duntale.companion.CompanionDeathProtectionSystem;
+import com.duntale.companion.CompanionFriendlyFireSystem;
 import com.duntale.companion.CompanionRepository;
 import com.duntale.companion.CompanionRespawnSystem;
 import com.duntale.companion.CompanionService;
@@ -59,6 +60,7 @@ import com.duntale.progression.AssetCatalog;
 import com.duntale.progression.BuiltInNpcSpawnScalingSystem;
 import com.duntale.progression.CombatScalingComponent;
 import com.duntale.progression.CombatScalingSystem;
+import com.duntale.progression.DeployableTurretScalingSystem;
 import com.duntale.progression.GearScalingTooltipProvider;
 import com.duntale.progression.LeveledNpcSpawner;
 import com.duntale.progression.NpcScalingApplicator;
@@ -571,6 +573,8 @@ public class DuntalePlugin extends JavaPlugin {
         // Register ECS systems
         this.getEntityStoreRegistry().registerSystem(new ClickToMoveTickSystem(this.clickToMoveManager));
         this.getEntityStoreRegistry().registerSystem(new CombatScalingSystem(combatScalingComponentType));
+        this.getEntityStoreRegistry().registerSystem(
+            new DeployableTurretScalingSystem(combatScalingComponentType, progressionService));
         this.getEntityStoreRegistry().registerSystem(new BuiltInNpcSpawnScalingSystem(
             combatScalingComponentType,
             dungeonInstanceService,
@@ -602,6 +606,7 @@ public class DuntalePlugin extends JavaPlugin {
                 CompanionComponent.class, "CompanionComponent", CompanionComponent.CODEC);
         this.getEntityStoreRegistry().registerSystem(new CompanionDeathProtectionSystem(companionComponentType));
         this.getEntityStoreRegistry().registerSystem(new CompanionTrapImmunitySystem(companionComponentType));
+        this.getEntityStoreRegistry().registerSystem(new CompanionFriendlyFireSystem(companionComponentType));
 
         this.companionService = new CompanionService(
                 companionSpawner, progressionService,

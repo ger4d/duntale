@@ -38,6 +38,9 @@ public final class CombatScaling {
     private static final float WEAPON_K = 6.0f;
     private static final float ARMOR_K = 4.0f;
 
+    // ── Deployable scaling ───────────────────────────────────────────
+    private static final float TURRET_DMG_K = 6.0f;
+
     /** Maximum combined armor damage reduction (65%). */
     public static final float MAX_ARMOR_DR = 0.65f;
 
@@ -228,6 +231,21 @@ public final class CombatScaling {
         float resistMult = Math.max(1.0f + (ARMOR_K - 1.0f) * sigmoid(level), 1.0f);
         float dr = baseResist * resistMult;
         return Math.min(dr, MAX_ARMOR_DR);
+    }
+
+    // ── Deployable (turret) scaling ──────────────────────────────────
+
+    /**
+     * Computes the per-arrow damage multiplier for a player-owned turret at the given level.
+     *
+     * <p>Mirrors {@link #weaponMult(int)} so a deployed turret scales with its owner's
+     * progression level the same way a held weapon scales with its gear level.
+     *
+    * @param level the owner's progression level ({@value #MIN_LEVEL}-{@value #MAX_LEVEL})
+     * @return the damage multiplier (always &gt;= 1.0)
+     */
+    public static float turretDamageMult(int level) {
+        return 1.0f + TURRET_DMG_K * sigmoid(level);
     }
 
     // ── Variance ─────────────────────────────────────────────────────
