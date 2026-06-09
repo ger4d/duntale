@@ -19,6 +19,8 @@ import com.hypixel.hytale.server.core.inventory.transaction.Transaction;
 import com.hypixel.hytale.server.core.universe.PlayerRef;
 import com.hypixel.hytale.server.core.universe.world.storage.EntityStore;
 
+import org.bson.BsonDocument;
+
 import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
 import java.util.List;
@@ -423,6 +425,16 @@ public class MerchantService {
             // Check if this item has merchant buy-price metadata (was just purchased)
             if (stack.getFromMetadataOrNull(META_BUY_PRICE, Codec.LONG) == null) continue;
 
+            // Arrows (ammo) must never carry merchant metadata: the bow/crossbow
+            // ammo-consume interaction matches stacks by exact metadata equality
+            // (ItemStack.isStackableWith), so a lingering sell-price tag makes
+            // purchased arrows fail to match the plain Weapon_Arrow_Crude the
+            // interaction tries to remove. Strip all metadata instead of tagging.
+            if (isArrow(itemId)) {
+                container.setItemStackForSlot(i, stack.withMetadata((BsonDocument) null));
+                return true; // Only handle one item per purchase
+            }
+
             // Replace buy/gold metadata with sell-price
             ItemStack updated = stack
                     .withMetadata(META_BUY_PRICE, Codec.LONG, null)
@@ -480,6 +492,21 @@ public class MerchantService {
             ItemStack stack = container.getItemStack(i);
             if (stack == null || ItemStack.isEmpty(stack)) continue;
 
+            // Arrows (ammo) must never carry merchant metadata (it breaks ammo
+            // consumption via ItemStack.isStackableWith). Fully clear it here too,
+            // so even a lingering sell-price tag (incl. on arrows bought before
+            // this fix) is wiped the next time the merchant closes.
+            if (isArrow(stack.getItemId())) {
+                boolean hasMerchantMeta =
+                        stack.getFromMetadataOrNull(META_BUY_PRICE, Codec.LONG) != null
+                        || stack.getFromMetadataOrNull(META_GOLD, Codec.LONG) != null
+                        || stack.getFromMetadataOrNull(META_SELL_PRICE, Codec.LONG) != null;
+                if (hasMerchantMeta) {
+                    container.setItemStackForSlot(i, stack.withMetadata((BsonDocument) null));
+                }
+                continue;
+            }
+
             boolean hasBuy = stack.getFromMetadataOrNull(META_BUY_PRICE, Codec.LONG) != null;
             boolean hasGold = stack.getFromMetadataOrNull(META_GOLD, Codec.LONG) != null;
             if (!hasBuy && !hasGold) continue;
@@ -489,6 +516,22 @@ public class MerchantService {
             if (hasGold) cleaned = cleaned.withMetadata(META_GOLD, Codec.LONG, null);
             container.setItemStackForSlot(i, cleaned);
         }
+    }
+
+    /**
+     * Returns whether the given item ID is an arrow (bow/crossbow ammo).
+     *
+     * <p>Arrows must never retain merchant metadata: the vanilla ammo-consume
+     * interaction matches inventory stacks by exact {@link ItemStack#isStackableWith}
+     * (which compares metadata), so a merchant sell-price tag would make purchased
+     * arrows fail to match the plain {@code Weapon_Arrow_Crude} the interaction
+     * removes, silently breaking shooting/reloading in Adventure mode.</p>
+     *
+     * @param itemId the item asset ID
+     * @return {@code true} if the item is an arrow
+     */
+    private static boolean isArrow(@Nonnull String itemId) {
+        return itemId.startsWith("Weapon_Arrow");
     }
 
     /**

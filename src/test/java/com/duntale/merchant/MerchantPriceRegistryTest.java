@@ -152,7 +152,7 @@ class MerchantPriceRegistryTest {
         }
 
         @Test
-        @DisplayName("Should keep curated foods, include arrows and enchant scrolls, and remove spellbook consumables")
+        @DisplayName("Should keep curated foods, include only crude arrows and enchant scrolls, and remove spellbook consumables")
         void shouldKeepCuratedFoodsIncludeArrowsAndEnchantScrollsAndRemoveSpellbookConsumables() {
             MerchantPriceRegistry registry = initializedRegistry(List.of(), List.of());
             CatalogGenerator generator = generator(registry, true);
@@ -169,15 +169,15 @@ class MerchantPriceRegistryTest {
             assertTrue(seenConsumables.contains("Food_Kebab_Meat"));
             assertTrue(seenConsumables.contains("Food_Pie_Meat"));
             assertTrue(seenConsumables.contains("Weapon_Arrow_Crude"));
-            assertTrue(seenConsumables.contains("Weapon_Arrow_Iron"));
-            assertTrue(seenConsumables.contains("Weapon_Arrow_Deadeye"));
-            assertTrue(seenConsumables.contains("Weapon_Arrow_Clearshot"));
-            assertTrue(seenConsumables.contains("Weapon_Arrow_Trueshot"));
             assertTrue(seenConsumables.contains("Weapon_Deployable_Turret"));
             assertTrue(seenConsumables.contains("Weapon_Deployable_Healing_Totem"));
             assertTrue(seenConsumables.contains("Weapon_Deployable_Slowness_Totem"));
             assertTrue(seenConsumables.stream().anyMatch(CatalogGenerator.RESERVED_SCROLL_ITEM_IDS::contains));
 
+            assertFalse(seenConsumables.contains("Weapon_Arrow_Iron"));
+            assertFalse(seenConsumables.contains("Weapon_Arrow_Deadeye"));
+            assertFalse(seenConsumables.contains("Weapon_Arrow_Clearshot"));
+            assertFalse(seenConsumables.contains("Weapon_Arrow_Trueshot"));
             assertFalse(seenConsumables.contains("Food_Bread"));
             assertFalse(seenConsumables.contains("Food_Fish_Grilled"));
             assertFalse(seenConsumables.contains("Weapon_Spellbook_Fire"));

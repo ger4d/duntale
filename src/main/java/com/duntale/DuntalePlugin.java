@@ -555,6 +555,9 @@ public class DuntalePlugin extends JavaPlugin {
         // MerchantPriceRegistry.initialize() deferred to start() — depends on AssetCatalog
         // Register fixed resale prices for the authored custom items (kept across initialize()).
         CustomItems.BUY_PRICES.forEach(this.merchantPriceRegistry::registerCustomItem);
+        // Register resale prices for plain merchant consumables (potions, food, arrows, etc.)
+        // so they are sellable back to the merchant instead of being rejected as "unsellable".
+        CatalogGenerator.registerConsumableResalePrices(this.merchantPriceRegistry);
         this.thirdPartyModAvailabilityService = new ThirdPartyModAvailabilityService();
         this.catalogGenerator = new CatalogGenerator(merchantPriceRegistry, thirdPartyModAvailabilityService);
         this.merchantService = new MerchantService(merchantPriceRegistry, goldService);

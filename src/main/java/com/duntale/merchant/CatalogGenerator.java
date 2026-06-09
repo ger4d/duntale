@@ -82,11 +82,10 @@ public class CatalogGenerator {
     private static final ConsumableDef HEALTH_POTION_HIGH = new ConsumableDef("Potion_Health_Greater", 150);
 
     static final ConsumableDef[] CONSUMABLE_POOL = {
+            // Only crude arrows: the bow/crossbow ammo-consume interaction accepts
+            // Weapon_Arrow_Crude exclusively, so higher-tier arrows are unusable and
+            // were removed from the buy pool.
             new ConsumableDef("Weapon_Arrow_Crude", 5),
-            new ConsumableDef("Weapon_Arrow_Iron", 15),
-            new ConsumableDef("Weapon_Arrow_Deadeye", 30),
-            new ConsumableDef("Weapon_Arrow_Clearshot", 45),
-            new ConsumableDef("Weapon_Arrow_Trueshot", 60),
             new ConsumableDef("Food_Kebab_Meat", 25),
             new ConsumableDef("Food_Pie_Meat", 50),
             new ConsumableDef("Potion_Stamina", 75),
@@ -194,6 +193,29 @@ public class CatalogGenerator {
                             @Nonnull ThirdPartyModAvailabilityService thirdPartyModAvailabilityService) {
         this.priceRegistry = priceRegistry;
         this.thirdPartyModAvailabilityService = thirdPartyModAvailabilityService;
+    }
+
+    /**
+     * Registers fixed resale prices for every merchant consumable (potions, food,
+     * arrows, repair kits, deployables, upgrades, and the guaranteed health potions)
+     * so they can be sold back to the merchant.
+     *
+     * <p>Without this, {@link MerchantPriceRegistry#isSellable(String)} only knows
+     * about catalog gear and authored custom items, so plain consumables are rejected
+     * as "unsellable" and show no sell price in tooltips. Registering each at its
+     * merchant unit buy price makes it sellable at {@link MerchantPriceRegistry#SELL_RATIO}
+     * per unit. Custom utility items are already registered from
+     * {@link CustomItems#BUY_PRICES}; re-registering them here with the same unit price
+     * is a harmless no-op.</p>
+     *
+     * @param priceRegistry the price registry to populate (kept across its initialize())
+     */
+    public static void registerConsumableResalePrices(@Nonnull MerchantPriceRegistry priceRegistry) {
+        for (ConsumableDef def : CONSUMABLE_POOL) {
+            priceRegistry.registerCustomItem(def.itemId(), def.unitPrice());
+        }
+        priceRegistry.registerCustomItem(HEALTH_POTION_LOW.itemId(), HEALTH_POTION_LOW.unitPrice());
+        priceRegistry.registerCustomItem(HEALTH_POTION_HIGH.itemId(), HEALTH_POTION_HIGH.unitPrice());
     }
 
     /**
