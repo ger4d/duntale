@@ -51,11 +51,16 @@ import com.duntale.merchant.MerchantTooltipProvider;
 import com.duntale.items.CustomItems;
 import com.duntale.items.GrantStatPointInteraction;
 import com.duntale.items.HealingNecklaceSystem;
+import com.duntale.items.PalporterOpenInteraction;
+import com.duntale.items.PalporterPage;
 import com.duntale.items.PlayerTrapImmunitySystem;
 import com.duntale.items.SpeedBoostInteraction;
 import com.duntale.items.SpeedBoostManager;
 import com.duntale.items.VampireJuiceInteraction;
+import com.duntale.items.VillageWarpPlaceInteraction;
+import com.duntale.items.InventoryQuery;
 import com.duntale.portal.DungeonEndPortalService;
+import com.duntale.portal.VillageWarpPortalService;
 import com.duntale.progression.AssetCatalog;
 import com.duntale.progression.BuiltInNpcSpawnScalingSystem;
 import com.duntale.progression.CombatScalingComponent;
@@ -98,6 +103,7 @@ import com.duntale.spawner.SpawnerTickSystem;
 import com.duntale.ui.DuntaleScoreboard;
 import com.duntale.ui.DuntaleScoreboardData;
 import com.duntale.volume.DungeonInstancePortalTriggerService;
+import com.hypixel.hytale.builtin.triggervolumes.TriggerVolumesPlugin;
 import com.hypixel.hytale.builtin.triggervolumes.event.TriggerVolumeEvent;
 import com.hypixel.hytale.component.ComponentType;
 import com.hypixel.hytale.component.Ref;
@@ -116,6 +122,7 @@ import com.hypixel.hytale.server.core.event.events.player.RemovedPlayerFromWorld
 import com.hypixel.hytale.server.core.modules.entity.damage.DeathComponent;
 import com.hypixel.hytale.server.core.modules.entity.teleport.PendingTeleport;
 import com.hypixel.hytale.server.core.modules.entity.teleport.Teleport;
+import com.hypixel.hytale.server.core.modules.entity.component.TransformComponent;
 import com.hypixel.hytale.server.core.modules.interaction.interaction.config.Interaction;
 import com.hypixel.hytale.server.core.plugin.JavaPlugin;
 import com.hypixel.hytale.server.core.plugin.JavaPluginInit;
@@ -134,9 +141,10 @@ import javax.annotation.Nullable;
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
+import java.util.Objects;
 import java.nio.file.Path;
 import java.sql.SQLException;
-import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
@@ -209,11 +217,13 @@ public class DuntalePlugin extends JavaPlugin {
     private DungeonInstanceService dungeonInstanceService;
     private DungeonRespawnService dungeonRespawnService;
     private DungeonEndPortalService dungeonEndPortalService;
+    private VillageWarpPortalService villageWarpPortalService;
     private DungeonInstancePortalTriggerService dungeonInstancePortalTriggerService;
     private VillageWorldBootstrapService villageWorldBootstrapService;
     private final AtomicBoolean dungeonStartupRecoveryLoaded = new AtomicBoolean();
     private final AtomicBoolean dungeonPortalTriggerRegistered = new AtomicBoolean();
     private final AtomicBoolean dungeonEndPortalTriggerRegistered = new AtomicBoolean();
+    private final AtomicBoolean villageWarpPortalTriggerRegistered = new AtomicBoolean();
     private final AtomicBoolean sharedWorldStartupStarted = new AtomicBoolean();
     private final Object sharedWorldStartupLock = new Object();
     @Nullable
@@ -436,6 +446,16 @@ public class DuntalePlugin extends JavaPlugin {
     }
 
     /**
+     * Returns the village warp portal service.
+     *
+     * @return the village warp portal service
+     */
+    @Nonnull
+    public VillageWarpPortalService getVillageWarpPortalService() {
+        return villageWarpPortalService;
+    }
+
+    /**
      * Returns the dungeon generation orchestrator.
      *
      * @return the generation orchestrator
@@ -458,6 +478,10 @@ public class DuntalePlugin extends JavaPlugin {
                 .register("Duntale_VampireJuice", VampireJuiceInteraction.class, VampireJuiceInteraction.CODEC);
         this.getCodecRegistry(Interaction.CODEC)
                 .register("Duntale_GrantStatPoint", GrantStatPointInteraction.class, GrantStatPointInteraction.CODEC);
+        this.getCodecRegistry(Interaction.CODEC)
+                .register("Duntale_PalporterOpen", PalporterOpenInteraction.class, PalporterOpenInteraction.CODEC);
+        this.getCodecRegistry(Interaction.CODEC)
+                .register("Duntale_VillageWarpPlace", VillageWarpPlaceInteraction.class, VillageWarpPlaceInteraction.CODEC);
 
         // Initialize managers
         this.speedBoostManager = new SpeedBoostManager();
@@ -536,6 +560,7 @@ public class DuntalePlugin extends JavaPlugin {
                 floorConfigService
         );
         this.dungeonEndPortalService = new DungeonEndPortalService();
+        this.villageWarpPortalService = new VillageWarpPortalService();
         this.dungeonRespawnService = new DungeonRespawnService(dungeonInstanceService, goldService);
         this.dungeonInstancePortalTriggerService =
             new DungeonInstancePortalTriggerService(DUNGEON_INSTANCE_PORTAL_VOLUME_ID);
@@ -797,6 +822,7 @@ public class DuntalePlugin extends JavaPlugin {
                         loadDungeonInstancesAfterWorldsLoaded();
                         registerDungeonInstancePortalTrigger();
                         registerDungeonEndPortalTrigger();
+                        registerVillageWarpPortalTrigger();
                         backfillDungeonEndPortals();
                     });
             sharedWorldStartupFuture = future;
@@ -841,6 +867,15 @@ public class DuntalePlugin extends JavaPlugin {
 
         this.getEventRegistry().registerGlobal(TriggerVolumeEvent.class, this::onDungeonEndPortalTrigger);
         LOGGER.atInfo().log("Registered global dungeon end portal trigger handler");
+    }
+
+    private void registerVillageWarpPortalTrigger() {
+        if (!villageWarpPortalTriggerRegistered.compareAndSet(false, true)) {
+            return;
+        }
+
+        this.getEventRegistry().registerGlobal(TriggerVolumeEvent.class, this::onVillageWarpPortalTrigger);
+        LOGGER.atInfo().log("Registered global village warp portal trigger handler");
     }
 
     private void backfillDungeonEndPortals() {
@@ -1068,6 +1103,95 @@ public class DuntalePlugin extends JavaPlugin {
                     return null;
                 })
                 .whenComplete((unused, throwable) -> portalTransitionsInFlight.remove(activeInstance.instanceId()));
+    }
+
+    private void onVillageWarpPortalTrigger(@Nonnull TriggerVolumeEvent event) {
+        if (!villageWarpPortalService.matches(event)) {
+            return;
+        }
+
+        Ref<EntityStore> ref = event.getEntityRef();
+        if (!ref.isValid()) {
+            return;
+        }
+
+        Store<EntityStore> store = ref.getStore();
+        PlayerRef playerRef = (PlayerRef) store.getComponent(ref, PlayerRef.getComponentType());
+        if (playerRef == null) {
+            return;
+        }
+
+        routePlayerToSharedWorld(playerRef, Message.raw("Warped to the village.").color(COLOR_GREEN));
+    }
+
+    /**
+     * Opens the Palporter menu for the player.
+     *
+     * @param playerRef the player opening the menu
+     */
+    public void openPalporterMenu(@Nonnull PlayerRef playerRef) {
+        Objects.requireNonNull(playerRef, "playerRef");
+        runOnPlayerWorld(playerRef, (ref, store) -> {
+            World world = store.getExternalData().getWorld();
+            if (world == null || !world.getName().startsWith("dungeon-")) {
+                playerRef.sendMessage(Message.raw("Palporter only works inside a dungeon.").color(COLOR_RED));
+                return;
+            }
+
+            List<PlayerRef> targets = new ArrayList<>();
+            for (PlayerRef player : world.getPlayerRefs()) {
+                if (!player.getUuid().equals(playerRef.getUuid())) {
+                    targets.add(player);
+                }
+            }
+
+            if (targets.isEmpty()) {
+                playerRef.sendMessage(Message.raw("No other players in this dungeon.").color(COLOR_RED));
+                return;
+            }
+
+            Player player = store.getComponent(ref, Player.getComponentType());
+            if (player != null) {
+                player.getPageManager().openCustomPage(ref, store, new PalporterPage(playerRef));
+            }
+        });
+    }
+
+    /**
+     * Spawns a village warp portal at the player's feet, consuming one Village Warp consumable.
+     *
+     * @param playerRef the player placing the portal
+     */
+    public void placeVillageWarpPortal(@Nonnull PlayerRef playerRef) {
+        Objects.requireNonNull(playerRef, "playerRef");
+        runOnPlayerWorld(playerRef, (ref, store) -> {
+            World world = store.getExternalData().getWorld();
+            if (world == null || !world.getName().startsWith("dungeon-")) {
+                playerRef.sendMessage(Message.raw("Village Warp only works inside a dungeon.").color(COLOR_RED));
+                return;
+            }
+
+            TriggerVolumesPlugin plugin = TriggerVolumesPlugin.get();
+            if (plugin == null) {
+                playerRef.sendMessage(Message.raw("Cannot open a portal right now.").color(COLOR_RED));
+                return;
+            }
+
+            TransformComponent transform = store.getComponent(ref, TransformComponent.getComponentType());
+            if (transform == null) {
+                playerRef.sendMessage(Message.raw("Cannot resolve your location.").color(COLOR_RED));
+                return;
+            }
+
+            // Consume one Village Warp
+            if (!InventoryQuery.removeOne(store, ref, CustomItems.VILLAGE_WARP)) {
+                return;
+            }
+
+            Vector3d origin = new Vector3d(transform.getPosition());
+            villageWarpPortalService.placePortal(world, store, origin, world.getName());
+            playerRef.sendMessage(Message.raw("A village portal opens beneath you.").color(COLOR_GREEN));
+        });
     }
 
     private void onPlayerConnect(@Nonnull PlayerConnectEvent event) {

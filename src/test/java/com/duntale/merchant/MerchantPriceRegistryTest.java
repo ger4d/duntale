@@ -372,6 +372,46 @@ class MerchantPriceRegistryTest {
             assertTrue(sawFivePack);
             assertTrue(sawTenPack);
         }
+
+        @Test
+        @DisplayName("Should offer Palporter and Village Warp in stacks of 1 and 5 priced at their unit prices")
+        void shouldOfferPalporterAndVillageWarpInStacksOfOneAndFive() {
+            MerchantPriceRegistry registry = initializedRegistry(List.of(), List.of());
+            CatalogGenerator generator = generator(registry, false);
+
+            long palporterUnitPrice = CustomItems.BUY_PRICES.get(CustomItems.PALPORTER);
+            long villageWarpUnitPrice = CustomItems.BUY_PRICES.get(CustomItems.VILLAGE_WARP);
+
+            boolean sawPalporterSingle = false;
+            boolean sawPalporterFive = false;
+            boolean sawVillageWarpSingle = false;
+            boolean sawVillageWarpFive = false;
+
+            for (long seed = 0; seed < 5_000; seed++) {
+                for (CatalogEntry entry : generator.generate(20, seed)) {
+                    if (CustomItems.PALPORTER.equals(entry.itemId())) {
+                        if (entry.quantity() == 1 && entry.buyPrice() == palporterUnitPrice) {
+                            sawPalporterSingle = true;
+                        }
+                        if (entry.quantity() == 5 && entry.buyPrice() == palporterUnitPrice * 5) {
+                            sawPalporterFive = true;
+                        }
+                    } else if (CustomItems.VILLAGE_WARP.equals(entry.itemId())) {
+                        if (entry.quantity() == 1 && entry.buyPrice() == villageWarpUnitPrice) {
+                            sawVillageWarpSingle = true;
+                        }
+                        if (entry.quantity() == 5 && entry.buyPrice() == villageWarpUnitPrice * 5) {
+                            sawVillageWarpFive = true;
+                        }
+                    }
+                }
+            }
+
+            assertTrue(sawPalporterSingle);
+            assertTrue(sawPalporterFive);
+            assertTrue(sawVillageWarpSingle);
+            assertTrue(sawVillageWarpFive);
+        }
     }
 
     private static boolean isEnchantScroll(@Nonnull CatalogEntry entry) {

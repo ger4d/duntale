@@ -1,0 +1,60 @@
+// PalporterPage.ui — Palporter warp target selection modal.
+
+$C = "../../Common.ui";
+
+$C.@PageOverlay {}
+
+$C.@DecoratedContainer {
+  Anchor: (Width: 380, Height: 480);
+
+  #Title {
+    Group {
+      $C.@Title { @Text = "Palporter"; }
+    }
+  }
+
+  #Content {
+    LayoutMode: Top;
+    Padding: (Horizontal: 20, Top: 16, Bottom: 16);
+
+    Label {
+      Anchor: (Height: 22, Bottom: 14);
+      Text: "Select a player to teleport to:";
+      Style: (FontSize: 14, TextColor: #ffffff, Alignment: Center);
+    }
+
+    $C.@SimpleContainer #RosterSection {
+      LayoutMode: Top;
+      Padding: (Horizontal: 12, Top: 10, Bottom: 10);
+      Anchor: (Bottom: 16);
+
+      $C.@SecondaryTextButton #TargetRow0 { @Anchor = (Height: 36, Bottom: 6); @Text = ""; }
+      $C.@SecondaryTextButton #TargetRow1 { @Anchor = (Height: 36, Bottom: 6); @Text = ""; }
+      $C.@SecondaryTextButton #TargetRow2 { @Anchor = (Height: 36, Bottom: 6); @Text = ""; }
+      $C.@SecondaryTextButton #TargetRow3 { @Anchor = (Height: 36, Bottom: 6); @Text = ""; }
+      $C.@SecondaryTextButton #TargetRow4 { @Anchor = (Height: 36, Bottom: 6); @Text = ""; }
+      $C.@SecondaryTextButton #TargetRow5 { @Anchor = (Height: 36, Bottom: 6); @Text = ""; }
+      $C.@SecondaryTextButton #TargetRow6 { @Anchor = (Height: 36, Bottom: 6); @Text = ""; }
+      $C.@SecondaryTextButton #TargetRow7 { @Anchor = (Height: 36); @Text = ""; }
+    }
+
+    // Footer
+    Group #Footer {
+      LayoutMode: Left;
+      Anchor: (Height: 40);
+
+      Label #SelectedLabel {
+        FlexWeight: 1;
+        Text: "Pick a player";
+        Style: (FontSize: 13, TextColor: #96a9be, VerticalAlignment: Center);
+      }
+
+      $C.@SecondaryTextButton #TeleportBtn {
+        @Anchor = (Width: 120);
+        @Text = "Teleport";
+      }
+    }
+  }
+}
+
+$C.@BackButton {}

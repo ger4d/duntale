@@ -23,3 +23,9 @@ items.Vampire_Juice.description = Right-click to drain stamina into health. Heal
 
 items.Stat_Point_Token.name = +1 Stat Point Token
 items.Stat_Point_Token.description = Right-click to gain one unspent stat point. Consumes the token.\n\n<i>Distilled potential, waiting to be claimed.</i>
+
+items.Palporter.name = Palporter
+items.Palporter.description = Right-click to open the warp menu and teleport to another player in your dungeon. Consumes one on use.\n\n<i>Distance is a formality.</i>
+
+items.Village_Warp.name = Village Warp
+items.Village_Warp.description = Right-click to open a portal that sends anyone who steps through it back to the village. Your dungeon run is preserved.\n\n<i>A door home, for the whole party.</i>

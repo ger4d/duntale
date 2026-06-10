@@ -111,6 +111,12 @@ public class CatalogGenerator {
             new ConsumableDef(CustomItems.STAT_POINT_TOKEN, CustomItems.BUY_PRICES.get(CustomItems.STAT_POINT_TOKEN), 1),
             new ConsumableDef(CustomItems.STAT_POINT_TOKEN, CustomItems.BUY_PRICES.get(CustomItems.STAT_POINT_TOKEN), 5),
             new ConsumableDef(CustomItems.STAT_POINT_TOKEN, CustomItems.BUY_PRICES.get(CustomItems.STAT_POINT_TOKEN), 10),
+            // Palporter offered in stacks of 1 / 5
+            new ConsumableDef(CustomItems.PALPORTER, CustomItems.BUY_PRICES.get(CustomItems.PALPORTER), 1),
+            new ConsumableDef(CustomItems.PALPORTER, CustomItems.BUY_PRICES.get(CustomItems.PALPORTER), 5),
+            // Village Warp offered in stacks of 1 / 5
+            new ConsumableDef(CustomItems.VILLAGE_WARP, CustomItems.BUY_PRICES.get(CustomItems.VILLAGE_WARP), 1),
+            new ConsumableDef(CustomItems.VILLAGE_WARP, CustomItems.BUY_PRICES.get(CustomItems.VILLAGE_WARP), 5),
     };
 
         /** Full SimpleEnchantments scroll catalog offered in the reserved scroll slot. */

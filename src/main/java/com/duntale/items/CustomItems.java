@@ -44,6 +44,12 @@ public final class CustomItems {
     /** Right-click token that grants one RPG stat point and is consumed. */
     public static final String STAT_POINT_TOKEN = "Stat_Point_Token";
 
+    /** Right-click opens a custom UI to teleport to another player in the dungeon. */
+    public static final String PALPORTER = "Palporter";
+
+    /** Right-click spawns a portal at the player's feet that warps entrants back to the village. */
+    public static final String VILLAGE_WARP = "Village_Warp";
+
     // ============================================
     // Healing necklace regen EntityEffect IDs
     // ============================================
@@ -112,13 +118,15 @@ public final class CustomItems {
     // ============================================
 
     /** Unit buy price (in gold) for each custom item; resale is a fraction of this. */
-    public static final Map<String, Long> BUY_PRICES = Map.of(
-            IMMUNITY_TRAP_RING, 35_000L,
-            SPEED_BOOTS_I, 30_000L,
-            SPEED_BOOTS_II, 45_000L,
-            SPEED_BOOTS_III, 70_000L,
-            HEALING_NECKLACE_I, 45_000L,
-            HEALING_NECKLACE_II, 125_000L,
-            VAMPIRE_JUICE, 50_000L,
-            STAT_POINT_TOKEN, 7_500L);
+    public static final Map<String, Long> BUY_PRICES = Map.ofEntries(
+            Map.entry(IMMUNITY_TRAP_RING, 35_000L),
+            Map.entry(SPEED_BOOTS_I, 30_000L),
+            Map.entry(SPEED_BOOTS_II, 45_000L),
+            Map.entry(SPEED_BOOTS_III, 70_000L),
+            Map.entry(HEALING_NECKLACE_I, 45_000L),
+            Map.entry(HEALING_NECKLACE_II, 125_000L),
+            Map.entry(VAMPIRE_JUICE, 50_000L),
+            Map.entry(STAT_POINT_TOKEN, 7_500L),
+            Map.entry(PALPORTER, 2_500L),
+            Map.entry(VILLAGE_WARP, 5_000L));
 }
