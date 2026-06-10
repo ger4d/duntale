@@ -36,7 +36,7 @@ public class BuiltInNpcSpawnScalingSystem extends RefSystem<EntityStore> {
     // by Template_Trork_Mage casters (Outlander_Sorcerer, Trork_Shaman) via their Combat.Summon state.
     @Nonnull
     private static final Set<String> ALLOWLISTED_SPECIAL_ROLES =
-            Set.of("Skeleton", "Scarak_Louse", "Wolf_Outlander_Sorcerer", "Wolf_Trork_Shaman");
+            Set.of("Skeleton", "Scarak_Louse", "Wolf_Outlander_Sorcerer", "Wolf_Outlander_Priest", "Wolf_Trork_Shaman", "Wolf_Trork_Hunter", "Wolf_Wife", "Wolf_Black");
 
     private final ComponentType<EntityStore, CombatScalingComponent> combatScalingType;
     private final DungeonInstanceService dungeonInstanceService;
