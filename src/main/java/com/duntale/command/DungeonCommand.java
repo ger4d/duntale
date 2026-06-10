@@ -167,6 +167,7 @@ public class DungeonCommand extends CommandBase {
         this.addSubCommand(new LeaveSubCommand());
         this.addSubCommand(new TpOutSubCommand());
         this.addSubCommand(new TransitionSubCommand());
+        this.addSubCommand(new ResetStateSubCommand());
         this.addSubCommand(new FloorConfigSubCommand());
         this.addSubCommand(new ThemeSubCommand());
     }
@@ -207,6 +208,10 @@ public class DungeonCommand extends CommandBase {
         context.sendMessage(
                 Message.raw("  transition <instanceId> [<level>]").color(GOLD)
                         .insert(Message.raw(" — advance instance to next floor, or transition to a specific level").color(GRAY))
+        );
+        context.sendMessage(
+                Message.raw("  resetstate <instanceId>").color(GOLD)
+                        .insert(Message.raw(" — reset instance state to ACTIVE if stuck in TRANSITIONING").color(GRAY))
         );
         context.sendMessage(
             Message.raw("  floorconfig [floor]").color(GOLD)
@@ -802,6 +807,48 @@ public class DungeonCommand extends CommandBase {
                 reEnablePreparedTransitionPlayers(transferPlayers, preparation);
                 context.sendMessage(
                         Message.raw("Transition failed: " + describeFailure(e)).color(RED)
+                );
+            }
+        }
+    }
+
+    private class ResetStateSubCommand extends CommandBase {
+
+        private final RequiredArg<String> instanceIdArg =
+                this.withRequiredArg("instanceId", "Instance ID (full or prefix)", ArgTypes.STRING);
+
+        ResetStateSubCommand() {
+            super("resetstate", "Reset instance state back to ACTIVE if stuck");
+        }
+
+        @Override
+        protected void executeSync(@Nonnull CommandContext context) {
+            String query = instanceIdArg.get(context);
+
+            DungeonInstance instance;
+            try {
+                instance = resolveInstance(query);
+            } catch (SQLException e) {
+                context.sendMessage(Message.raw("Failed to query instance: " + e.getMessage()).color(RED));
+                return;
+            }
+
+            if (instance == null) {
+                context.sendMessage(Message.raw("Instance not found: " + query).color(RED));
+                return;
+            }
+
+            String instanceId = instance.instanceId();
+            try {
+                dungeonInstanceService.resetInstanceStateToActive(instanceId);
+                context.sendMessage(
+                        Message.raw("Reset state of instance ").color(GREEN)
+                                .insert(Message.raw(truncateId(instanceId)).color(AQUA).monospace(true))
+                                .insert(Message.raw(" back to ACTIVE.").color(GREEN))
+                );
+            } catch (SQLException | IllegalArgumentException | IllegalStateException e) {
+                context.sendMessage(
+                        Message.raw("Failed to reset state: " + describeFailure(e)).color(RED)
                 );
             }
         }

@@ -1174,23 +1174,65 @@ public class DungeonInstanceService {
             transferPlayers.size()
         );
 
-        String nextTheme = resolveActiveThemeForFloor(nextFloor);
-        int dayTime = resolveDayTimeForFloor(nextFloor);
-        DungeonConfig config = buildGenerationConfig(nextWorldName, nextFloor, origin, nextTheme);
-        return runtimeAdapter.createWorld(nextWorldName, nextFloor, claimed.seed(), origin, dayTime)
-                .thenCompose(newWorld -> runtimeAdapter.generate(config)
-                        .thenCompose(result -> activateTransitionedFloor(
-                    newWorld,
-                    claimed,
-                    transferPlayers,
-                    nextFloor,
-                    nextTheme,
-                    origin,
-                    result,
-                    oldWorldName,
-                    transitionState)))
-                .exceptionallyCompose(throwable -> handleTransitionFailure(
-                        claimed, nextWorldName, transitionState, throwable));
+        if (nextFloor == claimed.floorLevel()) {
+            throw new IllegalArgumentException("Cannot transition to the current floor level (" + nextFloor + ")");
+        }
+
+        CompletableFuture<DungeonInstance> transitionFuture;
+        try {
+            String nextTheme = resolveActiveThemeForFloor(nextFloor);
+            int dayTime = resolveDayTimeForFloor(nextFloor);
+            DungeonConfig config = buildGenerationConfig(nextWorldName, nextFloor, origin, nextTheme);
+            transitionFuture = runtimeAdapter.createWorld(nextWorldName, nextFloor, claimed.seed(), origin, dayTime)
+                    .thenCompose(newWorld -> runtimeAdapter.generate(config)
+                            .thenCompose(result -> activateTransitionedFloor(
+                                    newWorld,
+                                    claimed,
+                                    transferPlayers,
+                                    nextFloor,
+                                    nextTheme,
+                                    origin,
+                                    result,
+                                    oldWorldName,
+                                    transitionState)));
+        } catch (Throwable t) {
+            transitionFuture = CompletableFuture.failedFuture(t);
+        }
+
+        return transitionFuture.exceptionallyCompose(throwable -> handleTransitionFailure(
+                claimed, nextWorldName, transitionState, throwable));
+    }
+
+    /**
+     * Resets a stuck dungeon instance's state back to ACTIVE.
+     *
+     * @param instanceId the ID of the instance to reset
+     * @throws SQLException             if a database access error occurs
+     * @throws IllegalArgumentException if the instance does not exist
+     * @throws IllegalStateException    if the instance is already ended
+     */
+    public void resetInstanceStateToActive(@Nonnull String instanceId) throws SQLException {
+        Objects.requireNonNull(instanceId, "instanceId");
+        DungeonInstance instance = instanceRepository.findById(instanceId)
+                .orElseThrow(() -> new IllegalArgumentException("Instance not found: " + instanceId));
+        if (instance.state() == DungeonInstanceState.ENDED) {
+            throw new IllegalStateException("Cannot reset state of an ENDED instance");
+        }
+
+        DungeonInstance updated = new DungeonInstance(
+                instance.instanceId(),
+                instance.worldName(),
+                instance.floorLevel(),
+                instance.floorY(),
+                instance.entrancePosition(),
+                instance.exitPosition(),
+                DungeonInstanceState.ACTIVE,
+                instance.theme(),
+                instance.seed(),
+                instance.createdAt()
+        );
+        instanceRepository.update(updated);
+        runtimeTransitionStates.remove(instanceId);
     }
 
     private void validateTransitionTransferPlayers(
@@ -1561,7 +1603,9 @@ public class DungeonInstanceService {
                         describeFailure(failure));
 
         try {
-            runtimeAdapter.cleanupWorld(newWorldName);
+            if (!newWorldName.equals(previousFloor.worldName())) {
+                runtimeAdapter.cleanupWorld(newWorldName);
+            }
         } catch (Exception cleanupError) {
             failure.addSuppressed(cleanupError);
             LOGGER.at(Level.WARNING)
