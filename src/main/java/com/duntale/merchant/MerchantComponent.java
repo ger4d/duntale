@@ -20,16 +20,20 @@ import java.util.List;
  */
 public class MerchantComponent implements Component<EntityStore> {
 
-    /** Codec for serialization during chunk save/load. Only persists floor level; catalog is regenerated. */
+    /** Codec for serialization during chunk save/load. Persists floor level and catalog type; catalog is regenerated. */
     @Nonnull
     public static final BuilderCodec<MerchantComponent> CODEC = BuilderCodec.builder(
                     MerchantComponent.class, MerchantComponent::new)
             .append(new KeyedCodec<>("FloorLevel", Codec.INTEGER),
                     (c, v) -> c.floorLevel = v, c -> c.floorLevel)
             .add()
+            .append(new KeyedCodec<>("CatalogType", Codec.STRING),
+                    (c, v) -> c.catalogType = v != null ? v : "STANDARD", c -> c.catalogType)
+            .add()
             .build();
 
     private int floorLevel;
+    private String catalogType = "STANDARD";
 
     /** Lazily generated catalog — {@code null} until first merchant interaction. */
     @Nullable
@@ -40,6 +44,7 @@ public class MerchantComponent implements Component<EntityStore> {
      */
     public MerchantComponent() {
         this.floorLevel = 1;
+        this.catalogType = "STANDARD";
     }
 
     /**
@@ -49,6 +54,18 @@ public class MerchantComponent implements Component<EntityStore> {
      */
     public MerchantComponent(int floorLevel) {
         this.floorLevel = floorLevel;
+        this.catalogType = "STANDARD";
+    }
+
+    /**
+     * Create a merchant component with a specific floor level and catalog type.
+     *
+     * @param floorLevel  the dungeon floor level for catalog filtering
+     * @param catalogType the catalog type (e.g. "STANDARD", "VILLAGE")
+     */
+    public MerchantComponent(int floorLevel, String catalogType) {
+        this.floorLevel = floorLevel;
+        this.catalogType = catalogType != null ? catalogType : "STANDARD";
     }
 
     /**
@@ -87,6 +104,23 @@ public class MerchantComponent implements Component<EntityStore> {
     }
 
     /**
+     * @return the catalog type (e.g. "STANDARD", "VILLAGE")
+     */
+    @Nonnull
+    public String getCatalogType() {
+        return catalogType != null ? catalogType : "STANDARD";
+    }
+
+    /**
+     * Sets the catalog type.
+     *
+     * @param catalogType the catalog type
+     */
+    public void setCatalogType(@Nonnull String catalogType) {
+        this.catalogType = catalogType;
+    }
+
+    /**
      * @return the registered ECS component type
      */
     @Nonnull
@@ -97,7 +131,7 @@ public class MerchantComponent implements Component<EntityStore> {
     @Nullable
     @Override
     public Component<EntityStore> clone() {
-        MerchantComponent copy = new MerchantComponent(floorLevel);
+        MerchantComponent copy = new MerchantComponent(floorLevel, catalogType);
         if (catalog != null) {
             copy.catalog = catalog; // Already immutable from setCatalog
         }

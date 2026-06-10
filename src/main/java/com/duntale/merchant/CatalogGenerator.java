@@ -32,7 +32,7 @@ public class CatalogGenerator {
     private static final String SIMPLE_ENCHANTMENTS_SCROLL_SENTINEL_ITEM_ID = "Scroll_Cleansing";
 
     /** Number of gear buy slots per merchant. */
-    static final int GEAR_SLOTS = 21;
+    static final int GEAR_SLOTS = 20;
 
     /** Number of consumable buy slots per merchant. */
     static final int CONSUMABLE_SLOTS = 4;
@@ -111,12 +111,10 @@ public class CatalogGenerator {
             new ConsumableDef(CustomItems.STAT_POINT_TOKEN, CustomItems.BUY_PRICES.get(CustomItems.STAT_POINT_TOKEN), 1),
             new ConsumableDef(CustomItems.STAT_POINT_TOKEN, CustomItems.BUY_PRICES.get(CustomItems.STAT_POINT_TOKEN), 5),
             new ConsumableDef(CustomItems.STAT_POINT_TOKEN, CustomItems.BUY_PRICES.get(CustomItems.STAT_POINT_TOKEN), 10),
-            // Palporter offered in stacks of 1 / 5
+            // Palporter offered in stacks of 1
             new ConsumableDef(CustomItems.PALPORTER, CustomItems.BUY_PRICES.get(CustomItems.PALPORTER), 1),
-            new ConsumableDef(CustomItems.PALPORTER, CustomItems.BUY_PRICES.get(CustomItems.PALPORTER), 5),
-            // Village Warp offered in stacks of 1 / 5
+            // Village Warp offered in stacks of 1
             new ConsumableDef(CustomItems.VILLAGE_WARP, CustomItems.BUY_PRICES.get(CustomItems.VILLAGE_WARP), 1),
-            new ConsumableDef(CustomItems.VILLAGE_WARP, CustomItems.BUY_PRICES.get(CustomItems.VILLAGE_WARP), 5),
     };
 
         /** Full SimpleEnchantments scroll catalog offered in the reserved scroll slot. */
@@ -291,6 +289,71 @@ public class CatalogGenerator {
                 catalog.add(toConsumableEntry(scrollPool.get(i)));
             }
         }
+
+        return List.copyOf(catalog);
+    }
+
+    /**
+     * Generates a deterministic merchant catalog for the Village Merchant.
+     * Includes Full Leather_Light armor, Crude weapons, Crude shortbow (Basic Bow)
+     * at gear level 1, regular Health Potions, Arrows, and Village Warp scrolls (x1, x5, x10).
+     *
+     * @return an immutable catalog
+     */
+    @Nonnull
+    public List<CatalogEntry> generateVillageCatalog() {
+        List<CatalogEntry> catalog = new ArrayList<>();
+
+        // ── Full Leather_Light armor (Level 1) ───────────────────────
+        String[] armorItems = {
+                "Armor_Leather_Light_Head",
+                "Armor_Leather_Light_Chest",
+                "Armor_Leather_Light_Legs",
+                "Armor_Leather_Light_Hands"
+        };
+        for (String itemId : armorItems) {
+            long price = priceRegistry.getBuyPrice(itemId, 1);
+            catalog.add(CatalogEntry.gear(itemId, 1, price));
+        }
+
+        // ── Crude weapons (Level 1) ──────────────────────────────────
+        String[] crudeWeapons = {
+                "Weapon_Sword_Crude",
+                "Weapon_Spear_Crude",
+                "Weapon_Mace_Crude",
+                "Weapon_Battleaxe_Crude",
+                "Weapon_Axe_Crude",
+                "Weapon_Daggers_Crude",
+                "Weapon_Longsword_Crude",
+                "Weapon_Club_Crude"
+        };
+        for (String itemId : crudeWeapons) {
+            long price = priceRegistry.getBuyPrice(itemId, 1);
+            catalog.add(CatalogEntry.gear(itemId, 1, price));
+        }
+
+        // ── Basic Bow (Level 1) ──────────────────────────────────────
+        String basicBow = "Weapon_Shortbow_Crude";
+        long bowPrice = priceRegistry.getBuyPrice(basicBow, 1);
+        catalog.add(CatalogEntry.gear(basicBow, 1, bowPrice));
+
+        // Sort gear by level ascending, then price ascending (since level is 1, sorts by price)
+        catalog.sort(Comparator
+                .comparingInt(CatalogEntry::level)
+                .thenComparingLong(CatalogEntry::buyPrice));
+
+        // ── Consumables ──────────────────────────────────────────────
+        // Health Potions (only regular, no greater)
+        catalog.add(toConsumableEntry(HEALTH_POTION_LOW));
+
+        // Arrows
+        catalog.add(toConsumableEntry(new ConsumableDef("Weapon_Arrow_Crude", 5)));
+
+        // Village Teleport x1, x5, x10 options
+        long warpUnitPrice = CustomItems.BUY_PRICES.get(CustomItems.VILLAGE_WARP);
+        catalog.add(toConsumableEntry(new ConsumableDef(CustomItems.VILLAGE_WARP, warpUnitPrice, 1)));
+        catalog.add(toConsumableEntry(new ConsumableDef(CustomItems.VILLAGE_WARP, warpUnitPrice, 5)));
+        catalog.add(toConsumableEntry(new ConsumableDef(CustomItems.VILLAGE_WARP, warpUnitPrice, 10)));
 
         return List.copyOf(catalog);
     }

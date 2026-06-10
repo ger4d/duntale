@@ -67,7 +67,11 @@ public class ActionOpenDungeonMerchant extends ActionBase {
             catalog = merchantComp.getCatalog();
         } else {
             long seed = ref.hashCode();
-            catalog = plugin.getCatalogGenerator().generate(floorLevel, seed);
+            if (merchantComp != null && "VILLAGE".equals(merchantComp.getCatalogType())) {
+                catalog = plugin.getCatalogGenerator().generateVillageCatalog();
+            } else {
+                catalog = plugin.getCatalogGenerator().generate(floorLevel, seed);
+            }
             if (merchantComp != null) {
                 merchantComp.setCatalog(catalog);
             }

@@ -46,6 +46,7 @@ import com.duntale.merchant.MerchantComponent;
 import com.duntale.merchant.MerchantNpcSpawner;
 import com.duntale.merchant.MerchantPriceRegistry;
 import com.duntale.merchant.MerchantService;
+import com.duntale.merchant.SpawnMerchantCommand;
 import com.duntale.merchant.BuilderActionOpenDungeonMerchant;
 import com.duntale.merchant.MerchantTooltipProvider;
 import com.duntale.items.CustomItems;
@@ -667,6 +668,7 @@ public class DuntalePlugin extends JavaPlugin {
         this.getCommandRegistry().registerCommand(new GoldCommand(goldService));
         this.getCommandRegistry().registerCommand(new RpgStatCommand(rpgService));
         this.getCommandRegistry().registerCommand(new MerchantCommand(merchantService, catalogGenerator));
+        this.getCommandRegistry().registerCommand(new SpawnMerchantCommand());
         this.getCommandRegistry().registerCommand(new StatAssignCommand(rpgService));
         this.getCommandRegistry().registerCommand(new CompanionCommand(companionService));
         this.getCommandRegistry().registerCommand(
