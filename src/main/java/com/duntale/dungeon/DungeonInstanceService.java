@@ -1158,7 +1158,7 @@ public class DungeonInstanceService {
                         "Cannot transition instance " + instanceId
                                 + "; either it does not exist or is not in ACTIVE state"));
 
-        int nextFloor = claimed.floorLevel() + 1;
+        int nextFloor = request.targetFloorLevel() != null ? request.targetFloorLevel() : claimed.floorLevel() + 1;
         String nextWorldName = INSTANCE_WORLD_PREFIX + claimed.instanceId() + "-f" + nextFloor;
         TransitionRuntimeState transitionState = new TransitionRuntimeState(claimed.worldName(), nextWorldName);
         runtimeTransitionStates.put(instanceId, transitionState);
@@ -2978,13 +2978,21 @@ public class DungeonInstanceService {
      */
     public record FloorTransitionRequest(
             @Nonnull String instanceId,
-            @Nonnull Set<UUID> transferPlayers
+            @Nonnull Set<UUID> transferPlayers,
+            @Nullable Integer targetFloorLevel
     ) {
 
         /** Canonical constructor with validation and defensive copying. */
         public FloorTransitionRequest {
             instanceId = Objects.requireNonNull(instanceId, "instanceId");
             transferPlayers = normalizeRoster(transferPlayers);
+        }
+
+        public FloorTransitionRequest(
+                @Nonnull String instanceId,
+                @Nonnull Set<UUID> transferPlayers
+        ) {
+            this(instanceId, transferPlayers, null);
         }
     }
 

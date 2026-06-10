@@ -205,8 +205,8 @@ public class DungeonCommand extends CommandBase {
                 .insert(Message.raw(" — teleport near your active dungeon floor exit").color(GRAY))
         );
         context.sendMessage(
-                Message.raw("  transition <instanceId>").color(GOLD)
-                        .insert(Message.raw(" — advance instance to next floor").color(GRAY))
+                Message.raw("  transition <instanceId> [<level>]").color(GOLD)
+                        .insert(Message.raw(" — advance instance to next floor, or transition to a specific level").color(GRAY))
         );
         context.sendMessage(
             Message.raw("  floorconfig [floor]").color(GOLD)
@@ -672,6 +672,7 @@ public class DungeonCommand extends CommandBase {
 
         TransitionSubCommand() {
             super("transition", "Advance instance to next floor");
+            this.addUsageVariant(new TransitionLevelSubCommand());
         }
 
         @Override
@@ -711,6 +712,81 @@ public class DungeonCommand extends CommandBase {
 
                 DungeonInstance result = dungeonInstanceService.transitionFloor(
                     new DungeonInstanceService.FloorTransitionRequest(instanceId, transferPlayers)).join();
+                context.sendMessage(
+                        Message.raw("Transitioned instance ").color(GREEN)
+                                .insert(Message.raw(truncateId(instanceId)).color(AQUA).monospace(true))
+                        .insert(Message.raw(" to floor " + result.floorLevel()
+                            + " with " + transferPlayers.size() + " transfer(s).").color(GREEN))
+                );
+            } catch (CompletionException e) {
+                reEnablePreparedTransitionPlayers(transferPlayers, preparation);
+                context.sendMessage(
+                        Message.raw("Transition failed: " + describeFailure(e)).color(RED)
+                );
+            } catch (SQLException | IllegalArgumentException | IllegalStateException e) {
+                reEnablePreparedTransitionPlayers(transferPlayers, preparation);
+                context.sendMessage(
+                        Message.raw("Transition failed: " + describeFailure(e)).color(RED)
+                );
+            }
+        }
+    }
+
+    private class TransitionLevelSubCommand extends CommandBase {
+
+        private final RequiredArg<String> instanceIdArg =
+                this.withRequiredArg("instanceId", "Instance ID (full or prefix)", ArgTypes.STRING);
+        private final RequiredArg<Integer> levelArg =
+                this.withRequiredArg("level", "Specific target floor level", ArgTypes.INTEGER);
+
+        TransitionLevelSubCommand() {
+            super("Advance instance to an explicit floor level");
+        }
+
+        @Override
+        protected void executeSync(@Nonnull CommandContext context) {
+            String query = instanceIdArg.get(context);
+            int level = levelArg.get(context);
+
+            if (!CombatScaling.isSupportedLevel(level)) {
+                context.sendMessage(Message.raw("Floor level must be between "
+                    + CombatScaling.MIN_LEVEL + " and " + CombatScaling.MAX_LEVEL + ".").color(RED));
+                return;
+            }
+
+            DungeonInstance instance;
+            try {
+                instance = resolveInstance(query);
+            } catch (SQLException e) {
+                context.sendMessage(Message.raw("Failed to query instance: " + e.getMessage()).color(RED));
+                return;
+            }
+
+            if (instance == null) {
+                context.sendMessage(Message.raw("Instance not found: " + query).color(RED));
+                return;
+            }
+
+            String instanceId = instance.instanceId();
+
+            DungeonInstanceService.FloorTransitionPreparation preparation = null;
+            Set<UUID> transferPlayers = Set.of();
+            try {
+                preparation = dungeonInstanceService.prepareFloorTransition(instanceId);
+                transferPlayers = floorTransitionParticipantPreparer.prepare(
+                    preparation.activeRosterAfterExpansion(),
+                    preparation.instance().worldName()).join();
+                if (transferPlayers.isEmpty()) {
+                    context.sendMessage(
+                        Message.raw("Transition failed: no online active members are in world ")
+                            .color(RED)
+                            .insert(Message.raw(preparation.instance().worldName()).color(AQUA))
+                    );
+                    return;
+                }
+
+                DungeonInstance result = dungeonInstanceService.transitionFloor(
+                    new DungeonInstanceService.FloorTransitionRequest(instanceId, transferPlayers, level)).join();
                 context.sendMessage(
                         Message.raw("Transitioned instance ").color(GREEN)
                                 .insert(Message.raw(truncateId(instanceId)).color(AQUA).monospace(true))
