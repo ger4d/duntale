@@ -44,7 +44,7 @@ public final class VillageWarpPortalService {
     private static final HytaleLogger LOGGER = HytaleLogger.forEnclosingClass();
     private static final String PORTAL_ID_PREFIX = "village_warp_portal_";
 
-    static final String MODEL_ASSET_ID = "Portal_Dungeon";
+    static final String MODEL_ASSET_ID = "Portal_Village";
     static final double VOLUME_HALF_WIDTH = 1.25D;
     static final double VOLUME_HEIGHT = 2.75D;
     static final float VOLUME_COOLDOWN_SECONDS = 2.0F;

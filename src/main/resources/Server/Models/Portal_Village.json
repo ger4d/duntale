@@ -1,0 +1,28 @@
+{
+  "Model": "VFX/Models/Platform_Magic_Exit.blockymodel",
+  "Texture": "VFX/Textures/Platform_Magic_Red.png",
+  "HitBox": {
+    "Max": {
+      "X": 0.5,
+      "Y": 2.0,
+      "Z": 0.5
+    },
+    "Min": {
+      "X": -0.5,
+      "Y": 0.0,
+      "Z": -0.5
+    }
+  },
+  "Particles": [
+    {
+      "PositionOffset": {
+        "X": 0,
+        "Y": 1.75,
+        "Z": 0
+      },
+      "Scale": 0.65,
+      "SystemId": "MagicPortal_ForgottenTemple",
+      "TargetNodeName": null
+    }
+  ]
+}

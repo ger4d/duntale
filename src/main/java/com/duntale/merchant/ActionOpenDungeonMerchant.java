@@ -3,6 +3,7 @@ package com.duntale.merchant;
 import com.duntale.DuntalePlugin;
 import com.hypixel.hytale.component.Ref;
 import com.hypixel.hytale.component.Store;
+import com.hypixel.hytale.logger.HytaleLogger;
 import com.hypixel.hytale.server.core.entity.entities.Player;
 import com.hypixel.hytale.server.core.universe.PlayerRef;
 import com.hypixel.hytale.server.core.universe.world.storage.EntityStore;
@@ -13,6 +14,7 @@ import com.hypixel.hytale.server.npc.sensorinfo.InfoProvider;
 
 import javax.annotation.Nonnull;
 import java.util.List;
+import java.util.logging.Level;
 
 /**
  * NPC action that opens the dungeon custom merchant UI for the interacting player.
@@ -22,6 +24,8 @@ import java.util.List;
  * @since 1.3.0
  */
 public class ActionOpenDungeonMerchant extends ActionBase {
+
+    private static final HytaleLogger LOGGER = HytaleLogger.forEnclosingClass();
 
     public ActionOpenDungeonMerchant(@Nonnull BuilderActionBase builder) {
         super(builder);
@@ -51,6 +55,8 @@ public class ActionOpenDungeonMerchant extends ActionBase {
         // Read floor level from the merchant NPC's component
         MerchantComponent merchantComp = store.getComponent(ref, MerchantComponent.getComponentType());
         int floorLevel = merchantComp != null ? merchantComp.getFloorLevel() : 1;
+
+        LOGGER.at(Level.INFO).log("Opening merchant for floorLevel: %d, %s", floorLevel, merchantComp != null ? merchantComp.toString() : "<none>");
 
         // Generate catalog on first interaction, then reuse
         DuntalePlugin plugin = DuntalePlugin.get();
