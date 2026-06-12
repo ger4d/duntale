@@ -1,6 +1,7 @@
 package com.duntale.merchant;
 
 import com.duntale.economy.GoldService;
+import com.duntale.items.UnbreakableItems;
 import com.duntale.progression.GearLevelService;
 import com.hypixel.hytale.codec.Codec;
 import com.hypixel.hytale.component.ComponentAccessor;
@@ -55,11 +56,6 @@ public class MerchantService {
 
     /** Default number of sell-zone slots in the merchant container. */
     private static final short DEFAULT_SELL_SLOTS = 2;
-
-    /** Minimum fraction of the sell price retained when an item is fully broken (0 durability). */
-    private static final double MIN_DURABILITY_SELL_FACTOR = 0.05;
-
-
 
     /** Key for buy-price metadata on merchant display items. */
     static final String META_BUY_PRICE = "merchant_buy_price";
@@ -282,15 +278,7 @@ public class MerchantService {
         int dungeonLevel = getItemDungeonLevel(item);
         long basePrice = priceRegistry.getSellPrice(itemId, dungeonLevel);
         long sellPrice = basePrice;
-        double maxDur = item.getMaxDurability();
-        if (maxDur > 0.0) {
-            double ratio = Math.clamp(item.getDurability() / maxDur, 0.0, 1.0);
-            double factor = MIN_DURABILITY_SELL_FACTOR + (1.0 - MIN_DURABILITY_SELL_FACTOR) * ratio;
-            sellPrice = (long) Math.floor(basePrice * factor);
-            if (sellPrice < 1 && basePrice > 0) {
-                sellPrice = 1;
-            }
-        } else if (priceRegistry.isCustomItem(itemId)) {
+        if (priceRegistry.isCustomItem(itemId)) {
             // Fixed-price custom items sell per unit, so credit the whole stack.
             sellPrice = basePrice * item.getQuantity();
         }
@@ -356,7 +344,9 @@ public class MerchantService {
         }
 
         long buyPrice = entry.buyPrice();
-        ItemStack stack = new ItemStack(item.getId(), entry.quantity());
+        // Stamp gear unbreakable up front so the stack the player receives on
+        // purchase is already indestructible (non-gear items pass through).
+        ItemStack stack = UnbreakableItems.makeUnbreakable(new ItemStack(item.getId(), entry.quantity()));
 
         // Add level metadata if this is a leveled item
         // (Merchant items don't have variance — they're display templates)

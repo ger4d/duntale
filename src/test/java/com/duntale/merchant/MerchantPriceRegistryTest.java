@@ -189,35 +189,23 @@ class MerchantPriceRegistryTest {
         }
 
         @Test
-        @DisplayName("Should offer repair kits as single kits or fixed five-packs instead of full stacks")
-        void shouldOfferRepairKitsAsSingleKitsOrFixedFivePacksInsteadOfFullStacks() {
+        @DisplayName("Should never offer repair kits or durability scrolls now that gear is unbreakable")
+        void shouldNeverOfferRepairKitsOrDurabilityScrolls() {
             MerchantPriceRegistry registry = initializedRegistry(List.of(), List.of());
-            CatalogGenerator generator = generator(registry, false);
-
-            boolean sawSingleKit = false;
-            boolean sawFivePack = false;
-            boolean sawFullStack = false;
+            CatalogGenerator generator = generator(registry, true);
 
             for (long seed = 0; seed < 1000; seed++) {
                 for (CatalogEntry entry : generator.generate(20, seed)) {
-                    if (!"Tool_Repair_Kit_Iron".equals(entry.itemId())) {
-                        continue;
-                    }
-                    if (entry.quantity() == 1 && entry.buyPrice() == 25_000L) {
-                        sawSingleKit = true;
-                    }
-                    if (entry.quantity() == 5 && entry.buyPrice() == 125_000L) {
-                        sawFivePack = true;
-                    }
-                    if (entry.quantity() > 5) {
-                        sawFullStack = true;
-                    }
+                    assertFalse("Tool_Repair_Kit_Iron".equals(entry.itemId()),
+                            "Repair kits must not appear in merchant catalogs");
+                    assertFalse(entry.itemId().startsWith("Scroll_Durability"),
+                            "Durability scrolls must not appear in merchant catalogs");
                 }
             }
 
-            assertTrue(sawSingleKit);
-            assertTrue(sawFivePack);
-            assertFalse(sawFullStack);
+            assertFalse(CatalogGenerator.RESERVED_SCROLL_ITEM_IDS.stream()
+                            .anyMatch(id -> id.startsWith("Scroll_Durability")),
+                    "Durability scrolls must be removed from the reserved scroll pool");
         }
 
         @Test

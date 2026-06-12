@@ -1,5 +1,6 @@
 package com.duntale.loot;
 
+import com.duntale.items.UnbreakableItems;
 import com.duntale.progression.GearLevelService;
 import com.hypixel.hytale.server.core.inventory.ItemStack;
 
@@ -108,14 +109,16 @@ public sealed interface LootModifier permits LootModifier.Quantity, LootModifier
                 return stack;
             }
 
+            // Single chokepoint for all dropped/looted gear (NPC drops + chest loot
+            // both flow through here): stamp it unbreakable per Economy v2 pillar P1.
             return switch (gearType) {
                 case WEAPON -> {
                     ItemStack leveled = GearLevelService.setWeaponLevel(stack, gearLevel);
-                    yield GearLevelService.setWeaponVariance(leveled, gearVariance);
+                    yield UnbreakableItems.makeUnbreakable(GearLevelService.setWeaponVariance(leveled, gearVariance));
                 }
                 case ARMOR -> {
                     ItemStack leveled = GearLevelService.setArmorLevel(stack, gearLevel);
-                    yield GearLevelService.setArmorVariance(leveled, gearVariance);
+                    yield UnbreakableItems.makeUnbreakable(GearLevelService.setArmorVariance(leveled, gearVariance));
                 }
             };
         }

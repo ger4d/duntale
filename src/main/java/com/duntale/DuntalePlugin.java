@@ -57,6 +57,7 @@ import com.duntale.items.PalporterPage;
 import com.duntale.items.PlayerTrapImmunitySystem;
 import com.duntale.items.SpeedBoostInteraction;
 import com.duntale.items.SpeedBoostManager;
+import com.duntale.items.UnbreakableGearSystem;
 import com.duntale.items.VampireJuiceInteraction;
 import com.duntale.items.VillageWarpPlaceInteraction;
 import com.duntale.items.InventoryQuery;
@@ -613,6 +614,7 @@ public class DuntalePlugin extends JavaPlugin {
         this.getEntityStoreRegistry().registerSystem(new NpcLootSystem(lootRollService, rpgService, progressionService));
         this.getEntityStoreRegistry().registerSystem(new GoldPickupSystem(goldService));
         this.getEntityStoreRegistry().registerSystem(new InventoryGoldConversionSystem(goldService));
+        this.getEntityStoreRegistry().registerSystem(new UnbreakableGearSystem());
         this.getEntityStoreRegistry().registerSystem(new RpgDamageScalingSystem(rpgService));
         // this.getEntityStoreRegistry().registerSystem(new GameModeToggleStatMenuSystem(rpgService));
         this.getEntityStoreRegistry().registerSystem(new DungeonDeathScreenSystem(dungeonRespawnService));

@@ -90,8 +90,6 @@ public class CatalogGenerator {
             new ConsumableDef("Food_Pie_Meat", 50),
             new ConsumableDef("Potion_Stamina", 75),
             new ConsumableDef("Potion_Antidote", 40),
-            new ConsumableDef("Tool_Repair_Kit_Iron", 25_000, 1),
-            new ConsumableDef("Tool_Repair_Kit_Iron", 25_000, 5),
             new ConsumableDef("Weapon_Deployable_Turret", 120_000, 1),
             new ConsumableDef("Weapon_Deployable_Healing_Totem", 125_000, 1),
             new ConsumableDef("Weapon_Deployable_Slowness_Totem", 100_000, 1),
@@ -130,9 +128,6 @@ public class CatalogGenerator {
             "Scroll_Dexterity_I",
             "Scroll_Dexterity_II",
             "Scroll_Dexterity_III",
-            "Scroll_Durability_I",
-            "Scroll_Durability_II",
-            "Scroll_Durability_III",
             "Scroll_Eagles_Eye_I",
             "Scroll_Eagles_Eye_II",
             "Scroll_Eagles_Eye_III",
@@ -200,7 +195,7 @@ public class CatalogGenerator {
 
     /**
      * Registers fixed resale prices for every merchant consumable (potions, food,
-     * arrows, repair kits, deployables, upgrades, and the guaranteed health potions)
+     * arrows, deployables, upgrades, and the guaranteed health potions)
      * so they can be sold back to the merchant.
      *
      * <p>Without this, {@link MerchantPriceRegistry#isSellable(String)} only knows
