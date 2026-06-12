@@ -16,7 +16,7 @@ import com.hypixel.hytale.server.core.modules.entitystats.EntityStatValue;
 import com.hypixel.hytale.server.core.modules.entitystats.asset.DefaultEntityStatTypes;
 import com.hypixel.hytale.server.core.universe.world.storage.EntityStore;
 import com.hypixel.hytale.server.npc.entities.NPCEntity;
-import com.hypixel.hytale.server.npc.role.Role;
+import com.hypixel.hytale.server.npc.role.support.StateSupport;
 import com.hypixel.hytale.component.Ref;
 import com.duntale.rpg.RpgDamageScalingSystem;
 import com.hypixel.hytale.logger.HytaleLogger;
@@ -91,10 +91,9 @@ public class CompanionDeathProtectionSystem extends DamageEventSystem {
         Ref<EntityStore> ref = archetypeChunk.getReferenceTo(index);
         NPCEntity npcEntity = store.getComponent(ref, NPCEntity.getComponentType());
         if (npcEntity != null) {
-            Role role = npcEntity.getRole();
-            String stateName = role.getStateSupport().getStateName();
+            String stateName = StateSupport.get(ref, store).getStateName();
             LOGGER.atFine().log("Companion %s is in state '%s'", ref, stateName);
-            if (role != null && stateName.startsWith("Recovery")) {
+            if (stateName.startsWith("Recovery")) {
                 damage.setCancelled(true);
                 return;
             }

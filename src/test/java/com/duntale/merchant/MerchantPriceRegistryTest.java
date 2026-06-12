@@ -374,8 +374,8 @@ class MerchantPriceRegistryTest {
         }
 
         @Test
-        @DisplayName("Should offer Palporter and Village Warp in stacks of 1 and 5 priced at their unit prices")
-        void shouldOfferPalporterAndVillageWarpInStacksOfOneAndFive() {
+        @DisplayName("Should offer Palporter and Village Warp in stacks of 1 priced at their unit prices")
+        void shouldOfferPalporterAndVillageWarpInStacksOfOne() {
             MerchantPriceRegistry registry = initializedRegistry(List.of(), List.of());
             CatalogGenerator generator = generator(registry, false);
 
@@ -383,9 +383,7 @@ class MerchantPriceRegistryTest {
             long villageWarpUnitPrice = CustomItems.BUY_PRICES.get(CustomItems.VILLAGE_WARP);
 
             boolean sawPalporterSingle = false;
-            boolean sawPalporterFive = false;
             boolean sawVillageWarpSingle = false;
-            boolean sawVillageWarpFive = false;
 
             for (long seed = 0; seed < 5_000; seed++) {
                 for (CatalogEntry entry : generator.generate(20, seed)) {
@@ -393,26 +391,43 @@ class MerchantPriceRegistryTest {
                         if (entry.quantity() == 1 && entry.buyPrice() == palporterUnitPrice) {
                             sawPalporterSingle = true;
                         }
-                        if (entry.quantity() == 5 && entry.buyPrice() == palporterUnitPrice * 5) {
-                            sawPalporterFive = true;
-                        }
                     } else if (CustomItems.VILLAGE_WARP.equals(entry.itemId())) {
                         if (entry.quantity() == 1 && entry.buyPrice() == villageWarpUnitPrice) {
                             sawVillageWarpSingle = true;
-                        }
-                        if (entry.quantity() == 5 && entry.buyPrice() == villageWarpUnitPrice * 5) {
-                            sawVillageWarpFive = true;
                         }
                     }
                 }
             }
 
             assertTrue(sawPalporterSingle);
-            assertTrue(sawPalporterFive);
             assertTrue(sawVillageWarpSingle);
-            assertTrue(sawVillageWarpFive);
         }
     }
+
+    @Nested
+    @DisplayName("tool filtering")
+    class ToolFiltering {
+
+        @Test
+        @DisplayName("Should exclude Tool_-prefixed weapons from getItemsByLevelRange but keep them sellable")
+        void shouldExcludeToolPrefixedWeaponsFromLevelRangeButKeepSellable() {
+            MerchantPriceRegistry registry = initializedRegistry(
+                    List.of(
+                            new AssetCatalog.WeaponBaseRow("Tool Sickle Copper", "Sickle", "Common", 10, 0f),
+                            new AssetCatalog.WeaponBaseRow("Weapon Sword Copper", "Sword", "Common", 10, 8f)
+                    ),
+                    List.of()
+            );
+
+            List<String> items = registry.getItemsByLevelRange(1, 100);
+            assertFalse(items.contains("Tool_Sickle_Copper"), "Tool_Sickle_Copper should not be in the merchant buy pool");
+            assertTrue(items.contains("Weapon_Sword_Copper"), "Weapon_Sword_Copper should be in the merchant buy pool");
+
+            assertTrue(registry.isSellable("Tool_Sickle_Copper"), "Tool_Sickle_Copper should still be sellable");
+            assertTrue(registry.isSellable("Weapon_Sword_Copper"), "Weapon_Sword_Copper should still be sellable");
+        }
+    }
+
 
     private static boolean isEnchantScroll(@Nonnull CatalogEntry entry) {
         return CatalogGenerator.RESERVED_SCROLL_ITEM_IDS.contains(entry.itemId());

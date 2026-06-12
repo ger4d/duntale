@@ -48,14 +48,14 @@
             {
               "Type": "ChangeStat",
               "StatModifiers": {
-                "Stamina": -0.3
+                "Stamina": -0.9
               }
             },
             {
               "Type": "ChangeStat",
               "Behaviour": "Set",
               "StatModifiers": {
-                "StaminaRegenDelay": -4.5
+                "StaminaRegenDelay": -3.0
               }
             }
           ]

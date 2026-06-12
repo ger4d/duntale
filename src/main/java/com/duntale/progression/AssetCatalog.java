@@ -67,6 +67,11 @@ public class AssetCatalog {
         DAMAGE_CALCULATOR_FIELD = f;
     }
 
+    /** Damage for items whose interactions are not var-driven (verified by hand). */
+    private static final Map<String, Float> KNOWN_BASE_DAMAGE = Map.of(
+            "WanMine_Void_Requiem_Scythe", 81.5f  // avg of its 6 authored damage moves
+    );
+
     // ── In-memory indexes ───────────────────────────────────────────
 
     private final ConcurrentHashMap<String, WeaponBaseRow> weapons = new ConcurrentHashMap<>();
@@ -207,7 +212,7 @@ public class AssetCatalog {
                     roleBuilder,
                     new RoleStats()
             );
-            Role role = NPCPlugin.buildRole(roleBuilder, builderInfo, builderSupport, roleIndex);
+            Role role = NPCPlugin.buildRole(holder, roleBuilder, builderInfo, builderSupport, roleIndex);
             int baseHp = role.getInitialMaxHealth();
             cacheMonsterHp(roleName, baseHp);
             return baseHp;
@@ -353,6 +358,9 @@ public class AssetCatalog {
 
         String family = inferWeaponFamily(id);
         float baseDamage = extractWeaponDamage(item);
+        if (baseDamage <= 0f) {
+            baseDamage = KNOWN_BASE_DAMAGE.getOrDefault(id, 0f);
+        }
         String name = id.replace('_', ' ');
 
         return new WeaponBaseRow(name, family, quality, itemLevel, baseDamage);

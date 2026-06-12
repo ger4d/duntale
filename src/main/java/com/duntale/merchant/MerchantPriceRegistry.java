@@ -117,7 +117,9 @@ public class MerchantPriceRegistry {
             );
             priceProfiles.put(assetId, profile);
             buyPriceCache.put(assetId, computeBuyPrice(profile, defaultPricingLevel(profile)));
-            itemLevelCache.put(assetId, row.itemLevel());
+            if (!assetId.startsWith("Tool_")) {
+                itemLevelCache.put(assetId, row.itemLevel());
+            }
             weaponCount++;
         }
 
