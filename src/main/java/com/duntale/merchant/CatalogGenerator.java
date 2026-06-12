@@ -89,7 +89,6 @@ public class CatalogGenerator {
             new ConsumableDef("Food_Kebab_Meat", 25),
             new ConsumableDef("Food_Pie_Meat", 50),
             new ConsumableDef("Potion_Stamina", 75),
-            new ConsumableDef("Potion_Regen_Health", 100),
             new ConsumableDef("Potion_Antidote", 40),
             new ConsumableDef("Tool_Repair_Kit_Iron", 25_000, 1),
             new ConsumableDef("Tool_Repair_Kit_Iron", 25_000, 5),
