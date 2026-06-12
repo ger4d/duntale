@@ -9,13 +9,13 @@
 	"LuckMaxDropBonus": 0.30,
 	"LuckHalfPoint": 20.0,
 	"LuckLevelsPerBonusRoll": 15,
-	"StaminaPerPoint": 5.0,
+	"StaminaPerPoint": 0.5,
 	"AgilityBaseThrottleNs": 400000000,
 	"AgilityMaxReduction": 0.85,
 	"AgilityHalfPoint": 30.0,
 	"AgilityMinThrottleNs": 140000000,
 	"ResistanceMaxDr": 0.40,
 	"ResistanceHalfPoint": 30.0,
-	"VitalityHpPerPoint": 10.0,
+	"VitalityHpPerPoint": 7.5,
 	"MaxGoldBalance": 999999999
 }
