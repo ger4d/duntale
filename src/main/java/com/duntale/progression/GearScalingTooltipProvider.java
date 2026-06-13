@@ -3,7 +3,13 @@ package com.duntale.progression;
 import com.duntale.loot.GearAttribute;
 import com.duntale.loot.Rarity;
 import com.duntale.loot.RarityRegistry;
+import com.hypixel.hytale.protocol.CalculationType;
+import com.hypixel.hytale.protocol.ItemArmor;
+import com.hypixel.hytale.protocol.Modifier;
+import com.hypixel.hytale.protocol.ModifierTarget;
+import com.hypixel.hytale.server.core.asset.type.item.config.Item;
 import com.hypixel.hytale.server.core.asset.type.item.config.ItemQuality;
+import com.hypixel.hytale.server.core.modules.entitystats.asset.EntityStatType;
 import org.herolias.tooltips.api.ItemVisualOverrides;
 import org.herolias.tooltips.api.TooltipData;
 import org.herolias.tooltips.api.TooltipPriority;
@@ -11,7 +17,9 @@ import org.herolias.tooltips.api.TooltipProvider;
 
 import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 /**
  * Tooltip provider that enriches leveled weapons and armor with scaled stat info.
@@ -110,7 +118,9 @@ public class GearScalingTooltipProvider implements TooltipProvider {
         TooltipData.Builder builder = TooltipData.builder()
                 .hashInput("duntale_wl:" + level + ":" + varHash + ":" + rarityHash(rarity, attributes));
 
-        applyRarityVisuals(builder, rarity);
+        ItemVisualOverrides.Builder visuals = ItemVisualOverrides.builder();
+        applyRarityVisuals(visuals, rarity);
+        builder.visualOverrides(visuals.build());
         addRarityLine(builder, rarity);
         // Level tag
         builder.addLine(colorTag(COLOR_CYAN, "Lv." + level) + " " + colorTag(COLOR_GRAY, "Dungeon Weapon"));
@@ -175,7 +185,8 @@ public class GearScalingTooltipProvider implements TooltipProvider {
         TooltipData.Builder builder = TooltipData.builder()
                 .hashInput("duntale_al:" + level + ":" + varHash + ":" + rarityHash(rarity, attributes));
 
-        applyRarityVisuals(builder, rarity);
+        ItemVisualOverrides.Builder visuals = ItemVisualOverrides.builder();
+        applyRarityVisuals(visuals, rarity);
         addRarityLine(builder, rarity);
         // Level tag
         builder.addLine(colorTag(COLOR_CYAN, "Lv." + level) + " " + colorTag(COLOR_GRAY, "Dungeon Armor"));
@@ -198,12 +209,16 @@ public class GearScalingTooltipProvider implements TooltipProvider {
         } else {
             healthBonus = base != null ? base.healthBonus() : 0;
         }
-        if (healthBonus > 0) {
-            builder.addLine(
-                    colorTag(COLOR_GRAY, "Health: ") +
-                    colorTag(COLOR_GREEN, "+" + healthBonus)
-            );
+
+        // Override the engine's native armor Health stat modifier so the heart icon reflects the
+        // authored value instead of the asset's original flat HP. The real max-health grant is
+        // still governed by RpgStatApplicator's Duntale_ArmorHp / Duntale_ArmorHpSuppress modifiers;
+        // this is purely a visual fix.
+        ItemArmor armorOverride = armorWithAuthoredHp(itemId, healthBonus);
+        if (armorOverride != null) {
+            visuals.armor(armorOverride);
         }
+        builder.visualOverrides(visuals.build());
 
         addAttributeLines(builder, attributes);
         return builder.build();
@@ -230,19 +245,20 @@ public class GearScalingTooltipProvider implements TooltipProvider {
      * the matching border/slot textures, while {@code nameColor}/{@code qualityLabel} force our exact
      * palette and rarity word on the title and top-right label. The per-stack hash already varies by
      * rarity (see {@link #rarityHash}), so promoted/demoted stacks recolor independently.
+     *
+     * <p>Mutates the supplied builder so callers can layer additional overrides (e.g. armor HP)
+     * before building the final {@link ItemVisualOverrides}.
      */
-    private void applyRarityVisuals(@Nonnull TooltipData.Builder builder, @Nullable Rarity rarity) {
+    private void applyRarityVisuals(@Nonnull ItemVisualOverrides.Builder visuals, @Nullable Rarity rarity) {
         if (rarity == null) {
             return;
         }
-        ItemVisualOverrides.Builder visuals = ItemVisualOverrides.builder()
-                .nameColor(rarityRegistry.displayColor(rarity))
+        visuals.nameColor(rarityRegistry.displayColor(rarity))
                 .qualityLabel(rarityRegistry.displayName(rarity));
         int qualityIndex = engineQualityIndex(rarity);
         if (qualityIndex >= 0) {
             visuals.qualityIndex(qualityIndex);
         }
-        builder.visualOverrides(visuals.build());
     }
 
     /**
@@ -266,10 +282,58 @@ public class GearScalingTooltipProvider implements TooltipProvider {
     }
 
     /**
+     * Builds an {@link ItemArmor} protocol object whose {@code Health} stat modifier has been
+     * replaced with the authored flat-HP value. The client renders that modifier as the heart icon
+     * line in the tooltip, so this suppresses the asset's original engine HP and shows the
+     * Duntale-authored number instead.
+     *
+     * <p>The returned object is a clone of the original armor config; every field except
+     * {@code statModifiers} is preserved unchanged. If the authored HP is zero or negative, the
+     * Health entry is removed so no heart line is shown.
+     *
+     * @param itemId    the base item id
+     * @param authoredHp the authored flat-HP value to display
+     * @return a cloned armor config with the Health modifier overridden, or {@code null} if the
+     *         item has no armor config
+     */
+    @Nullable
+    private static ItemArmor armorWithAuthoredHp(@Nonnull String itemId, int authoredHp) {
+        Item item = Item.getAssetMap().getAsset(itemId);
+        if (item == null) {
+            return null;
+        }
+        com.hypixel.hytale.server.core.asset.type.item.config.ItemArmor serverArmor = item.getArmor();
+        if (serverArmor == null) {
+            return null;
+        }
+
+        ItemArmor clone = serverArmor.toPacket().clone();
+        int healthIndex = EntityStatType.getAssetMap().getIndex("Health");
+        if (healthIndex < 0) {
+            return clone;
+        }
+
+        Map<Integer, Modifier[]> mods = clone.statModifiers == null
+                ? new HashMap<>()
+                : new HashMap<>(clone.statModifiers);
+
+        if (authoredHp > 0) {
+            mods.put(healthIndex, new Modifier[]{
+                    new Modifier(ModifierTarget.Max, CalculationType.Additive, authoredHp)
+            });
+        } else {
+            mods.remove(healthIndex);
+        }
+
+        clone.statModifiers = mods.isEmpty() ? null : mods;
+        return clone;
+    }
+
+    /**
      * Adds one colored line per rarity-granted attribute (e.g. {@code +5 Strength}).
      */
     private static void addAttributeLines(@Nonnull TooltipData.Builder builder,
-                                          @Nonnull List<GearAttribute> attributes) {
+                                           @Nonnull List<GearAttribute> attributes) {
         for (GearAttribute attribute : attributes) {
             String sign = attribute.value() >= 0 ? "+" : "";
             builder.addLine(colorTag(COLOR_GREEN,
