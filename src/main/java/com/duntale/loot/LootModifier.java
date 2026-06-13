@@ -110,7 +110,7 @@ public sealed interface LootModifier permits LootModifier.Quantity, LootModifier
             }
 
             // Single chokepoint for all dropped/looted gear (NPC drops + chest loot
-            // both flow through here): stamp it unbreakable per Economy v2 pillar P1.
+            // both flow through here): stamp it unbreakable, since player gear never breaks.
             return switch (gearType) {
                 case WEAPON -> {
                     ItemStack leveled = GearLevelService.setWeaponLevel(stack, gearLevel);

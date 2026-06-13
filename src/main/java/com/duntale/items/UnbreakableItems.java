@@ -9,8 +9,8 @@ import javax.annotation.Nullable;
 /**
  * Utility for converting player gear stacks into engine-unbreakable stacks.
  *
- * <p>Under Economy v2 design pillar P1, all weapons and armor are fully
- * indestructible. Rather than overriding durability fields across hundreds of
+ * <p>By design, all player weapons and armor are fully indestructible (gear never
+ * degrades or breaks). Rather than overriding durability fields across hundreds of
  * item assets, this leverages the engine's first-class unbreakable semantics:
  * {@link ItemStack#isUnbreakable()} is {@code maxDurability <= 0}, which makes
  * {@link ItemStack#isBroken()} permanently {@code false}, clamps all durability
