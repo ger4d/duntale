@@ -18,9 +18,17 @@ import com.hypixel.hytale.server.npc.role.Role;
 
 import javax.annotation.Nonnull;
 import java.util.Objects;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * Applies shared Duntale combat scaling to NPCs at holder-stage and ref-stage.
+ *
+ * <p>Mapped roles are normalized to an archetype anchor via {@link NpcArchetypeRegistry}: HP derives
+ * from the anchor base instead of the role's (wildly non-uniform) asset base, and the damage
+ * multiplier is a corrective ratio that retargets the role's average attack damage to the anchor.
+ * This keeps enemies of the same archetype comparable regardless of their authored asset stats.
+ * Unmapped roles keep the legacy asset-base scaling (with a one-time warning per role).
  */
 public class NpcScalingApplicator {
 
@@ -29,16 +37,26 @@ public class NpcScalingApplicator {
     private static final int FALLBACK_BASE_HP = 20;
     private static final int MIN_SCALED_HP = 1;
     private static final int MAX_SCALED_HP = 10_000;
+    private static final float MIN_LEGACY_DAMAGE_MULTIPLIER = 1.0f;
 
     private final ComponentType<EntityStore, CombatScalingComponent> combatScalingType;
+    private final NpcArchetypeRegistry archetypeRegistry;
+
+    /** Role names already warned about as unmapped, to keep the legacy-path log to one line per role. */
+    private final Set<String> warnedUnmappedRoles = ConcurrentHashMap.newKeySet();
 
     /**
      * Creates a new applicator.
      *
      * @param combatScalingType the registered combat scaling component type
+     * @param archetypeRegistry  the archetype-anchor registry resolving role normalization
      */
-    public NpcScalingApplicator(@Nonnull ComponentType<EntityStore, CombatScalingComponent> combatScalingType) {
+    public NpcScalingApplicator(
+            @Nonnull ComponentType<EntityStore, CombatScalingComponent> combatScalingType,
+            @Nonnull NpcArchetypeRegistry archetypeRegistry
+    ) {
         this.combatScalingType = Objects.requireNonNull(combatScalingType, "combatScalingType");
+        this.archetypeRegistry = Objects.requireNonNull(archetypeRegistry, "archetypeRegistry");
     }
 
     /**
@@ -58,13 +76,41 @@ public class NpcScalingApplicator {
         Objects.requireNonNull(roleName, "roleName");
         Objects.requireNonNull(variant, "variant");
 
-        float damageMultiplier = CombatScaling.applyVariance(CombatScaling.npcDamageMult(level, variant));
+        NpcArchetypeRegistry.ResolvedArchetype resolved = archetypeRegistry.resolve(roleName);
+        float baseDamageMult = CombatScaling.npcDamageMult(level, variant);
+
+        float damageMultiplier;
+        String archetype;
+        int anchorBaseHp;
+        if (resolved != null && resolved.assetBaseDamage() > 0f) {
+            // Corrective ratio: retarget the role's average attack damage to the archetype anchor
+            // while preserving the relative spread between its individual attack moves.
+            float ratio = resolved.effectiveBaseDamage() / resolved.assetBaseDamage();
+            damageMultiplier = CombatScaling.applyVariance(baseDamageMult * ratio);
+            archetype = resolved.name();
+            anchorBaseHp = resolved.effectiveBaseHp();
+        } else {
+            // Legacy path: unmapped role (or zero/negative asset base damage). Keep the historic
+            // behavior, including the >= 1.0 floor, and warn once per role.
+            damageMultiplier = Math.max(
+                    CombatScaling.applyVariance(baseDamageMult), MIN_LEGACY_DAMAGE_MULTIPLIER);
+            // A resolved mapping with a bad asset base damage still normalizes HP to its anchor.
+            archetype = resolved != null ? resolved.name() : null;
+            anchorBaseHp = resolved != null ? resolved.effectiveBaseHp() : 0;
+            if (resolved == null && warnedUnmappedRoles.add(roleName)) {
+                LOGGER.atWarning().log(
+                        "NPC role %s has no archetype mapping - using legacy asset-base scaling", roleName);
+            }
+        }
+
         return new NpcScalingProfile(
                 roleName,
                 level,
                 variant,
                 formatDisplayName(roleName, level, variant),
-                damageMultiplier
+                damageMultiplier,
+                archetype,
+                anchorBaseHp
         );
     }
 
@@ -111,9 +157,13 @@ public class NpcScalingApplicator {
         Objects.requireNonNull(profile, "profile");
 
         int initialMaxHealth = resolveInitialMaxHealth(npcEntity);
-        int targetHp = computeTargetHp(initialMaxHealth, profile.level(), profile.variant());
+        // Mapped roles scale from the archetype anchor; unmapped roles scale from the asset base.
+        int baseHp = profile.anchorBaseHp() > 0 ? profile.anchorBaseHp() : initialMaxHealth;
+        int targetHp = computeTargetHp(baseHp, profile.level(), profile.variant());
 
-        if (targetHp > initialMaxHealth) {
+        // Normalization needs negative deltas too (e.g. Werewolf asset base 283 vs Heavy anchor),
+        // so apply the additive MAX modifier whenever the target differs from the engine's base.
+        if (targetHp != initialMaxHealth) {
             EntityStatMap statMap = store.getComponent(ref, EntityStatMap.getComponentType());
             if (statMap == null) {
                 LOGGER.atWarning().log("Missing EntityStatMap while applying NPC scaling to %s", profile.roleName());
@@ -131,7 +181,7 @@ public class NpcScalingApplicator {
         }
 
         LOGGER.atInfo().log(
-                "Applied Duntale NPC scaling to %s%s Lv.%d — HP: %d, DmgMult: %.2f",
+                "Applied Duntale NPC scaling to %s%s Lv.%d - HP: %d, DmgMult: %.2f",
                 profile.variant() != CombatScaling.NpcVariant.NORMAL ? profile.variant().name() + " " : "",
                 profile.roleName(),
                 profile.level(),

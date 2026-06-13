@@ -8,6 +8,7 @@ import com.duntale.camera.ClickToMoveManager;
 import com.duntale.camera.ClickToMoveTickSystem;
 import com.duntale.camera.PlayerDeathCleanupSystem;
 import com.duntale.config.asset.CustomizeCharacterConfigAsset;
+import com.duntale.config.asset.NpcArchetypeConfigAsset;
 import com.duntale.config.asset.RpgConfigAsset;
 import com.duntale.command.DGiveCommand;
 import com.duntale.command.DLootCommand;
@@ -70,6 +71,7 @@ import com.duntale.progression.CombatScalingSystem;
 import com.duntale.progression.DeployableTurretScalingSystem;
 import com.duntale.progression.GearScalingTooltipProvider;
 import com.duntale.progression.LeveledNpcSpawner;
+import com.duntale.progression.NpcArchetypeRegistry;
 import com.duntale.progression.NpcScalingApplicator;
 import com.duntale.progression.ProgressionRepository;
 import com.duntale.progression.ProgressionService;
@@ -176,6 +178,7 @@ public class DuntalePlugin extends JavaPlugin {
     // Progression system
     private AssetCatalog assetCatalog;
     private ComponentType<EntityStore, CombatScalingComponent> combatScalingComponentType;
+    private NpcArchetypeRegistry npcArchetypeRegistry;
     private LeveledNpcSpawner leveledNpcSpawner;
     private CompanionSpawner companionSpawner;
 
@@ -496,6 +499,7 @@ public class DuntalePlugin extends JavaPlugin {
         AssetRegistry.register(CustomizeCharacterConfigAsset.assetStoreBuilder().build());
         AssetRegistry.register(LootTableConfig.assetStoreBuilder().build());
         AssetRegistry.register(RpgConfigAsset.assetStoreBuilder().build());
+        AssetRegistry.register(NpcArchetypeConfigAsset.assetStoreBuilder().build());
 
         // ── RPG System ───────────────────────────────────────────────
         this.databaseProvider = new DatabaseProvider();
@@ -596,7 +600,12 @@ public class DuntalePlugin extends JavaPlugin {
         // ── CombatScaling ECS Component ─────────────────────────────
         this.combatScalingComponentType = this.getEntityStoreRegistry().registerComponent(
                 CombatScalingComponent.class, "CombatScalingComponent", CombatScalingComponent.CODEC);
-        NpcScalingApplicator npcScalingApplicator = new NpcScalingApplicator(combatScalingComponentType);
+        // Normalizes enemy NPC HP/damage to shared archetype anchors instead of their wildly
+        // non-uniform asset base stats. Snapshot populated in start() once asset stores are loaded;
+        // hot-reloaded via LoadedAssetsEvent.
+        this.npcArchetypeRegistry = new NpcArchetypeRegistry();
+        NpcScalingApplicator npcScalingApplicator =
+                new NpcScalingApplicator(combatScalingComponentType, npcArchetypeRegistry);
         this.leveledNpcSpawner = new LeveledNpcSpawner(npcScalingApplicator);
         this.companionSpawner = new CompanionSpawner(combatScalingComponentType);
 
@@ -663,7 +672,8 @@ public class DuntalePlugin extends JavaPlugin {
         this.getCommandRegistry().registerCommand(new SpawnCommand());
         this.getCommandRegistry().registerCommand(new CameraCommand());
         this.getCommandRegistry().registerCommand(new WeaponCommand());
-        this.getCommandRegistry().registerCommand(new DSpawnCommand(leveledNpcSpawner, assetCatalog));
+        this.getCommandRegistry().registerCommand(
+                new DSpawnCommand(leveledNpcSpawner, assetCatalog, npcScalingApplicator));
         this.getCommandRegistry().registerCommand(new DListCommand(assetCatalog));
         this.getCommandRegistry().registerCommand(new DGiveCommand(assetCatalog));
         this.getCommandRegistry().registerCommand(new DLootCommand(lootRollService));
@@ -740,6 +750,8 @@ public class DuntalePlugin extends JavaPlugin {
         this.merchantPriceRegistry.initialize(assetCatalog);
         // Populate the RPG config snapshot from the now-loaded asset (falls back to defaults).
         this.rpgConfig.refresh();
+        // Populate the NPC archetype mapping from the now-loaded asset (falls back to legacy scaling).
+        this.npcArchetypeRegistry.refresh();
 
         // Initialize dungeon orchestrator here — asset stores are available after all plugins setup()
         this.dungeonOrchestrator = new GenerationOrchestrator(new BlockResolver());
@@ -764,6 +776,9 @@ public class DuntalePlugin extends JavaPlugin {
         }
         if (rpgConfig != null) {
             rpgConfig.shutdown();
+        }
+        if (npcArchetypeRegistry != null) {
+            npcArchetypeRegistry.shutdown();
         }
         if (blockOcclusionManager != null) {
             // Retrieve world from any online player; if no players remain the

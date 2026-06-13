@@ -1,0 +1,526 @@
+{
+  "Archetypes": [
+    {
+      "Name": "Swarm",
+      "BaseHp": 25,
+      "BaseDamage": 10.0
+    },
+    {
+      "Name": "Standard",
+      "BaseHp": 61,
+      "BaseDamage": 10.0
+    },
+    {
+      "Name": "Caster",
+      "BaseHp": 74,
+      "BaseDamage": 5.0
+    },
+    {
+      "Name": "Tough",
+      "BaseHp": 103,
+      "BaseDamage": 18.5
+    },
+    {
+      "Name": "Heavy",
+      "BaseHp": 226,
+      "BaseDamage": 10.0
+    },
+    {
+      "Name": "Boss",
+      "BaseHp": 193,
+      "BaseDamage": 35.0
+    }
+  ],
+  "Roles": [
+    {
+      "Role": "Emberwulf",
+      "Archetype": "Heavy",
+      "HpOffset": -0.146,
+      "DamageOffset": 0.15,
+      "AssetBaseDamage": 64.0
+    },
+    {
+      "Role": "Fen_Stalker",
+      "Archetype": "Standard",
+      "HpOffset": 0.15,
+      "DamageOffset": 0.15,
+      "AssetBaseDamage": 29.0
+    },
+    {
+      "Role": "Feran_Longtooth",
+      "Archetype": "Standard",
+      "HpOffset": 0.0,
+      "DamageOffset": -0.15,
+      "AssetBaseDamage": 5.0
+    },
+    {
+      "Role": "Feran_Sharptooth",
+      "Archetype": "Standard",
+      "HpOffset": 0.0,
+      "DamageOffset": -0.15,
+      "AssetBaseDamage": 5.0
+    },
+    {
+      "Role": "Feran_Windwalker",
+      "Archetype": "Caster",
+      "HpOffset": -0.15,
+      "DamageOffset": 0.0,
+      "AssetBaseDamage": 5.0
+    },
+    {
+      "Role": "Ghoul",
+      "Archetype": "Boss",
+      "HpOffset": 0.0,
+      "DamageOffset": 0.15,
+      "AssetBaseDamage": 48.0
+    },
+    {
+      "Role": "Goblin_Duke",
+      "Archetype": "Heavy",
+      "HpOffset": 0.0,
+      "DamageOffset": 0.0,
+      "AssetBaseDamage": 10.0
+    },
+    {
+      "Role": "Goblin_Hermit",
+      "Archetype": "Standard",
+      "HpOffset": -0.15,
+      "DamageOffset": -0.15,
+      "AssetBaseDamage": 5.0
+    },
+    {
+      "Role": "Goblin_Lobber",
+      "Archetype": "Caster",
+      "HpOffset": -0.15,
+      "DamageOffset": 0.0,
+      "AssetBaseDamage": 5.0
+    },
+    {
+      "Role": "Goblin_Miner",
+      "Archetype": "Standard",
+      "HpOffset": -0.15,
+      "DamageOffset": -0.15,
+      "AssetBaseDamage": 5.0
+    },
+    {
+      "Role": "Goblin_Ogre",
+      "Archetype": "Tough",
+      "HpOffset": 0.15,
+      "DamageOffset": -0.15,
+      "AssetBaseDamage": 5.0
+    },
+    {
+      "Role": "Goblin_Scavenger",
+      "Archetype": "Standard",
+      "HpOffset": -0.115,
+      "DamageOffset": -0.15,
+      "AssetBaseDamage": 5.0
+    },
+    {
+      "Role": "Goblin_Scrapper",
+      "Archetype": "Standard",
+      "HpOffset": -0.15,
+      "DamageOffset": -0.15,
+      "AssetBaseDamage": 5.0
+    },
+    {
+      "Role": "Golem_Crystal_Earth",
+      "Archetype": "Boss",
+      "HpOffset": -0.15,
+      "DamageOffset": -0.15,
+      "AssetBaseDamage": 10.0
+    },
+    {
+      "Role": "Golem_Crystal_Flame",
+      "Archetype": "Heavy",
+      "HpOffset": 0.15,
+      "DamageOffset": 0.0,
+      "AssetBaseDamage": 10.0
+    },
+    {
+      "Role": "Golem_Firesteel",
+      "Archetype": "Boss",
+      "HpOffset": 0.15,
+      "DamageOffset": -0.15,
+      "AssetBaseDamage": 10.0
+    },
+    {
+      "Role": "Larva_Silk",
+      "Archetype": "Swarm",
+      "HpOffset": 0.0,
+      "DamageOffset": 0.15,
+      "AssetBaseDamage": 12.0
+    },
+    {
+      "Role": "Leopard_Snow",
+      "Archetype": "Tough",
+      "HpOffset": 0.0,
+      "DamageOffset": 0.15,
+      "AssetBaseDamage": 36.0
+    },
+    {
+      "Role": "Outlander_Berserker",
+      "Archetype": "Tough",
+      "HpOffset": 0.0,
+      "DamageOffset": 0.15,
+      "AssetBaseDamage": 27.0
+    },
+    {
+      "Role": "Outlander_Brute",
+      "Archetype": "Boss",
+      "HpOffset": -0.15,
+      "DamageOffset": 0.0,
+      "AssetBaseDamage": 35.0
+    },
+    {
+      "Role": "Outlander_Hunter",
+      "Archetype": "Standard",
+      "HpOffset": 0.0,
+      "DamageOffset": 0.15,
+      "AssetBaseDamage": 23.0
+    },
+    {
+      "Role": "Outlander_Marauder",
+      "Archetype": "Tough",
+      "HpOffset": 0.0,
+      "DamageOffset": 0.15,
+      "AssetBaseDamage": 27.0
+    },
+    {
+      "Role": "Outlander_Peon",
+      "Archetype": "Tough",
+      "HpOffset": -0.15,
+      "DamageOffset": 0.135,
+      "AssetBaseDamage": 21.0
+    },
+    {
+      "Role": "Outlander_Priest",
+      "Archetype": "Caster",
+      "HpOffset": 0.15,
+      "DamageOffset": 0.0,
+      "AssetBaseDamage": 5.0
+    },
+    {
+      "Role": "Outlander_Sorcerer",
+      "Archetype": "Caster",
+      "HpOffset": 0.15,
+      "DamageOffset": 0.0,
+      "AssetBaseDamage": 5.0
+    },
+    {
+      "Role": "Outlander_Stalker",
+      "Archetype": "Standard",
+      "HpOffset": 0.0,
+      "DamageOffset": 0.15,
+      "AssetBaseDamage": 23.0
+    },
+    {
+      "Role": "Scarak_Broodmother",
+      "Archetype": "Boss",
+      "HpOffset": -0.15,
+      "DamageOffset": -0.15,
+      "AssetBaseDamage": 5.0
+    },
+    {
+      "Role": "Scarak_Defender",
+      "Archetype": "Tough",
+      "HpOffset": 0.0,
+      "DamageOffset": -0.15,
+      "AssetBaseDamage": 5.0
+    },
+    {
+      "Role": "Scarak_Fighter",
+      "Archetype": "Tough",
+      "HpOffset": -0.15,
+      "DamageOffset": -0.15,
+      "AssetBaseDamage": 10.0
+    },
+    {
+      "Role": "Scarak_Fighter_Royal_Guard",
+      "Archetype": "Tough",
+      "HpOffset": -0.15,
+      "DamageOffset": -0.15,
+      "AssetBaseDamage": 10.0
+    },
+    {
+      "Role": "Scarak_Louse",
+      "Archetype": "Swarm",
+      "HpOffset": -0.15,
+      "DamageOffset": -0.15,
+      "AssetBaseDamage": 5.0
+    },
+    {
+      "Role": "Scarak_Seeker",
+      "Archetype": "Standard",
+      "HpOffset": 0.0,
+      "DamageOffset": -0.15,
+      "AssetBaseDamage": 5.0
+    },
+    {
+      "Role": "Scorpion",
+      "Archetype": "Boss",
+      "HpOffset": -0.15,
+      "DamageOffset": -0.15,
+      "AssetBaseDamage": 28.8
+    },
+    {
+      "Role": "Shadow_Knight",
+      "Archetype": "Boss",
+      "HpOffset": 0.15,
+      "DamageOffset": 0.15,
+      "AssetBaseDamage": 119.0
+    },
+    {
+      "Role": "Skeleton",
+      "Archetype": "Tough",
+      "HpOffset": -0.107,
+      "DamageOffset": -0.15,
+      "AssetBaseDamage": 10.0
+    },
+    {
+      "Role": "Skeleton_Archer",
+      "Archetype": "Caster",
+      "HpOffset": -0.15,
+      "DamageOffset": 0.15,
+      "AssetBaseDamage": 10.0
+    },
+    {
+      "Role": "Skeleton_Burnt_Alchemist",
+      "Archetype": "Caster",
+      "HpOffset": 0.15,
+      "DamageOffset": 0.15,
+      "AssetBaseDamage": 10.0
+    },
+    {
+      "Role": "Skeleton_Fighter",
+      "Archetype": "Standard",
+      "HpOffset": -0.15,
+      "DamageOffset": 0.0,
+      "AssetBaseDamage": 10.0
+    },
+    {
+      "Role": "Skeleton_Frost_Fighter",
+      "Archetype": "Standard",
+      "HpOffset": 0.15,
+      "DamageOffset": 0.0,
+      "AssetBaseDamage": 10.0
+    },
+    {
+      "Role": "Skeleton_Knight",
+      "Archetype": "Standard",
+      "HpOffset": 0.15,
+      "DamageOffset": 0.0,
+      "AssetBaseDamage": 10.0
+    },
+    {
+      "Role": "Skeleton_Mage",
+      "Archetype": "Caster",
+      "HpOffset": -0.15,
+      "DamageOffset": 0.15,
+      "AssetBaseDamage": 10.0
+    },
+    {
+      "Role": "Skeleton_Soldier",
+      "Archetype": "Standard",
+      "HpOffset": 0.0,
+      "DamageOffset": 0.0,
+      "AssetBaseDamage": 10.0
+    },
+    {
+      "Role": "Slug_Magma",
+      "Archetype": "Tough",
+      "HpOffset": 0.0,
+      "DamageOffset": -0.15,
+      "AssetBaseDamage": 10.0
+    },
+    {
+      "Role": "Spawn_Void",
+      "Archetype": "Boss",
+      "HpOffset": 0.0,
+      "DamageOffset": 0.15,
+      "AssetBaseDamage": 48.0
+    },
+    {
+      "Role": "Spectre_Void",
+      "Archetype": "Caster",
+      "HpOffset": -0.15,
+      "DamageOffset": 0.0,
+      "AssetBaseDamage": 5.0
+    },
+    {
+      "Role": "Spider",
+      "Archetype": "Standard",
+      "HpOffset": 0.0,
+      "DamageOffset": 0.0,
+      "AssetBaseDamage": 10.0
+    },
+    {
+      "Role": "Spider_Cave",
+      "Archetype": "Standard",
+      "HpOffset": 0.15,
+      "DamageOffset": 0.0,
+      "AssetBaseDamage": 10.0
+    },
+    {
+      "Role": "Spirit_Ember",
+      "Archetype": "Caster",
+      "HpOffset": 0.15,
+      "DamageOffset": 0.0,
+      "AssetBaseDamage": 5.0
+    },
+    {
+      "Role": "Toad_Rhino",
+      "Archetype": "Tough",
+      "HpOffset": 0.15,
+      "DamageOffset": 0.135,
+      "AssetBaseDamage": 21.0
+    },
+    {
+      "Role": "Toad_Rhino_Magma",
+      "Archetype": "Caster",
+      "HpOffset": 0.15,
+      "DamageOffset": 0.15,
+      "AssetBaseDamage": 21.0
+    },
+    {
+      "Role": "Trork_Brawler",
+      "Archetype": "Standard",
+      "HpOffset": 0.0,
+      "DamageOffset": 0.15,
+      "AssetBaseDamage": 23.0
+    },
+    {
+      "Role": "Trork_Chieftain",
+      "Archetype": "Boss",
+      "HpOffset": -0.15,
+      "DamageOffset": 0.0,
+      "AssetBaseDamage": 35.0
+    },
+    {
+      "Role": "Trork_Doctor_Witch",
+      "Archetype": "Caster",
+      "HpOffset": 0.0,
+      "DamageOffset": 0.0,
+      "AssetBaseDamage": 5.0
+    },
+    {
+      "Role": "Trork_Hunter",
+      "Archetype": "Standard",
+      "HpOffset": 0.0,
+      "DamageOffset": 0.15,
+      "AssetBaseDamage": 23.0
+    },
+    {
+      "Role": "Trork_Mauler",
+      "Archetype": "Standard",
+      "HpOffset": 0.0,
+      "DamageOffset": 0.15,
+      "AssetBaseDamage": 23.0
+    },
+    {
+      "Role": "Trork_Sentry",
+      "Archetype": "Standard",
+      "HpOffset": 0.0,
+      "DamageOffset": 0.15,
+      "AssetBaseDamage": 23.0
+    },
+    {
+      "Role": "Trork_Shaman",
+      "Archetype": "Caster",
+      "HpOffset": -0.15,
+      "DamageOffset": 0.0,
+      "AssetBaseDamage": 5.0
+    },
+    {
+      "Role": "Trork_Warrior",
+      "Archetype": "Standard",
+      "HpOffset": 0.0,
+      "DamageOffset": 0.15,
+      "AssetBaseDamage": 23.0
+    },
+    {
+      "Role": "Werewolf",
+      "Archetype": "Boss",
+      "HpOffset": 0.15,
+      "DamageOffset": 0.15,
+      "AssetBaseDamage": 66.0
+    },
+    {
+      "Role": "Wolf_Black",
+      "Archetype": "Tough",
+      "HpOffset": 0.0,
+      "DamageOffset": 0.0,
+      "AssetBaseDamage": 18.5
+    },
+    {
+      "Role": "Wolf_Outlander_Priest",
+      "Archetype": "Caster",
+      "HpOffset": 0.15,
+      "DamageOffset": 0.0,
+      "AssetBaseDamage": 5.0
+    },
+    {
+      "Role": "Wolf_Outlander_Sorcerer",
+      "Archetype": "Caster",
+      "HpOffset": 0.15,
+      "DamageOffset": 0.0,
+      "AssetBaseDamage": 5.0
+    },
+    {
+      "Role": "Wolf_Trork_Hunter",
+      "Archetype": "Standard",
+      "HpOffset": -0.15,
+      "DamageOffset": -0.15,
+      "AssetBaseDamage": 6.0
+    },
+    {
+      "Role": "Wolf_Trork_Shaman",
+      "Archetype": "Caster",
+      "HpOffset": 0.15,
+      "DamageOffset": 0.0,
+      "AssetBaseDamage": 5.0
+    },
+    {
+      "Role": "Wolf_Wife",
+      "Archetype": "Tough",
+      "HpOffset": 0.0,
+      "DamageOffset": 0.0,
+      "AssetBaseDamage": 18.5
+    },
+    {
+      "Role": "Wraith",
+      "Archetype": "Heavy",
+      "HpOffset": -0.146,
+      "DamageOffset": 0.15,
+      "AssetBaseDamage": 40.0
+    },
+    {
+      "Role": "Wraith_Lantern",
+      "Archetype": "Swarm",
+      "HpOffset": 0.15,
+      "DamageOffset": 0.0,
+      "AssetBaseDamage": 10.0
+    },
+    {
+      "Role": "Yeti",
+      "Archetype": "Boss",
+      "HpOffset": 0.15,
+      "DamageOffset": -0.15,
+      "AssetBaseDamage": 10.0
+    },
+    {
+      "Role": "Zombie",
+      "Archetype": "Standard",
+      "HpOffset": -0.15,
+      "DamageOffset": 0.15,
+      "AssetBaseDamage": 18.0
+    },
+    {
+      "Role": "Zombie_Aberrant",
+      "Archetype": "Boss",
+      "HpOffset": 0.15,
+      "DamageOffset": 0.15,
+      "AssetBaseDamage": 119.0
+    }
+  ]
+}

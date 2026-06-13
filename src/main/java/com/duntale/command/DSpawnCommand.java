@@ -3,6 +3,8 @@ package com.duntale.command;
 import com.duntale.progression.AssetCatalog;
 import com.duntale.progression.CombatScaling;
 import com.duntale.progression.LeveledNpcSpawner;
+import com.duntale.progression.NpcScalingApplicator;
+import com.duntale.progression.NpcScalingProfile;
 import com.hypixel.hytale.component.Ref;
 import com.hypixel.hytale.component.Store;
 import org.joml.Vector3d;
@@ -49,17 +51,24 @@ public class DSpawnCommand extends CommandBase {
 
     private final LeveledNpcSpawner spawner;
     private final AssetCatalog assetCatalog;
+    private final NpcScalingApplicator scalingApplicator;
 
     /**
      * Creates a new /dspawn command.
      *
-     * @param spawner      the leveled NPC spawner
-     * @param assetCatalog the asset catalog for base HP lookups
+     * @param spawner           the leveled NPC spawner
+     * @param assetCatalog      the asset catalog for legacy base HP lookups
+     * @param scalingApplicator the scaling applicator used to mirror the applied (archetype-aware) stats
      */
-    public DSpawnCommand(@Nonnull LeveledNpcSpawner spawner, @Nonnull AssetCatalog assetCatalog) {
+    public DSpawnCommand(
+            @Nonnull LeveledNpcSpawner spawner,
+            @Nonnull AssetCatalog assetCatalog,
+            @Nonnull NpcScalingApplicator scalingApplicator
+    ) {
         super("dspawn", "Dungeon scaling test commands");
         this.spawner = spawner;
         this.assetCatalog = assetCatalog;
+        this.scalingApplicator = scalingApplicator;
 
         this.addSubCommand(new SpawnSubCommand());
         this.addSubCommand(new InfoSubCommand());
@@ -77,6 +86,21 @@ public class DSpawnCommand extends CommandBase {
      */
     private int resolveBaseHp(@Nonnull String roleName) {
         return assetCatalog.getMonsterBaseHp(roleName);
+    }
+
+    /**
+     * Builds the applied-stats display string for an NPC variant, mirroring the archetype-aware
+     * scaling used at spawn time. Mapped roles report their archetype anchor HP and the corrective
+     * damage multiplier; unmapped roles fall back to the asset base HP and the legacy multiplier.
+     */
+    @Nonnull
+    private String formatScaledStats(@Nonnull String npc, int level, @Nonnull CombatScaling.NpcVariant variant) {
+        NpcScalingProfile profile = scalingApplicator.createProfile(npc, level, variant);
+        int baseHp = profile.anchorBaseHp() > 0 ? profile.anchorBaseHp() : resolveBaseHp(npc);
+        int scaledHp = CombatScaling.npcScaledHp(baseHp, level, variant);
+        String archetypeTag = profile.archetype() != null ? " [" + profile.archetype() + "]" : "";
+        return "HP: " + scaledHp + " | DmgMult: x"
+                + String.format("%.2f", profile.damageMultiplier()) + archetypeTag;
     }
 
     // -- Spawn subcommand (default) -----------------------------------
@@ -176,12 +200,9 @@ public class DSpawnCommand extends CommandBase {
                             .insert(Message.raw(" Lv." + level + " in " + elapsed + "ms").color(GREEN))
             );
 
-            // Post-spawn feedback using runtime computation
-            int baseHp = resolveBaseHp(npc);
-            int scaledHp = CombatScaling.npcScaledHp(baseHp, level, variant);
-            float damageMult = CombatScaling.npcDamageMult(level, variant);
+            // Post-spawn feedback mirroring the applied (archetype-aware) scaling.
             context.sendMessage(
-                    Message.raw("  HP: " + scaledHp + " | DmgMult: x" + String.format("%.2f", damageMult)).color(GRAY)
+                    Message.raw("  " + formatScaledStats(npc, level, variant)).color(GRAY)
             );
         }
     }
@@ -227,8 +248,8 @@ public class DSpawnCommand extends CommandBase {
                             .insert(Message.raw(" ---").color(GRAY))
             );
 
-            int baseHp = resolveBaseHp(npc);
             if (companionRole) {
+                int baseHp = resolveBaseHp(npc);
                 int hp = CombatScaling.companionScaledHp(baseHp, level);
                 float dmg = CombatScaling.companionDamageMult(level);
                 context.sendMessage(statLine("COMPANION",
@@ -237,10 +258,7 @@ public class DSpawnCommand extends CommandBase {
             }
 
             for (CombatScaling.NpcVariant v : CombatScaling.NpcVariant.values()) {
-                int hp = CombatScaling.npcScaledHp(baseHp, level, v);
-                float dmg = CombatScaling.npcDamageMult(level, v);
-                context.sendMessage(statLine(v.name(),
-                        "HP: " + hp + " | DmgMult: x" + String.format("%.2f", dmg)));
+                context.sendMessage(statLine(v.name(), formatScaledStats(npc, level, v)));
             }
         }
 
