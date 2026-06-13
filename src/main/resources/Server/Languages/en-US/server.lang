@@ -19,7 +19,7 @@ items.Healing_Necklace_II.name = Healing Necklace II
 items.Healing_Necklace_II.description = Steadily restores health while carried (+3% max HP every 1.75s).\n\n<i>A faint warmth lingers against the skin.</i>
 
 items.Vampire_Juice.name = Vampire Juice
-items.Vampire_Juice.description = Right-click to drain stamina into health. Heals 7.5% max HP and costs 30% stamina.\n\n<i>Bitter, but it keeps you standing.</i>
+items.Vampire_Juice.description = Right-click to drain stamina into health. Heals 7.5% max HP and costs 4 stamina.\n\n<i>Bitter, but it keeps you standing.</i>
 
 items.Stat_Point_Token.name = +1 Stat Point Token
 items.Stat_Point_Token.description = Right-click to gain one unspent stat point. Consumes the token.\n\n<i>Distilled potential, waiting to be claimed.</i>

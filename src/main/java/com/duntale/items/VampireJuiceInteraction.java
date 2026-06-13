@@ -21,7 +21,7 @@ import javax.annotation.Nonnull;
  * Custom Secondary (right-click) interaction for the Vampire Juice flask.
  *
  * <p>Heals {@link CustomItems#VAMPIRE_HEAL_PCT}% of max health in exchange for
- * {@link CustomItems#VAMPIRE_STAMINA_PCT}% of max stamina. If the player has less
+ * {@link CustomItems#VAMPIRE_STAMINA_COST} stamina. If the player has less
  * stamina than the drain cost, the interaction is refused (no heal, no drain) and
  * marked {@link InteractionState#Failed}. The flask is reusable; spacing between
  * uses is enforced by the item's JSON {@code Cooldown} block.
@@ -70,7 +70,7 @@ public class VampireJuiceInteraction extends SimpleInstantInteraction {
             return;
         }
 
-        float staminaCost = CustomItems.VAMPIRE_STAMINA_PCT / 100.0f * stamina.getMax();
+        float staminaCost = CustomItems.VAMPIRE_STAMINA_COST;
         if (stamina.get() < staminaCost) {
             // Not enough stamina — refuse to use (no partial effect).
             context.getState().state = InteractionState.Failed;

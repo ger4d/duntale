@@ -82,14 +82,14 @@ public final class CustomItems {
     public static final String STAT_POINT_VFX = "Duntale_Stat_Sparkle";
 
     // ============================================
-    // Vampire Juice tuning (percent of max stat)
+    // Vampire Juice tuning
     // ============================================
 
     /** Health restored per use, as a percentage of max health. */
     public static final float VAMPIRE_HEAL_PCT = 7.5f;
 
-    /** Stamina drained per use, as a percentage of max stamina (also the minimum to use). */
-    public static final float VAMPIRE_STAMINA_PCT = 30.0f;
+    /** Stamina drained per use (also the minimum to use). */
+    public static final float VAMPIRE_STAMINA_COST = 4.0f;
 
     /**
      * Seconds to suppress stamina regeneration after the drain, applied by setting the
