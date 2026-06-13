@@ -1,6 +1,7 @@
 package com.duntale.merchant;
 
 import com.duntale.DuntalePlugin;
+import com.duntale.rpg.RpgStat;
 import com.hypixel.hytale.component.Ref;
 import com.hypixel.hytale.component.Store;
 import com.hypixel.hytale.logger.HytaleLogger;
@@ -64,13 +65,17 @@ public class ActionOpenDungeonMerchant extends ActionBase {
 
         List<CatalogEntry> catalog;
         if (merchantComp != null && merchantComp.hasCatalog()) {
+            // Catalogs are generated once and cached on the merchant; the first opener's
+            // Luck locked the rarity rolls for all subsequent openers.
             catalog = merchantComp.getCatalog();
         } else {
             long seed = ref.hashCode();
             if (merchantComp != null && "VILLAGE".equals(merchantComp.getCatalogType())) {
                 catalog = plugin.getCatalogGenerator().generateVillageCatalog();
             } else {
-                catalog = plugin.getCatalogGenerator().generate(floorLevel, seed);
+                // The opener's Luck promotes the rarity of the gear this catalog rolls.
+                int openerLuck = plugin.getRpgService().getEffectiveStat(playerRefComp.getUuid(), RpgStat.LUCK);
+                catalog = plugin.getCatalogGenerator().generate(floorLevel, seed, openerLuck);
             }
             if (merchantComp != null) {
                 merchantComp.setCatalog(catalog);

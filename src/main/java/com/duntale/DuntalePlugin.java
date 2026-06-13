@@ -9,6 +9,7 @@ import com.duntale.camera.ClickToMoveTickSystem;
 import com.duntale.camera.PlayerDeathCleanupSystem;
 import com.duntale.config.asset.CustomizeCharacterConfigAsset;
 import com.duntale.config.asset.GearCurveConfigAsset;
+import com.duntale.config.asset.RarityConfigAsset;
 import com.duntale.config.asset.NpcArchetypeConfigAsset;
 import com.duntale.config.asset.RpgConfigAsset;
 import com.duntale.command.DGiveCommand;
@@ -37,9 +38,12 @@ import com.duntale.economy.GoldPickupSystem;
 import com.duntale.economy.GoldRepository;
 import com.duntale.economy.GoldService;
 import com.duntale.loot.ChestLootService;
+import com.duntale.loot.ChestOpenLootSystem;
 import com.duntale.loot.LootRollService;
 import com.duntale.loot.LootTableRegistry;
 import com.duntale.loot.NpcLootSystem;
+import com.duntale.loot.RarityRegistry;
+import com.duntale.loot.RarityRollService;
 import com.duntale.loot.config.asset.LootTableConfig;
 import com.duntale.db.DatabaseProvider;
 import com.duntale.merchant.CatalogGenerator;
@@ -59,6 +63,8 @@ import com.duntale.items.PalporterPage;
 import com.duntale.items.PlayerTrapImmunitySystem;
 import com.duntale.items.SpeedBoostInteraction;
 import com.duntale.items.SpeedBoostManager;
+import com.duntale.items.GearAttributeActiveSlotSystem;
+import com.duntale.items.GearAttributeInventorySystem;
 import com.duntale.items.UnbreakableGearSystem;
 import com.duntale.items.VampireJuiceInteraction;
 import com.duntale.items.VillageWarpPlaceInteraction;
@@ -70,6 +76,7 @@ import com.duntale.progression.BuiltInNpcSpawnScalingSystem;
 import com.duntale.progression.CombatScalingComponent;
 import com.duntale.progression.CombatScalingSystem;
 import com.duntale.progression.DeployableTurretScalingSystem;
+import com.duntale.progression.GearAttributeService;
 import com.duntale.progression.GearCurveRegistry;
 import com.duntale.progression.GearScalingTooltipProvider;
 import com.duntale.progression.LeveledNpcSpawner;
@@ -96,7 +103,6 @@ import com.duntale.death.DungeonRespawnService;
 import com.duntale.rpg.GameModeToggleStatMenuSystem;
 import com.duntale.rpg.RpgConfig;
 import com.duntale.rpg.RpgDamageScalingSystem;
-import com.duntale.rpg.RpgProfile;
 import com.duntale.rpg.RpgStat;
 import com.duntale.rpg.RpgStatApplicator;
 import com.duntale.rpg.RpgRepository;
@@ -189,6 +195,11 @@ public class DuntalePlugin extends JavaPlugin {
     private LootTableRegistry lootTableRegistry;
     private LootRollService lootRollService;
     private ChestLootService chestLootService;
+
+    // Rarity system
+    private RarityRegistry rarityRegistry;
+    private RarityRollService rarityRollService;
+    private GearAttributeService gearAttributeService;
 
     // RPG system
     private DatabaseProvider databaseProvider;
@@ -504,6 +515,7 @@ public class DuntalePlugin extends JavaPlugin {
         AssetRegistry.register(RpgConfigAsset.assetStoreBuilder().build());
         AssetRegistry.register(NpcArchetypeConfigAsset.assetStoreBuilder().build());
         AssetRegistry.register(GearCurveConfigAsset.assetStoreBuilder().build());
+        AssetRegistry.register(RarityConfigAsset.assetStoreBuilder().build());
 
         // ── RPG System ───────────────────────────────────────────────
         this.databaseProvider = new DatabaseProvider();
@@ -546,17 +558,7 @@ public class DuntalePlugin extends JavaPlugin {
         }
         this.rpgStatApplicator = new RpgStatApplicator(this.rpgService);
 
-        // Runtime-tunable RPG config (hot-reloadable asset, in-memory snapshot).
-        // On hot reload, re-assert Vitality/Stamina (entity-stat ceilings) for online players;
-        // all other stat values are computed live at point of use and need no reassertion.
-        this.rpgConfig = new RpgConfig();
-        this.rpgConfig.setReloadCallback(() -> {
-            for (PlayerRef playerRef : Universe.get().getPlayers()) {
-                UUID playerId = playerRef.getUuid();
-                runOnPlayerWorld(playerRef, (ref, store) ->
-                        rpgStatApplicator.reassert(playerId, ref, store));
-            }
-        });
+
 
         this.floorConfigService = new FloorConfigService(new FloorConfigAssetRepository());
         this.floorConfigService.loadOnStartup();
@@ -580,22 +582,34 @@ public class DuntalePlugin extends JavaPlugin {
         this.assetCatalog = new AssetCatalog();
         // AssetCatalog.initialize() deferred to start() — asset stores load after all plugins setup()
 
-        // ── Loot System ──────────────────────────────────────────────
-        this.lootTableRegistry = new LootTableRegistry();
-        this.lootRollService = new LootRollService(lootTableRegistry);
-        this.chestLootService = new ChestLootService(lootTableRegistry);
+        // ── Rarity System ────────────────────────────────────────────
+        // Duntale-owned rarity tuning (ladders, Luck promotion, attributes, price multipliers,
+        // display). Snapshot populated in start() once asset stores are loaded; hot-reloaded via
+        // LoadedAssetsEvent. Empty until then -> no rarity stamping (safe degrade).
+        this.rarityRegistry = new RarityRegistry();
+        this.rarityRollService = new RarityRollService(rarityRegistry);
 
         // ── Merchant System ──────────────────────────────────────────
         this.merchantPriceRegistry = new MerchantPriceRegistry();
         // MerchantPriceRegistry.initialize() deferred to start() — depends on AssetCatalog
+        this.merchantPriceRegistry.setRarityRegistry(rarityRegistry);
         // Register fixed resale prices for the authored custom items (kept across initialize()).
         CustomItems.BUY_PRICES.forEach(this.merchantPriceRegistry::registerCustomItem);
         // Register resale prices for plain merchant consumables (potions, food, arrows, etc.)
         // so they are sellable back to the merchant instead of being rejected as "unsellable".
         CatalogGenerator.registerConsumableResalePrices(this.merchantPriceRegistry);
         this.thirdPartyModAvailabilityService = new ThirdPartyModAvailabilityService();
-        this.catalogGenerator = new CatalogGenerator(merchantPriceRegistry, thirdPartyModAvailabilityService);
+        this.catalogGenerator = new CatalogGenerator(
+                merchantPriceRegistry, thirdPartyModAvailabilityService, rarityRollService);
         this.merchantService = new MerchantService(merchantPriceRegistry, goldService);
+
+        // ── Loot System ──────────────────────────────────────────────
+        // Loot/chest rolling post-processes leveled gear through the rarity roll service, and the
+        // boss gold reward reads the merchant price registry, so both are constructed first.
+        this.lootTableRegistry = new LootTableRegistry();
+        this.lootRollService = new LootRollService(
+                lootTableRegistry, rarityRollService, rarityRegistry, merchantPriceRegistry);
+        this.chestLootService = new ChestLootService(lootTableRegistry, rarityRollService);
 
         // ── ECS Component Registration ───────────────────────────────
         CurrencyDrop.setComponentType(
@@ -612,6 +626,25 @@ public class DuntalePlugin extends JavaPlugin {
         // hand-authored asset stats). Snapshot populated in start() once asset stores are loaded;
         // hot-reloaded via LoadedAssetsEvent. Empty until then -> legacy asset-stat scaling.
         this.gearCurveRegistry = new GearCurveRegistry();
+        // Runtime-tunable RPG config (hot-reloadable asset, in-memory snapshot).
+        // On hot reload, re-assert Vitality/Stamina (entity-stat ceilings) for online players;
+        // all other stat values are computed live at point of use and need no reassertion.
+        this.rpgConfig = new RpgConfig();
+
+        // Per-player effective gear-attribute bonus + authored armor-HP grant. Feeds
+        // RpgService.getEffectiveStat via the gear bonus provider; refreshes the scoreboard HUD on
+        // every bonus change (equip/unequip, held-weapon swap, world-join).
+        this.gearAttributeService = new GearAttributeService(rpgStatApplicator, gearCurveRegistry, assetCatalog);
+        this.rpgService.setGearBonusProvider(gearAttributeService::getBonus);
+        this.gearAttributeService.setChangeListener(this::updateScoreboard);
+        this.rpgConfig.setReloadCallback(() -> {
+            for (PlayerRef playerRef : Universe.get().getPlayers()) {
+                UUID playerId = playerRef.getUuid();
+                // recompute re-asserts Vitality/Stamina (incl. gear) and the armor-HP grant.
+                runOnPlayerWorld(playerRef, (ref, store) ->
+                        gearAttributeService.recompute(playerId, ref, store));
+            }
+        });
         NpcScalingApplicator npcScalingApplicator =
                 new NpcScalingApplicator(combatScalingComponentType, npcArchetypeRegistry);
         this.leveledNpcSpawner = new LeveledNpcSpawner(npcScalingApplicator);
@@ -634,6 +667,9 @@ public class DuntalePlugin extends JavaPlugin {
         this.getEntityStoreRegistry().registerSystem(new InventoryGoldConversionSystem(goldService));
         this.getEntityStoreRegistry().registerSystem(new UnbreakableGearSystem());
         this.getEntityStoreRegistry().registerSystem(new RpgDamageScalingSystem(rpgService));
+        this.getEntityStoreRegistry().registerSystem(new GearAttributeInventorySystem(gearAttributeService));
+        this.getEntityStoreRegistry().registerSystem(new GearAttributeActiveSlotSystem(gearAttributeService));
+        this.getEntityStoreRegistry().registerSystem(new ChestOpenLootSystem(chestLootService, rpgService));
         // this.getEntityStoreRegistry().registerSystem(new GameModeToggleStatMenuSystem(rpgService));
         this.getEntityStoreRegistry().registerSystem(new DungeonDeathScreenSystem(dungeonRespawnService));
         this.getEntityStoreRegistry().registerSystem(
@@ -688,7 +724,7 @@ public class DuntalePlugin extends JavaPlugin {
         this.getCommandRegistry().registerCommand(new DLootCommand(lootRollService));
         this.getCommandRegistry().registerCommand(new GoldCommand(goldService));
         this.getCommandRegistry().registerCommand(new RpgStatCommand(rpgService));
-        this.getCommandRegistry().registerCommand(new MerchantCommand(merchantService, catalogGenerator));
+        this.getCommandRegistry().registerCommand(new MerchantCommand(merchantService, catalogGenerator, rpgService));
         this.getCommandRegistry().registerCommand(new SpawnMerchantCommand());
         this.getCommandRegistry().registerCommand(new StatAssignCommand(rpgService));
         this.getCommandRegistry().registerCommand(new CompanionCommand(companionService));
@@ -763,6 +799,8 @@ public class DuntalePlugin extends JavaPlugin {
         this.npcArchetypeRegistry.refresh();
         // Populate the authored gear curves from the now-loaded asset (falls back to legacy scaling).
         this.gearCurveRegistry.refresh();
+        // Populate the rarity tuning from the now-loaded asset (empty -> no rarity stamping).
+        this.rarityRegistry.refresh();
 
         // Initialize dungeon orchestrator here — asset stores are available after all plugins setup()
         this.dungeonOrchestrator = new GenerationOrchestrator(new BlockResolver());
@@ -793,6 +831,9 @@ public class DuntalePlugin extends JavaPlugin {
         }
         if (gearCurveRegistry != null) {
             gearCurveRegistry.shutdown();
+        }
+        if (rarityRegistry != null) {
+            rarityRegistry.shutdown();
         }
         if (blockOcclusionManager != null) {
             // Retrieve world from any online player; if no players remain the
@@ -1291,9 +1332,11 @@ public class DuntalePlugin extends JavaPlugin {
         scoreboard.updateData(buildScoreboardData(uuid));
         scoreboards.put(uuid, scoreboard);
 
-        // Re-assert Vitality/Stamina max modifiers — a freshly built EntityStatMap (world
-        // transition, relog) has no modifiers, so the bonus must be re-applied on every entry.
-        rpgStatApplicator.reassert(uuid, ref, store);
+        // Recompute layers on the equipped-gear attribute bonus + authored armor HP and re-asserts
+        // Vitality/Stamina max modifiers, so the held weapon's attributes apply immediately without
+        // waiting for a slot swap. A freshly built EntityStatMap (world transition, relog) has no
+        // modifiers, so this must run on every world entry.
+        gearAttributeService.recompute(uuid, ref, store);
 
         // WorldConfig only seeds the player's mode when they do not already have one.
         // Players entering a dungeon from a Creative world keep Creative unless we
@@ -1379,6 +1422,7 @@ public class DuntalePlugin extends JavaPlugin {
         partyService.onPlayerDisconnect(uuid);
         rpgService.onPlayerLeave(uuid);
         progressionService.onPlayerLeave(uuid);
+        gearAttributeService.clear(uuid);
 
         blockOcclusionManager.disable(uuid);
 
@@ -2249,7 +2293,7 @@ public class DuntalePlugin extends JavaPlugin {
             var api = DynamicTooltipsApiProvider.get();
             if (api != null) {
                 api.registerProvider(
-                        new GearScalingTooltipProvider(assetCatalog, gearCurveRegistry));
+                        new GearScalingTooltipProvider(assetCatalog, gearCurveRegistry, rarityRegistry));
                 api.registerProvider(
                         new MerchantTooltipProvider(merchantPriceRegistry));
                 LOGGER.atInfo().log("Registered tooltip providers with DynamicTooltipsLib");
@@ -2271,7 +2315,6 @@ public class DuntalePlugin extends JavaPlugin {
      */
     @Nonnull
     private DuntaleScoreboardData buildScoreboardData(@Nonnull UUID playerId) {
-        RpgProfile profile = rpgService.getProfile(playerId);
         long gold = goldService.getBalance(playerId);
         int level = progressionService.getLevel(playerId);
         long totalXp = progressionService.getXP(playerId);
@@ -2290,13 +2333,17 @@ public class DuntalePlugin extends JavaPlugin {
             xpMax = Math.max(1, nextLevelXpThreshold - currentLevelXpThreshold);
         }
 
-        return DuntaleScoreboardData.builder()
+        // HUD shows effective stats (base + equipped-gear attribute bonus). The stat-assignment
+        // page stays on base — you assign points to the base, not the gear-boosted total.
+        DuntaleScoreboardData.Builder builder = DuntaleScoreboardData.builder()
                 .gold(gold)
                 .level(level)
                 .xp(xp)
-                .xpMax(xpMax)
-                .stats(profile)
-                .build();
+                .xpMax(xpMax);
+        for (RpgStat stat : RpgStat.values()) {
+            builder.stat(stat, rpgService.getEffectiveStat(playerId, stat));
+        }
+        return builder.build();
     }
 
     /**

@@ -1,5 +1,7 @@
 package com.duntale.merchant;
 
+import com.duntale.rpg.RpgService;
+import com.duntale.rpg.RpgStat;
 import com.hypixel.hytale.component.Ref;
 import com.hypixel.hytale.component.Store;
 import com.hypixel.hytale.server.core.Message;
@@ -35,6 +37,7 @@ public class MerchantCommand extends AbstractPlayerCommand {
 
     private final MerchantService merchantService;
     private final CatalogGenerator catalogGenerator;
+    private final RpgService rpgService;
 
     private final FlagArg rollFlag = this.withFlagArg("roll", "Re-roll (regenerate) the merchant catalog");
     private final DefaultArg<Integer> levelArg = this.withDefaultArg("level", "Floor level for catalog generation",
@@ -47,18 +50,23 @@ public class MerchantCommand extends AbstractPlayerCommand {
     private int cachedLevel = DEFAULT_LEVEL;
     /** Last-used seed for the cached catalog. */
     private long cachedSeed = DEFAULT_SEED;
+    /** Last-used opener Luck for the cached catalog. */
+    private int cachedLuck = -1;
 
     /**
      * Creates a new /merchant debug command.
      *
      * @param merchantService  the merchant service for opening the window
      * @param catalogGenerator the catalog generator for building test catalogs
+     * @param rpgService       the RPG service for the executing player's effective Luck
      */
     public MerchantCommand(@Nonnull MerchantService merchantService,
-                           @Nonnull CatalogGenerator catalogGenerator) {
+                           @Nonnull CatalogGenerator catalogGenerator,
+                           @Nonnull RpgService rpgService) {
         super("merchant", "Open a test merchant window");
         this.merchantService = merchantService;
         this.catalogGenerator = catalogGenerator;
+        this.rpgService = rpgService;
     }
 
     @Override
@@ -80,25 +88,28 @@ public class MerchantCommand extends AbstractPlayerCommand {
             this.catalog = null;
         }
 
-        merchantService.openMerchant(player, playerRef, ref, store, getCatalog(level, seed));
+        int openerLuck = rpgService.getEffectiveStat(playerRef.getUuid(), RpgStat.LUCK);
+        merchantService.openMerchant(player, playerRef, ref, store, getCatalog(level, seed, openerLuck));
         context.sendMessage(Message.raw("Merchant opened!").color(COLOR_GREEN));
     }
 
     /**
      * Lazily builds the catalog using the merchant catalog generator.
      *
-     * @param level the floor level for catalog generation
-     * @param seed  the seed for deterministic randomization
+     * @param level      the floor level for catalog generation
+     * @param seed       the seed for deterministic randomization
+     * @param openerLuck the executing player's effective Luck (promotes rolled gear rarity)
      */
     @Nonnull
-    private List<CatalogEntry> getCatalog(int level, long seed) {
-        if (catalog != null && cachedLevel == level && cachedSeed == seed) {
+    private List<CatalogEntry> getCatalog(int level, long seed, int openerLuck) {
+        if (catalog != null && cachedLevel == level && cachedSeed == seed && cachedLuck == openerLuck) {
             return catalog;
         }
 
-        this.catalog = catalogGenerator.generate(level, seed);
+        this.catalog = catalogGenerator.generate(level, seed, openerLuck);
         this.cachedLevel = level;
         this.cachedSeed = seed;
+        this.cachedLuck = openerLuck;
         return this.catalog;
     }
 }

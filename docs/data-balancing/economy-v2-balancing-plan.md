@@ -142,6 +142,43 @@ sigmoid: HP ×(1+8s), damage ×(1+5s)):
 - Custom big-ticket items appear in chests at very low, floor-scaled chance
   (draft: 0.5% at F10 → 3% at F50 in Golden/Legendary chests only).
 
+**Resolved during W4 implementation (2026-06-13):**
+
+- **Attributes on weapons AND armor.** Armor contributes via `InventoryChangeEvent`
+  (4 armor slots); the held weapon contributes only while it is the active hotbar
+  slot, recomputed on `InventorySetActiveSlotEvent`. Attributes are also recomputed
+  on **world-join / transition** (player-ready hook) so the held weapon's attributes
+  apply immediately without waiting for a slot swap.
+- **Effective-stat layer (no profile mutation):** `RpgService.getEffectiveStat = base
+  + gear bonus`, summed live from a `GearBonusProvider` (set to
+  `GearAttributeService::getBonus`); the persisted `RpgProfile` is never touched.
+  Live-read stats (Strength/Resistance/Speed/Agility/Luck) pick the bonus up on their
+  next read; ceiling stats (Vitality/Stamina) re-assert via `RpgStatApplicator`. The
+  scoreboard HUD now sources **effective** stats.
+- **Promotion on all player-context sources:** NPC drops (killer Luck), chests (opener
+  Luck), merchant (opener Luck at catalog generation). Chests moved from pre-fill to
+  **roll-on-first-open** via a new `UseBlockEvent.Pre` system; the container being
+  non-empty is the filled-once guard (survives relog without a flag).
+- **Merchant rarity price multiplier added now** (buy at catalog generation; sell reads
+  the stack's stamped rarity). Boss gold-roll pays `0.5 × referenceGearValue(npcLevel,
+  topRarity)` from `MerchantPriceRegistry` (draft anchor, refined under W6).
+- **Armor-HP authoring + engine-HP suppression done here** (the W3 deferral): authored
+  `ArmorHpPerSlot` shares + an HP budget curve (`CombatScaling.armorBudgetHp`); applied
+  as `Duntale_ArmorHp` plus `Duntale_ArmorHpSuppress = -assetHealthBonus` Health-MAX
+  modifiers so the engine's per-piece armor HP is neutralized. Gated on the curve being
+  loaded — until then the engine's native armor HP is left intact (safe degrade).
+- **Config-driven + hot-reloadable:** all tuning lives in
+  `Server/Configs/Scaling/Rarity.json` (`RarityConfigAsset`/`RarityRegistry`), produced
+  by `scripts/scaling/derive_rarity.py`. Empty/unloaded → no rarity stamping at all.
+- **Luck is an eligible gear attribute — intentional, bounded loop (resolved A):** all loot
+  generation reads **effective** Luck (base + gear), so Luck gear compounds into loot quality
+  (drop chance + rarity promotion → more/rarer loot → more Luck gear). Kept deliberately; it is
+  bounded because promotion chance saturates at `LuckRef` and Luck competes with 5 other stats
+  per attribute slot. Revisit only if a Luck-stack build proves dominant in W5 tuning.
+- **Merchant rarity is rolled per gear item** (each entry gets its own base roll + two-step
+  promotion), not once per catalog; the whole catalog is then cached on the merchant so the first
+  opener's Luck locks the rolls for that instance.
+
 ## W5. Loot tables + luck rework (P5, P8, P9)
 
 - Author archetype-template loot tables; instantiate for the 24 missing roster

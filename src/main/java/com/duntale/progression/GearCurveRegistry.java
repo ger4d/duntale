@@ -150,6 +150,45 @@ public final class GearCurveRegistry {
     }
 
     /**
+     * Returns whether authored armor flat-HP curves are loaded. When {@code false}, callers must
+     * leave the engine's native per-piece armor HP untouched (no authoring, no suppression).
+     *
+     * @return {@code true} when at least one armor HP slot share is mapped
+     */
+    public boolean hasArmorHp() {
+        return !current.armorHpShares().isEmpty();
+    }
+
+    /**
+     * Resolves an armor slot's share of the total authored HP budget.
+     *
+     * @param slot the armor slot name (e.g. "Chest")
+     * @return the slot's HP share, or {@code null} when the slot is unmapped
+     */
+    @Nullable
+    public Float armorHpShare(@Nonnull String slot) {
+        return current.armorHpShares().get(slot);
+    }
+
+    /**
+     * Returns the total on-level authored armor HP at the level floor (level 1).
+     *
+     * @return the minimum armor HP budget
+     */
+    public float hpBudgetMin() {
+        return current.hpBudgetMin();
+    }
+
+    /**
+     * Returns the total on-level authored armor HP at the level ceiling.
+     *
+     * @return the maximum armor HP budget
+     */
+    public float hpBudgetMax() {
+        return current.hpBudgetMax();
+    }
+
+    /**
      * Rebuilds the in-memory snapshot from {@link GearCurveConfigAsset}, or resets it to
      * {@link Snapshot#EMPTY} when no asset is loaded. Safe to call from any thread — it only
      * publishes a {@code volatile} reference to an immutable snapshot.
@@ -159,7 +198,9 @@ public final class GearCurveRegistry {
         Snapshot updated = asset != null
                 ? build(asset.getWeaponFamilies(), asset.getDefaultWeaponAnchor(),
                         asset.getRarityNudges(), asset.getArmorSlots(),
-                        asset.getArmorDrBudgetMin(), asset.getArmorDrBudgetMax())
+                        asset.getArmorDrBudgetMin(), asset.getArmorDrBudgetMax(),
+                        asset.getArmorHpPerSlot(), asset.getArmorHpBudgetMin(),
+                        asset.getArmorHpBudgetMax())
                 : Snapshot.EMPTY;
         current = updated;
         LOGGER.atInfo().log("Gear curve registry %s (%d families, %d slots, %d rarities)",
@@ -196,6 +237,35 @@ public final class GearCurveRegistry {
             @Nonnull GearCurveConfigAsset.ArmorSlotEntry[] slots,
             float drBudgetMin,
             float drBudgetMax) {
+        return build(families, defaultWeaponAnchor, rarities, slots, drBudgetMin, drBudgetMax,
+                new GearCurveConfigAsset.ArmorHpSlotEntry[0], 0f, 0f);
+    }
+
+    /**
+     * Rebuilds the immutable snapshot, including the authored armor flat-HP curve.
+     *
+     * @param families            the weapon family anchor entries
+     * @param defaultWeaponAnchor the fallback per-hit for unmapped families
+     * @param rarities            the rarity nudge entries
+     * @param slots               the armor slot DR share entries
+     * @param drBudgetMin         total on-level DR at level 1
+     * @param drBudgetMax         total on-level DR at the level ceiling
+     * @param hpSlots             the armor slot HP share entries
+     * @param hpBudgetMin         total on-level authored armor HP at level 1
+     * @param hpBudgetMax         total on-level authored armor HP at the level ceiling
+     * @return the resolved snapshot
+     */
+    @Nonnull
+    static Snapshot build(
+            @Nonnull GearCurveConfigAsset.WeaponFamilyEntry[] families,
+            float defaultWeaponAnchor,
+            @Nonnull GearCurveConfigAsset.RarityNudgeEntry[] rarities,
+            @Nonnull GearCurveConfigAsset.ArmorSlotEntry[] slots,
+            float drBudgetMin,
+            float drBudgetMax,
+            @Nonnull GearCurveConfigAsset.ArmorHpSlotEntry[] hpSlots,
+            float hpBudgetMin,
+            float hpBudgetMax) {
         Map<String, Float> weaponAnchors = new HashMap<>();
         for (GearCurveConfigAsset.WeaponFamilyEntry entry : families) {
             if (entry.getName() == null || entry.getName().isBlank()) {
@@ -220,13 +290,24 @@ public final class GearCurveRegistry {
             slotShares.put(entry.getSlot(), entry.getDrShare());
         }
 
+        Map<String, Float> armorHpShares = new HashMap<>();
+        for (GearCurveConfigAsset.ArmorHpSlotEntry entry : hpSlots) {
+            if (entry.getSlot() == null || entry.getSlot().isBlank()) {
+                continue;
+            }
+            armorHpShares.put(entry.getSlot(), entry.getHpShare());
+        }
+
         return new Snapshot(
                 Map.copyOf(weaponAnchors),
                 defaultWeaponAnchor,
                 Map.copyOf(rarityNudges),
                 Map.copyOf(slotShares),
                 drBudgetMin,
-                drBudgetMax
+                drBudgetMax,
+                Map.copyOf(armorHpShares),
+                hpBudgetMin,
+                hpBudgetMax
         );
     }
 
@@ -250,11 +331,14 @@ public final class GearCurveRegistry {
             @Nonnull Map<String, Float> rarityNudges,
             @Nonnull Map<String, Float> slotShares,
             float drBudgetMin,
-            float drBudgetMax
+            float drBudgetMax,
+            @Nonnull Map<String, Float> armorHpShares,
+            float hpBudgetMin,
+            float hpBudgetMax
     ) {
         /** The empty snapshot served before any asset loads — drives the legacy fallback. */
         public static final Snapshot EMPTY =
-                new Snapshot(Map.of(), 0f, Map.of(), Map.of(), 0f, 0f);
+                new Snapshot(Map.of(), 0f, Map.of(), Map.of(), 0f, 0f, Map.of(), 0f, 0f);
 
         /**
          * Returns whether this snapshot carries authored curves.

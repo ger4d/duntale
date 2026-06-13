@@ -46,6 +46,10 @@ public class RpgStatApplicator {
     static final String VITALITY_MODIFIER_KEY = "Duntale_Vitality";
     /** Modifier key for the Stamina max-stamina bonus (namespaced to avoid built-in key collisions). */
     static final String STAMINA_MODIFIER_KEY = "Duntale_Stamina";
+    /** Modifier key for the authored armor flat-HP grant (replaces the engine's per-piece armor HP). */
+    static final String ARMOR_HP_MODIFIER_KEY = "Duntale_ArmorHp";
+    /** Modifier key for the negative offset that cancels the engine's built-in armor HP. */
+    static final String ARMOR_HP_SUPPRESS_MODIFIER_KEY = "Duntale_ArmorHpSuppress";
 
     /** Stats that map to a persistent entity stat ceiling, with their entity-stat id and modifier key. */
     static final Map<RpgStat, StatBinding> BINDINGS = Map.of(
@@ -82,7 +86,58 @@ public class RpgStatApplicator {
         }
         for (Map.Entry<RpgStat, StatBinding> entry : BINDINGS.entrySet()) {
             RpgStat stat = entry.getKey();
-            applyStat(statMap, entry.getValue(), bonusFor(stat, rpgService.getStat(playerId, stat)), false);
+            applyStat(statMap, entry.getValue(), bonusFor(stat, rpgService.getEffectiveStat(playerId, stat)), false);
+        }
+    }
+
+    /**
+     * Applies the authored armor flat-HP grant and the matching suppression of the engine's
+     * built-in armor HP, as keyed MAX-additive modifiers on the Health stat.
+     *
+     * <p>The engine grants each equipped armor piece its own asset {@code Health} bonus; this method
+     * cancels that total ({@code Duntale_ArmorHpSuppress = -engineArmorHp}) and replaces it with the
+     * authored, level-and-slot-driven budget ({@code Duntale_ArmorHp = authoredArmorHp}). Pass
+     * {@code 0}/{@code 0} to clear both (e.g. when no authored armor-HP curve is loaded), which
+     * restores the engine's native armor HP.
+     *
+     * <p>Idempotent. Max-only — current health is left to clamp to the new ceiling.
+     *
+     * @param playerId       the player's UUID
+     * @param ref            the player's entity reference
+     * @param store          the entity store
+     * @param authoredArmorHp the authored armor HP to grant (&ge; 0)
+     * @param engineArmorHp   the engine's built-in armor HP to cancel (&ge; 0)
+     */
+    public void applyArmorHp(@Nonnull UUID playerId, @Nonnull Ref<EntityStore> ref,
+                             @Nonnull Store<EntityStore> store, float authoredArmorHp, float engineArmorHp) {
+        EntityStatMap statMap = resolveStatMap(playerId, ref, store);
+        if (statMap == null) {
+            return;
+        }
+        int index = EntityStatType.getAssetMap().getIndex(HEALTH_STAT);
+        if (index < 0) {
+            LOGGER.atWarning().log("Unknown entity stat '%s' — armor HP modifiers not applied", HEALTH_STAT);
+            return;
+        }
+        float authored = Math.max(0f, authoredArmorHp);
+        float engine = Math.max(0f, engineArmorHp);
+        putOrRemoveMax(statMap, index, ARMOR_HP_MODIFIER_KEY, authored);
+        putOrRemoveMax(statMap, index, ARMOR_HP_SUPPRESS_MODIFIER_KEY, -engine);
+        if (authored > 0f || engine > 0f) {
+            // Net armor HP = authored - suppressed-engine. A large negative net flags a mismatch
+            // between the parsed asset HP and what the engine actually granted (worth tuning).
+            LOGGER.atFine().log("Armor HP for %s: authored +%.1f, engine suppressed -%.1f (net %+.1f)",
+                    playerId, authored, engine, authored - engine);
+        }
+    }
+
+    private static void putOrRemoveMax(@Nonnull EntityStatMap statMap, int index,
+                                       @Nonnull String key, float amount) {
+        if (amount == 0f) {
+            statMap.removeModifier(index, key);
+        } else {
+            statMap.putModifier(index, key, new StaticModifier(
+                    Modifier.ModifierTarget.MAX, StaticModifier.CalculationType.ADDITIVE, amount));
         }
     }
 
@@ -108,7 +163,7 @@ public class RpgStatApplicator {
         if (statMap == null) {
             return;
         }
-        applyStat(statMap, binding, bonusFor(stat, rpgService.getStat(playerId, stat)), true);
+        applyStat(statMap, binding, bonusFor(stat, rpgService.getEffectiveStat(playerId, stat)), true);
     }
 
     /**

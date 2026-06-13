@@ -1,5 +1,7 @@
 package com.duntale.merchant;
 
+import com.duntale.loot.Rarity;
+import com.duntale.loot.RarityRegistry;
 import com.duntale.progression.AssetCatalog;
 import com.duntale.progression.CombatScaling;
 import com.hypixel.hytale.logger.HytaleLogger;
@@ -59,6 +61,12 @@ public class MerchantPriceRegistry {
     /** Minimum buy price to avoid near-zero gear prices. */
     private static final long MIN_BUY_PRICE = 25L;
 
+    /** Representative on-curve gear item used to anchor {@link #referenceGearValue(int, Rarity)}. */
+    private static final String REFERENCE_GEAR_ITEM = "Weapon_Sword_Iron";
+
+    /** Representative base damage used when the reference gear item is not priced. */
+    private static final float REFERENCE_BASE_DAMAGE = 30f;
+
     /** Converts an effective combat score into a gold price. */
     private static final double SCORE_TO_GOLD_SCALE = 10.0;
 
@@ -84,6 +92,52 @@ public class MerchantPriceRegistry {
      * caches so {@link #initialize(AssetCatalog)} never clears them.
      */
     private final Map<String, Long> customBuyPrices = new ConcurrentHashMap<>();
+
+    /** Rarity tuning for the price multiplier; {@code null} until wired (multiplier resolves to 1.0). */
+    @Nullable
+    private RarityRegistry rarityRegistry;
+
+    /**
+     * Wires the rarity registry used by {@link #rarityPriceMult(Rarity)} and
+     * {@link #referenceGearValue(int, Rarity)}. Until set, the multiplier resolves to {@code 1.0}.
+     *
+     * @param rarityRegistry the rarity registry
+     */
+    public void setRarityRegistry(@Nonnull RarityRegistry rarityRegistry) {
+        this.rarityRegistry = rarityRegistry;
+    }
+
+    /**
+     * Returns the merchant price multiplier for a rarity tier.
+     *
+     * @param rarity the rarity, or {@code null} for unstamped (Common-equivalent) gear
+     * @return the price multiplier, or {@code 1.0} when no rarity registry is wired/loaded
+     */
+    public float rarityPriceMult(@Nullable Rarity rarity) {
+        return rarityRegistry != null ? rarityRegistry.priceMult(rarity) : 1.0f;
+    }
+
+    /**
+     * Returns a representative on-level gear value at a rarity, used to size the boss gold reward.
+     *
+     * <p>Anchors on a canonical on-curve weapon priced at the requested level, scaled by the rarity
+     * price multiplier. Falls back to a level-only weapon curve when the reference item is not yet
+     * priced (e.g. before the registry is initialised). This is a draft definition pending the
+     * holistic combat-value repricing.
+     *
+     * @param level  the on-level gear level
+     * @param rarity the rarity to price at, or {@code null} for Common-equivalent
+     * @return the reference gear value in gold
+     */
+    public long referenceGearValue(int level, @Nullable Rarity rarity) {
+        long base = getBuyPrice(REFERENCE_GEAR_ITEM, level);
+        if (base <= 0L) {
+            double score = REFERENCE_BASE_DAMAGE * CombatScaling.weaponMult(CombatScaling.clampLevel(level));
+            base = Math.max(MIN_BUY_PRICE,
+                    Math.round(Math.pow(Math.max(1.0, score), SCORE_TO_GOLD_EXPONENT) * SCORE_TO_GOLD_SCALE));
+        }
+        return Math.round(base * rarityPriceMult(rarity));
+    }
 
     /**
      * Populates the price cache from all weapons and armor in the asset catalog.

@@ -136,7 +136,7 @@ public class NpcLootSystem extends DeathSystems.OnDeathSystem {
         int luckLevel = 0;
         UUID attackerUuid = AttackerResolver.resolve(component, store);
         if (attackerUuid != null) {
-            luckLevel = rpgService.getStat(attackerUuid, RpgStat.LUCK);
+            luckLevel = rpgService.getEffectiveStat(attackerUuid, RpgStat.LUCK);
 
             // Grant XP based on NPC level
             long xpAmount = BASE_XP_PER_KILL * npcLevel;

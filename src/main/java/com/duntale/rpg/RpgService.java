@@ -3,6 +3,7 @@ package com.duntale.rpg;
 import com.hypixel.hytale.logger.HytaleLogger;
 
 import javax.annotation.Nonnull;
+import javax.annotation.Nullable;
 import java.sql.SQLException;
 import java.util.Map;
 import java.util.UUID;
@@ -29,6 +30,9 @@ public class RpgService {
     /** Optional listener notified after stat value changes. */
     private StatChangeListener statChangeListener;
 
+    /** Supplies the equipped-gear attribute bonus per stat. Defaults to zero (no gear layer). */
+    private GearBonusProvider gearBonusProvider = (playerId, stat) -> 0;
+
     /**
      * Creates a new RPG service backed by the given repository.
      *
@@ -43,7 +47,7 @@ public class RpgService {
      *
      * @param listener the listener, or {@code null} to remove
      */
-    public void setStatChangeListener(@javax.annotation.Nullable StatChangeListener listener) {
+    public void setStatChangeListener(@Nullable StatChangeListener listener) {
         this.statChangeListener = listener;
     }
 
@@ -69,12 +73,44 @@ public class RpgService {
     /**
      * Returns the value of a single stat for the given player.
      *
+     * <p>This is the persisted base stat (assigned points). Gameplay sites that should reflect
+     * equipped-gear attribute bonuses read {@link #getEffectiveStat(UUID, RpgStat)} instead.
+     *
      * @param playerId the player's UUID
      * @param stat     the stat to query
      * @return the stat value, or {@code 0} if the profile cannot be loaded
      */
     public int getStat(@Nonnull UUID playerId, @Nonnull RpgStat stat) {
         return getProfile(playerId).getStat(stat);
+    }
+
+    /**
+     * Returns the effective value of a single stat: the persisted base plus the equipped-gear
+     * attribute bonus, clamped to the configured stat bounds.
+     *
+     * <p>The persisted {@link RpgProfile} is never mutated by gear — the bonus is summed live from
+     * {@link #setGearBonusProvider(GearBonusProvider) the gear bonus provider} on every read, so
+     * unequipping or relogging cleanly drops the effect back to the base.
+     *
+     * @param playerId the player's UUID
+     * @param stat     the stat to query
+     * @return the effective (base + gear) stat value, clamped to {@code [minStat, maxStat]}
+     */
+    public int getEffectiveStat(@Nonnull UUID playerId, @Nonnull RpgStat stat) {
+        int base = getStat(playerId, stat);
+        int bonus = gearBonusProvider.bonus(playerId, stat);
+        RpgConfigValues config = RpgConfig.values();
+        return Math.clamp((long) base + bonus, config.minStat(), config.maxStat());
+    }
+
+    /**
+     * Sets the provider that supplies the equipped-gear attribute bonus per stat. Wired once at
+     * plugin startup to {@code GearAttributeService::getBonus}.
+     *
+     * @param provider the gear bonus provider, or {@code null} to reset to a zero bonus
+     */
+    public void setGearBonusProvider(@Nullable GearBonusProvider provider) {
+        this.gearBonusProvider = provider != null ? provider : (playerId, stat) -> 0;
     }
 
     /**
@@ -232,6 +268,26 @@ public class RpgService {
     }
 
     // ── Listener ─────────────────────────────────────────────────────
+
+    /**
+     * Supplies the equipped-gear attribute bonus for a player's stat.
+     *
+     * <p>Decouples {@link RpgService} from {@code GearAttributeService} to avoid a construction-time
+     * cycle (RpgService &rarr; GearAttributeService &rarr; RpgService): the service is wired in after
+     * both exist via {@link #setGearBonusProvider(GearBonusProvider)}.
+     */
+    @FunctionalInterface
+    public interface GearBonusProvider {
+
+        /**
+         * Returns the equipped-gear bonus for a stat (zero when no gear contributes).
+         *
+         * @param playerId the player's UUID
+         * @param stat     the stat
+         * @return the additive gear bonus
+         */
+        int bonus(@Nonnull UUID playerId, @Nonnull RpgStat stat);
+    }
 
     /**
      * Listener interface for RPG stat changes.

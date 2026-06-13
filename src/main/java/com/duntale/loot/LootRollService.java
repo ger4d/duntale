@@ -1,5 +1,6 @@
 package com.duntale.loot;
 
+import com.duntale.merchant.MerchantPriceRegistry;
 import com.duntale.progression.CombatScaling;
 import com.hypixel.hytale.server.core.inventory.ItemStack;
 
@@ -10,18 +11,54 @@ import java.util.List;
 
 /**
  * Shared loot roll service used by NPC death handling and developer tooling.
+ *
+ * <p>After rolling the raw drops, leveled gear is post-processed through {@link RarityRollService}
+ * (the NPC variant selects the base-rarity ladder; the killer's Luck drives promotion), and BOSS
+ * gold rewards are scaled to a fraction of a representative top-rarity on-level gear value. Both
+ * extensions are inert when their collaborators are absent, so the roll-only path is unchanged.
  */
 public class LootRollService {
 
+    /** Boss gold reward as a fraction of a top-rarity on-level gear value. */
+    private static final double BOSS_GOLD_FRACTION = 0.5;
+
+    /** Gold value of a single {@code Gold_Coin} (the coin quantity equals its gold worth). */
+    private static final long GOLD_UNIT_VALUE = 1L;
+
     private final LootTableRegistry lootTableRegistry;
 
+    @Nullable
+    private final RarityRollService rarityRollService;
+    @Nullable
+    private final RarityRegistry rarityRegistry;
+    @Nullable
+    private final MerchantPriceRegistry merchantPriceRegistry;
+
     /**
-     * Creates a new shared loot roll service.
+     * Creates a roll-only service without rarity stamping or the boss gold reward (tests, tooling).
      *
      * @param lootTableRegistry the loot table registry used for lookups
      */
     public LootRollService(@Nonnull LootTableRegistry lootTableRegistry) {
+        this(lootTableRegistry, null, null, null);
+    }
+
+    /**
+     * Creates a new shared loot roll service.
+     *
+     * @param lootTableRegistry     the loot table registry used for lookups
+     * @param rarityRollService     the rarity roll service, or {@code null} to skip rarity stamping
+     * @param rarityRegistry        the rarity registry, or {@code null} to skip the boss gold reward
+     * @param merchantPriceRegistry the price registry, or {@code null} to skip the boss gold reward
+     */
+    public LootRollService(@Nonnull LootTableRegistry lootTableRegistry,
+                           @Nullable RarityRollService rarityRollService,
+                           @Nullable RarityRegistry rarityRegistry,
+                           @Nullable MerchantPriceRegistry merchantPriceRegistry) {
         this.lootTableRegistry = lootTableRegistry;
+        this.rarityRollService = rarityRollService;
+        this.rarityRegistry = rarityRegistry;
+        this.merchantPriceRegistry = merchantPriceRegistry;
     }
 
     /**
@@ -67,7 +104,12 @@ public class LootRollService {
 
         List<ItemStack> scaledDrops = new ArrayList<>(rolledDrops.size());
         for (ItemStack drop : rolledDrops) {
-            scaledDrops.add(scaleGold(drop, npcLevel));
+            scaledDrops.add(scaleGold(drop, variant, npcLevel));
+        }
+
+        if (rarityRollService != null) {
+            return rarityRollService.applyToGearDrops(
+                    scaledDrops, RaritySource.forNpcVariant(variant), luckLevel, npcLevel);
         }
         return List.copyOf(scaledDrops);
     }
@@ -94,11 +136,30 @@ public class LootRollService {
     }
 
     @Nonnull
-    private ItemStack scaleGold(@Nonnull ItemStack drop, int npcLevel) {
-        if (npcLevel > 1 && "Gold_Coin".equals(drop.getItemId())) {
+    private ItemStack scaleGold(@Nonnull ItemStack drop, @Nonnull CombatScaling.NpcVariant variant, int npcLevel) {
+        if (!"Gold_Coin".equals(drop.getItemId())) {
+            return drop;
+        }
+        if (variant == CombatScaling.NpcVariant.BOSS && rarityRegistry != null && merchantPriceRegistry != null) {
+            return bossGold(npcLevel);
+        }
+        if (npcLevel > 1) {
             return new ItemStack(drop.getItemId(), drop.getQuantity() * npcLevel);
         }
         return drop;
+    }
+
+    /**
+     * Rolls a boss gold reward sized at {@link #BOSS_GOLD_FRACTION} of a representative top-rarity
+     * on-level gear value.
+     */
+    @Nonnull
+    private ItemStack bossGold(int npcLevel) {
+        Rarity topRarity = rarityRegistry.topRarity(RaritySource.BOSS);
+        long referenceValue = merchantPriceRegistry.referenceGearValue(npcLevel, topRarity);
+        long quantity = Math.round(BOSS_GOLD_FRACTION * referenceValue / GOLD_UNIT_VALUE);
+        int clamped = (int) Math.clamp(quantity, 1L, Integer.MAX_VALUE);
+        return new ItemStack("Gold_Coin", clamped);
     }
 
     @Nullable

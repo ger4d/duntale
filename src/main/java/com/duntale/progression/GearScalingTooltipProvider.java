@@ -1,11 +1,17 @@
 package com.duntale.progression;
 
+import com.duntale.loot.GearAttribute;
+import com.duntale.loot.Rarity;
+import com.duntale.loot.RarityRegistry;
+import com.hypixel.hytale.server.core.asset.type.item.config.ItemQuality;
+import org.herolias.tooltips.api.ItemVisualOverrides;
 import org.herolias.tooltips.api.TooltipData;
 import org.herolias.tooltips.api.TooltipPriority;
 import org.herolias.tooltips.api.TooltipProvider;
 
 import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
+import java.util.List;
 
 /**
  * Tooltip provider that enriches leveled weapons and armor with scaled stat info.
@@ -28,17 +34,22 @@ public class GearScalingTooltipProvider implements TooltipProvider {
 
     private final AssetCatalog assetCatalog;
     private final GearCurveRegistry gearCurves;
+    private final RarityRegistry rarityRegistry;
 
     /**
-     * Creates a new tooltip provider backed by the given asset catalog and gear curves.
+     * Creates a new tooltip provider backed by the given asset catalog, gear curves, and rarity
+     * tuning.
      *
-     * @param assetCatalog the asset catalog for weapon/armor lookups
-     * @param gearCurves   the authored gear-curve registry (empty snapshot drives legacy display)
+     * @param assetCatalog   the asset catalog for weapon/armor lookups
+     * @param gearCurves     the authored gear-curve registry (empty snapshot drives legacy display)
+     * @param rarityRegistry the rarity registry for rarity color/name styling
      */
     public GearScalingTooltipProvider(@Nonnull AssetCatalog assetCatalog,
-                                      @Nonnull GearCurveRegistry gearCurves) {
+                                      @Nonnull GearCurveRegistry gearCurves,
+                                      @Nonnull RarityRegistry rarityRegistry) {
         this.assetCatalog = assetCatalog;
         this.gearCurves = gearCurves;
+        this.rarityRegistry = rarityRegistry;
     }
 
     @Nonnull
@@ -76,10 +87,13 @@ public class GearScalingTooltipProvider implements TooltipProvider {
                 hasWeapon ? "duntale_weapon_variance" : "duntale_armor_variance");
         float var = variance != null ? variance : 1.0f;
 
+        Rarity rarity = Rarity.fromId(extractString(metadata, "duntale_rarity"));
+        List<GearAttribute> attributes = GearAttribute.decode(extractString(metadata, "duntale_attributes"));
+
         if (hasWeapon) {
-            return buildWeaponTooltip(itemId, level, var);
+            return buildWeaponTooltip(itemId, level, var, rarity, attributes);
         } else {
-            return buildArmorTooltip(itemId, level, var);
+            return buildArmorTooltip(itemId, level, var, rarity, attributes);
         }
     }
 
@@ -87,23 +101,26 @@ public class GearScalingTooltipProvider implements TooltipProvider {
      * Builds a tooltip for a leveled weapon.
      */
     @Nullable
-    private TooltipData buildWeaponTooltip(@Nonnull String itemId, int level, float variance) {
+    private TooltipData buildWeaponTooltip(@Nonnull String itemId, int level, float variance,
+                                           @Nullable Rarity rarity, @Nonnull List<GearAttribute> attributes) {
         AssetCatalog.WeaponBaseRow base = assetCatalog.getWeaponBase(itemId);
 
-        // Include variance in hash so different rolls get distinct virtual IDs
+        // Include variance + rarity + attributes in hash so different rolls get distinct virtual IDs
         int varHash = Math.round(variance * 1000);
         TooltipData.Builder builder = TooltipData.builder()
-                .hashInput("duntale_wl:" + level + ":" + varHash);
+                .hashInput("duntale_wl:" + level + ":" + varHash + ":" + rarityHash(rarity, attributes));
 
+        applyRarityVisuals(builder, rarity);
+        addRarityLine(builder, rarity);
         // Level tag
         builder.addLine(colorTag(COLOR_CYAN, "Lv." + level) + " " + colorTag(COLOR_GRAY, "Dungeon Weapon"));
 
         if (gearCurves.isLoaded()) {
-            // Authored per-hit: family anchor on the level curve, severed from the asset number.
-            // Rarity is unstamped in the current build, so the nudge resolves to its 1.0 default.
+            // Authored per-hit: family anchor on the level curve, severed from the asset number,
+            // nudged by the stamped rarity (1.0 default when unstamped).
             String family = base != null ? base.family() : null;
             float anchor = gearCurves.weaponAnchor(family);
-            float nudge = gearCurves.rarityNudge(null);
+            float nudge = gearCurves.rarityNudge(rarity != null ? rarity.id() : null);
             float perHit = CombatScaling.weaponAuthoredPerHit(anchor, level, nudge) * variance;
             builder.addLine(
                     colorTag(COLOR_GRAY, "Power: ") +
@@ -128,6 +145,7 @@ public class GearScalingTooltipProvider implements TooltipProvider {
             );
         }
 
+        addAttributeLines(builder, attributes);
         return builder.build();
     }
 
@@ -135,7 +153,8 @@ public class GearScalingTooltipProvider implements TooltipProvider {
      * Builds a tooltip for a leveled armor piece.
      */
     @Nullable
-    private TooltipData buildArmorTooltip(@Nonnull String itemId, int level, float variance) {
+    private TooltipData buildArmorTooltip(@Nonnull String itemId, int level, float variance,
+                                          @Nullable Rarity rarity, @Nonnull List<GearAttribute> attributes) {
         AssetCatalog.ArmorBaseRow base = assetCatalog.getArmorBase(itemId);
         String slot = base != null ? base.slot() : null;
 
@@ -144,7 +163,7 @@ public class GearScalingTooltipProvider implements TooltipProvider {
         Float share = slot != null && gearCurves.isLoaded() ? gearCurves.slotShare(slot) : null;
         float effectiveDr;
         if (share != null) {
-            float nudge = gearCurves.rarityNudge(null);
+            float nudge = gearCurves.rarityNudge(rarity != null ? rarity.id() : null);
             effectiveDr = CombatScaling.armorBudgetDR(share, level,
                     gearCurves.drBudgetMin(), gearCurves.drBudgetMax()) * nudge * variance;
         } else {
@@ -154,8 +173,10 @@ public class GearScalingTooltipProvider implements TooltipProvider {
 
         int varHash = Math.round(variance * 1000);
         TooltipData.Builder builder = TooltipData.builder()
-                .hashInput("duntale_al:" + level + ":" + varHash);
+                .hashInput("duntale_al:" + level + ":" + varHash + ":" + rarityHash(rarity, attributes));
 
+        applyRarityVisuals(builder, rarity);
+        addRarityLine(builder, rarity);
         // Level tag
         builder.addLine(colorTag(COLOR_CYAN, "Lv." + level) + " " + colorTag(COLOR_GRAY, "Dungeon Armor"));
 
@@ -167,15 +188,110 @@ public class GearScalingTooltipProvider implements TooltipProvider {
         if (slot != null) {
             builder.addLine(colorTag(COLOR_GRAY, "Slot: ") + colorTag(COLOR_WHITE, slot));
         }
-        // Engine still grants the asset's flat armor HP, so it remains worth surfacing.
-        if (base != null && base.healthBonus() > 0) {
+        // With the authored armor-HP curve loaded, the engine HP is suppressed and replaced by the
+        // slot/level budget; otherwise the engine still grants the asset's flat armor HP.
+        Float hpShare = slot != null && gearCurves.hasArmorHp() ? gearCurves.armorHpShare(slot) : null;
+        int healthBonus;
+        if (hpShare != null) {
+            healthBonus = Math.round(CombatScaling.armorBudgetHp(hpShare, level,
+                    gearCurves.hpBudgetMin(), gearCurves.hpBudgetMax()));
+        } else {
+            healthBonus = base != null ? base.healthBonus() : 0;
+        }
+        if (healthBonus > 0) {
             builder.addLine(
                     colorTag(COLOR_GRAY, "Health: ") +
-                    colorTag(COLOR_GREEN, "+" + base.healthBonus())
+                    colorTag(COLOR_GREEN, "+" + healthBonus)
             );
         }
 
+        addAttributeLines(builder, attributes);
         return builder.build();
+    }
+
+    /**
+     * Adds a colored rarity name line at the top of the tooltip when a rarity is stamped.
+     */
+    private void addRarityLine(@Nonnull TooltipData.Builder builder, @Nullable Rarity rarity) {
+        if (rarity == null) {
+            return;
+        }
+        builder.addLine(colorTag(rarityRegistry.displayColor(rarity), rarityRegistry.displayName(rarity)));
+    }
+
+    /**
+     * Recolors the item's quality "chrome" (tooltip border, inventory slot/icon background, name +
+     * quality-word color) to match the stamped Duntale rarity, via DynamicTooltipsLib's per-stack
+     * {@link ItemVisualOverrides}.
+     *
+     * <p>The engine derives that chrome from the item <em>type's</em> static quality, so two stacks
+     * of the same item id can't normally differ. DTL works around this by minting a per-stack
+     * virtual item: pointing {@code qualityIndex} at the engine quality tier of the same name gives
+     * the matching border/slot textures, while {@code nameColor}/{@code qualityLabel} force our exact
+     * palette and rarity word on the title and top-right label. The per-stack hash already varies by
+     * rarity (see {@link #rarityHash}), so promoted/demoted stacks recolor independently.
+     */
+    private void applyRarityVisuals(@Nonnull TooltipData.Builder builder, @Nullable Rarity rarity) {
+        if (rarity == null) {
+            return;
+        }
+        ItemVisualOverrides.Builder visuals = ItemVisualOverrides.builder()
+                .nameColor(rarityRegistry.displayColor(rarity))
+                .qualityLabel(rarityRegistry.displayName(rarity));
+        int qualityIndex = engineQualityIndex(rarity);
+        if (qualityIndex >= 0) {
+            visuals.qualityIndex(qualityIndex);
+        }
+        builder.visualOverrides(visuals.build());
+    }
+
+    /**
+     * Resolves the engine {@code ItemQuality} tier index whose id matches the rarity (e.g. "Rare";
+     * "Relic"/"Abyssal" resolve to the WansWonderWeapon/ZetsMysticWeapons quality assets when those
+     * mods are loaded). Falls back to the {@code Legendary} tier for above-Legendary rarities whose
+     * own quality isn't registered, so Relic/Abyssal still get top-tier chrome (with our name
+     * color/label) on a vanilla server. Returns {@code -1} only when even that lookup fails, in which
+     * case the item keeps its own tier textures and just the name color/label change.
+     */
+    private static int engineQualityIndex(@Nonnull Rarity rarity) {
+        try {
+            int index = ItemQuality.getAssetMap().getIndexOrDefault(rarity.id(), -1);
+            if (index < 0 && rarity.tierIndex() > Rarity.LEGENDARY.tierIndex()) {
+                index = ItemQuality.getAssetMap().getIndexOrDefault(Rarity.LEGENDARY.id(), -1);
+            }
+            return index;
+        } catch (RuntimeException ex) {
+            return -1;
+        }
+    }
+
+    /**
+     * Adds one colored line per rarity-granted attribute (e.g. {@code +5 Strength}).
+     */
+    private static void addAttributeLines(@Nonnull TooltipData.Builder builder,
+                                          @Nonnull List<GearAttribute> attributes) {
+        for (GearAttribute attribute : attributes) {
+            String sign = attribute.value() >= 0 ? "+" : "";
+            builder.addLine(colorTag(COLOR_GREEN,
+                    sign + attribute.value() + " " + titleCase(attribute.stat().name())));
+        }
+    }
+
+    /**
+     * Builds a stable hash fragment from the stamped rarity and attributes so distinct rolls get
+     * distinct virtual tooltip IDs.
+     */
+    @Nonnull
+    private static String rarityHash(@Nullable Rarity rarity, @Nonnull List<GearAttribute> attributes) {
+        return (rarity != null ? rarity.id() : "none") + ":" + GearAttribute.encode(attributes);
+    }
+
+    @Nonnull
+    private static String titleCase(@Nonnull String upper) {
+        if (upper.isEmpty()) {
+            return upper;
+        }
+        return upper.charAt(0) + upper.substring(1).toLowerCase();
     }
 
     /**
@@ -327,6 +443,51 @@ public class GearScalingTooltipProvider implements TooltipProvider {
         } catch (NumberFormatException e) {
             return null;
         }
+    }
+
+    /**
+     * Extracts a string value from BSON-style JSON metadata.
+     *
+     * <p>Handles the plain form ({@code "key": "value"}) and the BSON extended-JSON object form
+     * ({@code "key": {"$symbol": "value"}}) by reading the quoted string after the (inner) colon.
+     * The Duntale string keys ({@code duntale_rarity}, {@code duntale_attributes}) never embed a
+     * quote, so a simple quote-to-quote read is sufficient.
+     */
+    @Nullable
+    private static String extractString(@Nonnull String metadata, @Nonnull String key) {
+        int keyIdx = metadata.indexOf("\"" + key + "\"");
+        if (keyIdx < 0) {
+            return null;
+        }
+        int colonIdx = metadata.indexOf(':', keyIdx + key.length() + 2);
+        if (colonIdx < 0) {
+            return null;
+        }
+        int valueStart = colonIdx + 1;
+        while (valueStart < metadata.length() && Character.isWhitespace(metadata.charAt(valueStart))) {
+            valueStart++;
+        }
+        if (valueStart >= metadata.length()) {
+            return null;
+        }
+        int searchFrom = colonIdx + 1;
+        if (metadata.charAt(valueStart) == '{') {
+            // BSON object form: read the value string after the inner ("$type": ) colon.
+            int innerColon = metadata.indexOf(':', valueStart + 1);
+            if (innerColon < 0) {
+                return null;
+            }
+            searchFrom = innerColon + 1;
+        }
+        int quoteStart = metadata.indexOf('"', searchFrom);
+        if (quoteStart < 0) {
+            return null;
+        }
+        int quoteEnd = metadata.indexOf('"', quoteStart + 1);
+        if (quoteEnd < 0) {
+            return null;
+        }
+        return metadata.substring(quoteStart + 1, quoteEnd);
     }
 
     /**

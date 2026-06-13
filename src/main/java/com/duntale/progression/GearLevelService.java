@@ -1,10 +1,13 @@
 package com.duntale.progression;
 
+import com.duntale.loot.GearAttribute;
+import com.duntale.loot.Rarity;
 import com.hypixel.hytale.codec.Codec;
 import com.hypixel.hytale.server.core.inventory.ItemStack;
 
 import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
+import java.util.List;
 
 /**
  * Static utility for reading and writing weapon/armor level metadata on {@link ItemStack}s.
@@ -20,6 +23,7 @@ public final class GearLevelService {
     private static final String WEAPON_VARIANCE_KEY = "duntale_weapon_variance";
     private static final String ARMOR_VARIANCE_KEY = "duntale_armor_variance";
     private static final String RARITY_KEY = "duntale_rarity";
+    private static final String ATTRIBUTES_KEY = "duntale_attributes";
 
     /** Default variance range: ±5% (0.95–1.05). */
     public static final float VARIANCE_MIN = 0.95f;
@@ -144,5 +148,45 @@ public final class GearLevelService {
     @Nullable
     public static String getRarity(@Nonnull ItemStack stack) {
         return stack.getFromMetadataOrNull(RARITY_KEY, Codec.STRING);
+    }
+
+    /**
+     * Returns a copy of the item stack stamped with the given rarity tier.
+     *
+     * @param stack  the original item stack
+     * @param rarity the rarity to stamp
+     * @return a new item stack with the {@code duntale_rarity} metadata applied
+     */
+    @Nonnull
+    public static ItemStack setRarity(@Nonnull ItemStack stack, @Nonnull Rarity rarity) {
+        return stack.withMetadata(RARITY_KEY, Codec.STRING, rarity.id());
+    }
+
+    /**
+     * Returns a copy of the item stack stamped with the given rarity-granted attributes.
+     *
+     * <p>An empty list clears the attribute tag.
+     *
+     * @param stack      the original item stack
+     * @param attributes the attributes to encode
+     * @return a new item stack with the {@code duntale_attributes} metadata applied
+     */
+    @Nonnull
+    public static ItemStack setAttributes(@Nonnull ItemStack stack, @Nonnull List<GearAttribute> attributes) {
+        if (attributes.isEmpty()) {
+            return stack.withMetadata(ATTRIBUTES_KEY, Codec.STRING, null);
+        }
+        return stack.withMetadata(ATTRIBUTES_KEY, Codec.STRING, GearAttribute.encode(attributes));
+    }
+
+    /**
+     * Reads the rarity-granted attributes from an item stack.
+     *
+     * @param stack the item stack to inspect
+     * @return the decoded attributes, or an empty list when unstamped/malformed
+     */
+    @Nonnull
+    public static List<GearAttribute> getAttributes(@Nonnull ItemStack stack) {
+        return GearAttribute.decode(stack.getFromMetadataOrNull(ATTRIBUTES_KEY, Codec.STRING));
     }
 }

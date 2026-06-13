@@ -2,6 +2,7 @@ package com.duntale.merchant;
 
 import com.duntale.economy.GoldService;
 import com.duntale.items.UnbreakableItems;
+import com.duntale.loot.Rarity;
 import com.duntale.progression.GearLevelService;
 import com.hypixel.hytale.codec.Codec;
 import com.hypixel.hytale.component.ComponentAccessor;
@@ -256,7 +257,9 @@ public class MerchantService {
         updateBuyItemBalances(container, catalog, newBalance);
 
         // Tag the bought item in the player's inventory with sell-price metadata
-        long sellPrice = priceRegistry.getSellPrice(entry.itemId(), entry.level());
+        // (rarity-adjusted so the displayed resale value matches the actual sell path).
+        long sellPrice = Math.round(priceRegistry.getSellPrice(entry.itemId(), entry.level())
+                * priceRegistry.rarityPriceMult(entry.rarity()));
         tagBoughtItemInInventory(playerRef, entry.itemId(), sellPrice);
     }
 
@@ -276,7 +279,10 @@ public class MerchantService {
         // Item placed — player is selling
         String itemId = item.getItemId();
         int dungeonLevel = getItemDungeonLevel(item);
-        long basePrice = priceRegistry.getSellPrice(itemId, dungeonLevel);
+        // Apply the stack's rarity price multiplier (no-op for unstamped/non-gear items).
+        Rarity rarity = Rarity.fromId(GearLevelService.getRarity(item));
+        long basePrice = Math.round(priceRegistry.getSellPrice(itemId, dungeonLevel)
+                * priceRegistry.rarityPriceMult(rarity));
         long sellPrice = basePrice;
         if (priceRegistry.isCustomItem(itemId)) {
             // Fixed-price custom items sell per unit, so credit the whole stack.
@@ -355,6 +361,12 @@ public class MerchantService {
                     ? "duntale_armor_level"
                     : "duntale_weapon_level";
             stack = stack.withMetadata(levelKey, Codec.INTEGER, entry.level());
+        }
+
+        // Stamp the rolled rarity + attributes so the purchased stack carries them out of the shop.
+        if (entry.rarity() != null) {
+            stack = GearLevelService.setRarity(stack, entry.rarity());
+            stack = GearLevelService.setAttributes(stack, entry.attributes());
         }
 
         // Merchant-specific metadata for tooltip provider

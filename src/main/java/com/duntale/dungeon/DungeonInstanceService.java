@@ -2290,7 +2290,8 @@ public class DungeonInstanceService {
                     plugin.getMerchantNpcSpawner().spawnMerchants(store, result.merchantDefinitions(), origin);
                 }
                 if (!result.chestDefinitions().isEmpty()) {
-                    plugin.getChestLootService().fillChests(
+                    // Chests fill on first open (with the opener's Luck) rather than up front.
+                    plugin.getChestLootService().registerChests(
                             liveWorld,
                             origin,
                             result.chestDefinitions(),
@@ -2327,6 +2328,8 @@ public class DungeonInstanceService {
             if (universe == null) {
                 return;
             }
+            // Release any unopened chest registrations for this world before it is removed.
+            requirePlugin().getChestLootService().forgetWorld(worldName);
             World loadedWorld = universe.getWorld(worldName);
             if (loadedWorld == null) {
                 return;

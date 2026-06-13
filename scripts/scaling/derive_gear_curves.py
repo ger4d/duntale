@@ -88,6 +88,13 @@ RANGED_RATIO = 0.75        # ranged per-hit relative to melee (playtest seed)
 ARMOR_DR_BUDGET_MIN = 0.10  # total on-level DR at level 1
 ARMOR_DR_BUDGET_MAX = 0.55  # total on-level DR at the level ceiling (< MAX_ARMOR_DR)
 
+# Authored armor flat-HP budget (W3 deferral, activated in W4). A full on-level set adds this
+# much max-HP via the slot shares below; it replaces the engine's per-piece asset armor HP, which
+# is suppressed in parallel (Duntale_ArmorHpSuppress). Draft magnitudes — retuned in W5/W6 against
+# the EHP target band alongside the DR budget.
+ARMOR_HP_BUDGET_MIN = 30.0   # total on-level authored armor HP at level 1
+ARMOR_HP_BUDGET_MAX = 250.0  # total on-level authored armor HP at the level ceiling
+
 # Ranged families fire from the Secondary slot on a charge/projectile cadence — not
 # gated by the melee Agility throttle, so they get a separate anchor.
 RANGED_FAMILIES = {"Bow", "Crossbow", "Gun"}
@@ -153,6 +160,10 @@ def main() -> int:
         "WeaponFamilies": weapon_family_entries,
         "RarityNudges": [{"Rarity": r, "Multiplier": m} for r, m in RARITY_NUDGES],
         "ArmorSlots": [{"Slot": s, "DrShare": d} for s, d in ARMOR_SLOTS],
+        "ArmorHpBudgetMin": ARMOR_HP_BUDGET_MIN,
+        "ArmorHpBudgetMax": ARMOR_HP_BUDGET_MAX,
+        # HP shares mirror the DR shares so a full on-level set lands on the HP budget curve.
+        "ArmorHpPerSlot": [{"Slot": s, "HpShare": d} for s, d in ARMOR_SLOTS],
     }
 
     OUT_JSON.parent.mkdir(parents=True, exist_ok=True)
@@ -173,6 +184,12 @@ def main() -> int:
     print("Full on-level set DR across breakpoints:")
     budget = lambda lvl: ARMOR_DR_BUDGET_MIN + (ARMOR_DR_BUDGET_MAX - ARMOR_DR_BUDGET_MIN) * sigmoid(lvl)
     print("  " + "  ".join(f"L{lvl}:{budget(lvl):.0%}" for lvl in BREAKPOINT_LEVELS))
+    print()
+    print(f"Authored armor HP budget: +{ARMOR_HP_BUDGET_MIN:.0f} (L1) -> +{ARMOR_HP_BUDGET_MAX:.0f} (L100) "
+          f"(replaces engine asset armor HP)")
+    hp_budget = lambda lvl: ARMOR_HP_BUDGET_MIN + (ARMOR_HP_BUDGET_MAX - ARMOR_HP_BUDGET_MIN) * sigmoid(lvl)
+    print("Full on-level set HP across breakpoints:")
+    print("  " + "  ".join(f"L{lvl}:+{hp_budget(lvl):.0f}" for lvl in BREAKPOINT_LEVELS))
     if set(db_slots) - {s for s, _ in ARMOR_SLOTS}:
         print(f"WARNING: DB armor slots not in share table: {set(db_slots) - {s for s, _ in ARMOR_SLOTS}}")
 

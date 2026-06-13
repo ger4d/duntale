@@ -98,7 +98,7 @@ public class RpgDamageScalingSystem extends DamageEventSystem {
                 UUIDComponent uuidComponent = store.getComponent(attackerRef, UUIDComponent.getComponentType());
                 if (uuidComponent != null) {
                     UUID playerId = uuidComponent.getUuid();
-                    int strengthLevel = rpgService.getStat(playerId, RpgStat.STRENGTH);
+                    int strengthLevel = rpgService.getEffectiveStat(playerId, RpgStat.STRENGTH);
                     if (strengthLevel > 0) {
                         float multiplier = RpgStatEffects.computeStrengthMultiplier(strengthLevel);
                         damage.setAmount(damage.getAmount() * multiplier);
@@ -116,7 +116,7 @@ public class RpgDamageScalingSystem extends DamageEventSystem {
                 UUIDComponent uuidComponent = store.getComponent(targetRef, UUIDComponent.getComponentType());
                 if (uuidComponent != null) {
                     UUID playerId = uuidComponent.getUuid();
-                    int resistanceLevel = rpgService.getStat(playerId, RpgStat.RESISTANCE);
+                    int resistanceLevel = rpgService.getEffectiveStat(playerId, RpgStat.RESISTANCE);
                     if (resistanceLevel > 0) {
                         float dr = RpgStatEffects.computeResistanceDR(resistanceLevel);
                         damage.setAmount(damage.getAmount() * (1.0f - dr));

@@ -135,5 +135,25 @@
       "Slot": "Hands",
       "DrShare": 0.15
     }
+  ],
+  "ArmorHpBudgetMin": 30.0,
+  "ArmorHpBudgetMax": 250.0,
+  "ArmorHpPerSlot": [
+    {
+      "Slot": "Chest",
+      "HpShare": 0.4
+    },
+    {
+      "Slot": "Legs",
+      "HpShare": 0.25
+    },
+    {
+      "Slot": "Head",
+      "HpShare": 0.2
+    },
+    {
+      "Slot": "Hands",
+      "HpShare": 0.15
+    }
   ]
 }

@@ -2,11 +2,16 @@ package com.duntale.merchant;
 
 import com.duntale.ThirdPartyModAvailabilityService;
 import com.duntale.items.CustomItems;
+import com.duntale.loot.GearAttribute;
+import com.duntale.loot.Rarity;
+import com.duntale.loot.RaritySource;
+import com.duntale.loot.RarityRollService;
 import com.duntale.progression.CombatScaling;
 import com.hypixel.hytale.server.core.asset.type.item.config.Item;
 import com.hypixel.hytale.common.plugin.PluginIdentifier;
 
 import javax.annotation.Nonnull;
+import javax.annotation.Nullable;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
@@ -181,16 +186,33 @@ public class CatalogGenerator {
     private final MerchantPriceRegistry priceRegistry;
     private final ThirdPartyModAvailabilityService thirdPartyModAvailabilityService;
 
+    @Nullable
+    private final RarityRollService rarityRollService;
+
     /**
-     * Creates a new catalog generator.
+     * Creates a catalog generator without rarity rolling (tests/tooling).
      *
      * @param priceRegistry                  the price registry for item pricing and level lookups
      * @param thirdPartyModAvailabilityService reports whether third-party mod integrations are available
      */
     public CatalogGenerator(@Nonnull MerchantPriceRegistry priceRegistry,
                             @Nonnull ThirdPartyModAvailabilityService thirdPartyModAvailabilityService) {
+        this(priceRegistry, thirdPartyModAvailabilityService, null);
+    }
+
+    /**
+     * Creates a new catalog generator.
+     *
+     * @param priceRegistry                  the price registry for item pricing and level lookups
+     * @param thirdPartyModAvailabilityService reports whether third-party mod integrations are available
+     * @param rarityRollService              the rarity roll service, or {@code null} to skip rarity rolling
+     */
+    public CatalogGenerator(@Nonnull MerchantPriceRegistry priceRegistry,
+                            @Nonnull ThirdPartyModAvailabilityService thirdPartyModAvailabilityService,
+                            @Nullable RarityRollService rarityRollService) {
         this.priceRegistry = priceRegistry;
         this.thirdPartyModAvailabilityService = thirdPartyModAvailabilityService;
+        this.rarityRollService = rarityRollService;
     }
 
     /**
@@ -228,7 +250,27 @@ public class CatalogGenerator {
      */
     @Nonnull
     public List<CatalogEntry> generate(int floorLevel, long seed) {
+        return generate(floorLevel, seed, 0);
+    }
+
+    /**
+     * Generates a deterministic merchant catalog for the given floor level, rolling each gear
+     * entry's rarity with the opening player's Luck.
+     *
+     * <p>Each gear entry rolls a rarity (MERCHANT ladder + Luck promotion) and rarity-granted
+     * attributes, which are stored on the {@link CatalogEntry} and stamped onto the purchased stack;
+     * the buy price is multiplied by the rarity price multiplier. With no rarity service wired (or
+     * when its tuning is unloaded), gear is priced and offered exactly as before.
+     *
+     * @param floorLevel the dungeon floor level
+     * @param seed       seed for deterministic randomisation
+     * @param openerLuck the opening player's effective Luck level
+     * @return an immutable catalog
+     */
+    @Nonnull
+    public List<CatalogEntry> generate(int floorLevel, long seed, int openerLuck) {
         Random random = new Random(seed);
+        boolean rollRarity = rarityRollService != null && rarityRollService.isLoaded();
         List<CatalogEntry> catalog = new ArrayList<>(MAX_BUY_SLOTS);
 
         // ── Gear items ───────────────────────────────────────────────
@@ -250,7 +292,9 @@ public class CatalogGenerator {
                 int gearLevel = CombatScaling.clampLevel(floorLevel - 4 + random.nextInt(15));
 
                 long levelPrice = priceRegistry.getBuyPrice(itemId, gearLevel);
-                catalog.add(CatalogEntry.gear(itemId, gearLevel, levelPrice));
+                catalog.add(rollRarity
+                        ? rarityGearEntry(itemId, gearLevel, levelPrice, openerLuck, random)
+                        : CatalogEntry.gear(itemId, gearLevel, levelPrice));
             }
         }
 
@@ -361,6 +405,19 @@ public class CatalogGenerator {
      * @param def the consumable definition (item ID, price, and stacking behaviour)
      * @return a catalog entry with the resolved quantity and price
      */
+    /**
+     * Builds a gear catalog entry with a rolled rarity, its attributes, and the rarity-adjusted
+     * buy price.
+     */
+    @Nonnull
+    private CatalogEntry rarityGearEntry(@Nonnull String itemId, int gearLevel, long levelPrice,
+                                         int openerLuck, @Nonnull Random random) {
+        Rarity rarity = rarityRollService.rollRarity(RaritySource.MERCHANT, openerLuck, random);
+        List<GearAttribute> attributes = rarityRollService.rollAttributes(rarity, gearLevel, random);
+        long price = Math.round(levelPrice * priceRegistry.rarityPriceMult(rarity));
+        return CatalogEntry.gear(itemId, gearLevel, price, rarity, attributes);
+    }
+
     @Nonnull
     private static CatalogEntry toConsumableEntry(@Nonnull ConsumableDef def) {
         if (def.fixedQuantity() > 0) {

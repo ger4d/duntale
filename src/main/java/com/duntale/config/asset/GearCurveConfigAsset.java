@@ -57,9 +57,12 @@ public class GearCurveConfigAsset
     protected float defaultWeaponAnchor = 0f;
     protected float armorDrBudgetMin = 0f;
     protected float armorDrBudgetMax = 0f;
+    protected float armorHpBudgetMin = 0f;
+    protected float armorHpBudgetMax = 0f;
     protected WeaponFamilyEntry[] weaponFamilies = new WeaponFamilyEntry[0];
     protected RarityNudgeEntry[] rarityNudges = new RarityNudgeEntry[0];
     protected ArmorSlotEntry[] armorSlots = new ArmorSlotEntry[0];
+    protected ArmorHpSlotEntry[] armorHpPerSlot = new ArmorHpSlotEntry[0];
 
     public GearCurveConfigAsset() {
     }
@@ -97,6 +100,18 @@ public class GearCurveConfigAsset
                 .append(new KeyedCodec<>("ArmorSlots", ArmorSlotEntry.ARRAY_CODEC),
                         (asset, value) -> asset.armorSlots = value,
                         asset -> asset.armorSlots)
+                .add()
+                .append(new KeyedCodec<>("ArmorHpBudgetMin", Codec.FLOAT),
+                        (asset, value) -> asset.armorHpBudgetMin = value,
+                        asset -> asset.armorHpBudgetMin)
+                .add()
+                .append(new KeyedCodec<>("ArmorHpBudgetMax", Codec.FLOAT),
+                        (asset, value) -> asset.armorHpBudgetMax = value,
+                        asset -> asset.armorHpBudgetMax)
+                .add()
+                .append(new KeyedCodec<>("ArmorHpPerSlot", ArmorHpSlotEntry.ARRAY_CODEC),
+                        (asset, value) -> asset.armorHpPerSlot = value,
+                        asset -> asset.armorHpPerSlot)
                 .add()
                 .build();
     }
@@ -204,6 +219,34 @@ public class GearCurveConfigAsset
     @Nonnull
     public ArmorSlotEntry[] getArmorSlots() {
         return armorSlots.clone();
+    }
+
+    /**
+     * Returns the total on-level authored armor HP at the level floor (level 1).
+     *
+     * @return the minimum armor HP budget
+     */
+    public float getArmorHpBudgetMin() {
+        return armorHpBudgetMin;
+    }
+
+    /**
+     * Returns the total on-level authored armor HP at the level ceiling.
+     *
+     * @return the maximum armor HP budget
+     */
+    public float getArmorHpBudgetMax() {
+        return armorHpBudgetMax;
+    }
+
+    /**
+     * Returns the configured armor slot HP shares.
+     *
+     * @return a defensive copy of the configured armor HP slot entries
+     */
+    @Nonnull
+    public ArmorHpSlotEntry[] getArmorHpPerSlot() {
+        return armorHpPerSlot.clone();
     }
 
     // ============================================
@@ -348,6 +391,56 @@ public class GearCurveConfigAsset
 
         public float getDrShare() {
             return drShare;
+        }
+    }
+
+    /**
+     * One armor slot's share of the total on-level flat-HP budget. Shares are expected to sum to
+     * {@code 1.0} across a full set, so a complete on-level set lands on the HP budget curve.
+     *
+     * <p>This authors armor HP from slot and level alone — severed from each item's asset HP — and
+     * is paired with engine armor-HP suppression so the authored value is the only armor HP in play.
+     */
+    public static class ArmorHpSlotEntry {
+        public static final BuilderCodec<ArmorHpSlotEntry> CODEC;
+        public static final ArrayCodec<ArmorHpSlotEntry> ARRAY_CODEC;
+
+        protected String slot = "";
+        protected float hpShare = 0f;
+
+        static {
+            CODEC = BuilderCodec.builder(ArmorHpSlotEntry.class, ArmorHpSlotEntry::new)
+                    .append(new KeyedCodec<>("Slot", Codec.STRING),
+                            (e, v) -> e.slot = v, e -> e.slot)
+                    .add()
+                    .append(new KeyedCodec<>("HpShare", Codec.FLOAT),
+                            (e, v) -> e.hpShare = v, e -> e.hpShare)
+                    .add()
+                    .build();
+            ARRAY_CODEC = new ArrayCodec<>(CODEC, ArmorHpSlotEntry[]::new);
+        }
+
+        public ArmorHpSlotEntry() {
+        }
+
+        /**
+         * Creates an armor slot HP share entry (test/programmatic use).
+         *
+         * @param slot    the armor slot name (e.g. "Chest")
+         * @param hpShare the slot's share of the total HP budget
+         */
+        public ArmorHpSlotEntry(@Nonnull String slot, float hpShare) {
+            this.slot = slot;
+            this.hpShare = hpShare;
+        }
+
+        @Nonnull
+        public String getSlot() {
+            return slot;
+        }
+
+        public float getHpShare() {
+            return hpShare;
         }
     }
 }

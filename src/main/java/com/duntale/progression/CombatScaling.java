@@ -256,6 +256,25 @@ public final class CombatScaling {
     }
 
     /**
+     * Computes a single armor piece's authored flat-HP contribution: its slot's share of the total
+     * on-level HP budget, where the budget rises with level along the shared sigmoid from
+     * {@code minHp} (level 1) to {@code maxHp} (the level ceiling).
+     *
+     * <p>The piece's own asset HP is not consulted — power comes from slot and level alone. Mirrors
+     * {@link #armorBudgetDR(float, int, float, float)} so DR and HP scale on the same curve.
+     *
+     * @param slotShare the slot's share of the total HP budget (e.g. {@code 0.40} for chest)
+     * @param level     the armor's gear level ({@value #MIN_LEVEL}-{@value #MAX_LEVEL})
+     * @param minHp     the total on-level authored armor HP at level 1
+     * @param maxHp     the total on-level authored armor HP at the level ceiling
+     * @return the authored HP contribution for this piece
+     */
+    public static float armorBudgetHp(float slotShare, int level, float minHp, float maxHp) {
+        float budget = minHp + (maxHp - minHp) * sigmoid(level);
+        return slotShare * budget;
+    }
+
+    /**
      * Computes a weapon's authored per-hit damage: its family anchor scaled by the level curve and
      * nudged by rarity. Used by the display/feedback sites; the damage interception applies the
      * equivalent value as a corrective ratio over the live asset per-hit.

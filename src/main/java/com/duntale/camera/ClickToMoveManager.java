@@ -840,10 +840,14 @@ public class ClickToMoveManager {
         int floorLevel = mc.getFloorLevel();
         List<CatalogEntry> catalog;
         if (mc.hasCatalog()) {
+            // Catalogs are generated once and cached on the merchant; the first opener's
+            // Luck locked the rarity rolls for all subsequent openers.
             catalog = mc.getCatalog();
         } else {
             long seed = merchantRef.hashCode();
-            catalog = DuntalePlugin.get().getCatalogGenerator().generate(floorLevel, seed);
+            // The first opener's Luck promotes the rarity of the gear this catalog rolls.
+            int openerLuck = DuntalePlugin.get().getRpgService().getEffectiveStat(pRef.getUuid(), RpgStat.LUCK);
+            catalog = DuntalePlugin.get().getCatalogGenerator().generate(floorLevel, seed, openerLuck);
             mc.setCatalog(catalog);
         }
 
@@ -854,7 +858,7 @@ public class ClickToMoveManager {
      * Computes per-player move speed from the Speed RPG stat.
      */
     private double getPlayerMoveSpeed(@Nonnull UUID uuid) {
-        int speedLevel = rpgService.getStat(uuid, RpgStat.SPEED);
+        int speedLevel = rpgService.getEffectiveStat(uuid, RpgStat.SPEED);
         return RpgStatEffects.computeMoveSpeed(speedLevel) + speedBoostManager.getBonus(uuid);
     }
 
@@ -862,7 +866,7 @@ public class ClickToMoveManager {
      * Computes per-player attack throttle from the Agility RPG stat.
      */
     private long getPlayerAttackThrottle(@Nonnull UUID uuid) {
-        int agilityLevel = rpgService.getStat(uuid, RpgStat.AGILITY);
+        int agilityLevel = rpgService.getEffectiveStat(uuid, RpgStat.AGILITY);
         return RpgStatEffects.computeAttackThrottleNs(agilityLevel);
     }
 
