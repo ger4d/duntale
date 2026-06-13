@@ -11,6 +11,8 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import json
+import math
 import sqlite3
 import sys
 from dataclasses import dataclass
@@ -19,11 +21,45 @@ from pathlib import Path
 
 BREAKPOINT_LEVELS = [1, 15, 30, 45, 60]
 
+SCRIPT_DIR = Path(__file__).resolve().parent
+GEAR_CURVES_JSON = SCRIPT_DIR.parent.parent / "src/main/resources/Server/Configs/Scaling/GearCurves.json"
+
 # Assumptions for simulation
 PLAYER_BASE_HP = 20.0          # Hytale default player HP
-PLAYER_ATTACK_SPEED = 1.5      # seconds between attacks
+# Melee attack cadence is a single Agility-driven throttle (CombatScaling research):
+# 400 ms @ Agility 0, identical for every weapon. Player per-hit now comes from the
+# authored family anchor, not the weapon's asset damage.
+PLAYER_ATTACK_SPEED = 0.4      # seconds between attacks (throttle floor @ Agility 0)
 MONSTER_ATTACK_SPEED = 2.0     # seconds between attacks
 PLAYER_BASE_ARMOR_DR = 0.0     # No armor by default
+
+# Level curve (mirror of derive_gear_curves.py / CombatScaling) for the authored DR budget.
+_MIDPOINT, _STEEPNESS = 50.0, 7.2 / 100
+_SIG_MIN = 1.0 / (1.0 + math.exp(-_STEEPNESS * (1 - _MIDPOINT)))
+_SIG_MAX = 1.0 / (1.0 + math.exp(-_STEEPNESS * (100 - _MIDPOINT)))
+
+
+def _sigmoid(level: int) -> float:
+    level = max(1, min(100, level))
+    raw = 1.0 / (1.0 + math.exp(-_STEEPNESS * (level - _MIDPOINT)))
+    return max(0.0, min((raw - _SIG_MIN) / (_SIG_MAX - _SIG_MIN), 1.0))
+
+
+def load_gear_curves() -> dict:
+    """Load the authored anchor + DR budget; fall back to neutral values if absent."""
+    if not GEAR_CURVES_JSON.exists():
+        return {"anchor": 12.0, "dr_min": 0.0, "dr_max": 0.0}
+    data = json.loads(GEAR_CURVES_JSON.read_text())
+    melee = next((f["AnchorDamage"] for f in data.get("WeaponFamilies", [])
+                  if f.get("Name") == "Sword"), data.get("DefaultWeaponAnchor", 12.0))
+    return {"anchor": melee,
+            "dr_min": data.get("ArmorDrBudgetMin", 0.0),
+            "dr_max": data.get("ArmorDrBudgetMax", 0.0)}
+
+
+def authored_set_dr(curves: dict, level: int) -> float:
+    """Full on-level set DR = the budget curve (per-slot shares sum to 1.0)."""
+    return curves["dr_min"] + (curves["dr_max"] - curves["dr_min"]) * _sigmoid(level)
 
 
 @dataclass
@@ -69,23 +105,15 @@ def run_simulations(conn: sqlite3.Connection) -> list[CombatResult]:
     """Run combat simulations for all breakpoint levels."""
     results: list[CombatResult] = []
 
-    # Get a representative mid-tier weapon for each level
-    weapons = conn.execute(
-        "SELECT weapon_id, base_damage FROM weapons_base ORDER BY base_damage DESC"
-    ).fetchall()
+    # Player per-hit now comes from the authored melee anchor on the level curve, not from any
+    # individual weapon's asset damage. Reuse weapons_scaled only for the level curve (damage_mult).
+    curves = load_gear_curves()
+    anchor = curves["anchor"]
+    weapon_id = "AuthoredMelee"
 
-    if not weapons:
-        print("  No weapons in database, using default damage", file=sys.stderr)
-        weapons = [("Default_Sword", 7.0)]
-
-    # Pick one weapon: median-ish by damage
-    mid_weapon = weapons[len(weapons) // 2]
-    weapon_id, weapon_base_dmg = mid_weapon
-
-    # Get a representative armor piece
-    armor_row = conn.execute(
-        "SELECT armor_id, phys_resist FROM armor_base ORDER BY phys_resist DESC LIMIT 1"
-    ).fetchone()
+    # Any weapon row carries the same level curve; pick one to read damage_mult per level.
+    curve_row = conn.execute("SELECT weapon_id FROM weapons_base LIMIT 1").fetchone()
+    curve_weapon = curve_row[0] if curve_row else None
 
     # Get a diverse set of NPCs (sample by tier)
     npcs = conn.execute(
@@ -94,24 +122,16 @@ def run_simulations(conn: sqlite3.Connection) -> list[CombatResult]:
     ).fetchall()
 
     for level in BREAKPOINT_LEVELS:
-        # Get weapon mult at this level
+        # Get the level curve (weaponMult) at this level
         w_row = conn.execute(
             "SELECT damage_mult FROM weapons_scaled WHERE weapon_id = ? AND level = ?",
-            (weapon_id, level),
-        ).fetchone()
+            (curve_weapon, level),
+        ).fetchone() if curve_weapon else None
         w_mult = w_row[0] if w_row else 1.0
 
-        # Armor: use matching level if available
-        armor_id = None
-        armor_dr = PLAYER_BASE_ARMOR_DR
-        if armor_row:
-            armor_id = armor_row[0]
-            a_row = conn.execute(
-                "SELECT effective_dr FROM armor_scaled WHERE armor_id = ? AND level = ?",
-                (armor_id, level),
-            ).fetchone()
-            if a_row:
-                armor_dr = a_row[0]
+        # Authored armor: a full on-level set DR equals the budget curve.
+        armor_id = "AuthoredSet"
+        armor_dr = authored_set_dr(curves, level)
 
         for npc_id, tier, base_hp, base_damage in npcs:
             m_row = conn.execute(
@@ -124,7 +144,7 @@ def run_simulations(conn: sqlite3.Connection) -> list[CombatResult]:
             npc_hp, npc_damage = m_row
 
             player_dps, npc_dps, ttk_m, ttk_p = simulate(
-                npc_hp, npc_damage, weapon_base_dmg, w_mult, armor_dr
+                npc_hp, npc_damage, anchor, w_mult, armor_dr
             )
 
             survival_ratio = ttk_p / ttk_m if ttk_m > 0 and ttk_m != float("inf") else float("inf")
@@ -135,7 +155,7 @@ def run_simulations(conn: sqlite3.Connection) -> list[CombatResult]:
                 npc_hp=npc_hp,
                 npc_damage=npc_damage,
                 weapon_id=weapon_id,
-                weapon_base_dmg=weapon_base_dmg,
+                weapon_base_dmg=anchor,
                 weapon_mult=w_mult,
                 armor_id=armor_id,
                 armor_dr=armor_dr,

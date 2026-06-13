@@ -8,6 +8,7 @@ import com.duntale.camera.ClickToMoveManager;
 import com.duntale.camera.ClickToMoveTickSystem;
 import com.duntale.camera.PlayerDeathCleanupSystem;
 import com.duntale.config.asset.CustomizeCharacterConfigAsset;
+import com.duntale.config.asset.GearCurveConfigAsset;
 import com.duntale.config.asset.NpcArchetypeConfigAsset;
 import com.duntale.config.asset.RpgConfigAsset;
 import com.duntale.command.DGiveCommand;
@@ -69,6 +70,7 @@ import com.duntale.progression.BuiltInNpcSpawnScalingSystem;
 import com.duntale.progression.CombatScalingComponent;
 import com.duntale.progression.CombatScalingSystem;
 import com.duntale.progression.DeployableTurretScalingSystem;
+import com.duntale.progression.GearCurveRegistry;
 import com.duntale.progression.GearScalingTooltipProvider;
 import com.duntale.progression.LeveledNpcSpawner;
 import com.duntale.progression.NpcArchetypeRegistry;
@@ -179,6 +181,7 @@ public class DuntalePlugin extends JavaPlugin {
     private AssetCatalog assetCatalog;
     private ComponentType<EntityStore, CombatScalingComponent> combatScalingComponentType;
     private NpcArchetypeRegistry npcArchetypeRegistry;
+    private GearCurveRegistry gearCurveRegistry;
     private LeveledNpcSpawner leveledNpcSpawner;
     private CompanionSpawner companionSpawner;
 
@@ -500,6 +503,7 @@ public class DuntalePlugin extends JavaPlugin {
         AssetRegistry.register(LootTableConfig.assetStoreBuilder().build());
         AssetRegistry.register(RpgConfigAsset.assetStoreBuilder().build());
         AssetRegistry.register(NpcArchetypeConfigAsset.assetStoreBuilder().build());
+        AssetRegistry.register(GearCurveConfigAsset.assetStoreBuilder().build());
 
         // ── RPG System ───────────────────────────────────────────────
         this.databaseProvider = new DatabaseProvider();
@@ -604,6 +608,10 @@ public class DuntalePlugin extends JavaPlugin {
         // non-uniform asset base stats. Snapshot populated in start() once asset stores are loaded;
         // hot-reloaded via LoadedAssetsEvent.
         this.npcArchetypeRegistry = new NpcArchetypeRegistry();
+        // Drives authored, level-based gear power (severs weapon damage / armor DR from each item's
+        // hand-authored asset stats). Snapshot populated in start() once asset stores are loaded;
+        // hot-reloaded via LoadedAssetsEvent. Empty until then -> legacy asset-stat scaling.
+        this.gearCurveRegistry = new GearCurveRegistry();
         NpcScalingApplicator npcScalingApplicator =
                 new NpcScalingApplicator(combatScalingComponentType, npcArchetypeRegistry);
         this.leveledNpcSpawner = new LeveledNpcSpawner(npcScalingApplicator);
@@ -611,7 +619,8 @@ public class DuntalePlugin extends JavaPlugin {
 
         // Register ECS systems
         this.getEntityStoreRegistry().registerSystem(new ClickToMoveTickSystem(this.clickToMoveManager));
-        this.getEntityStoreRegistry().registerSystem(new CombatScalingSystem(combatScalingComponentType));
+        this.getEntityStoreRegistry().registerSystem(
+            new CombatScalingSystem(combatScalingComponentType, assetCatalog, gearCurveRegistry));
         this.getEntityStoreRegistry().registerSystem(
             new DeployableTurretScalingSystem(combatScalingComponentType, progressionService));
         this.getEntityStoreRegistry().registerSystem(new BuiltInNpcSpawnScalingSystem(
@@ -675,7 +684,7 @@ public class DuntalePlugin extends JavaPlugin {
         this.getCommandRegistry().registerCommand(
                 new DSpawnCommand(leveledNpcSpawner, assetCatalog, npcScalingApplicator));
         this.getCommandRegistry().registerCommand(new DListCommand(assetCatalog));
-        this.getCommandRegistry().registerCommand(new DGiveCommand(assetCatalog));
+        this.getCommandRegistry().registerCommand(new DGiveCommand(assetCatalog, gearCurveRegistry));
         this.getCommandRegistry().registerCommand(new DLootCommand(lootRollService));
         this.getCommandRegistry().registerCommand(new GoldCommand(goldService));
         this.getCommandRegistry().registerCommand(new RpgStatCommand(rpgService));
@@ -752,6 +761,8 @@ public class DuntalePlugin extends JavaPlugin {
         this.rpgConfig.refresh();
         // Populate the NPC archetype mapping from the now-loaded asset (falls back to legacy scaling).
         this.npcArchetypeRegistry.refresh();
+        // Populate the authored gear curves from the now-loaded asset (falls back to legacy scaling).
+        this.gearCurveRegistry.refresh();
 
         // Initialize dungeon orchestrator here — asset stores are available after all plugins setup()
         this.dungeonOrchestrator = new GenerationOrchestrator(new BlockResolver());
@@ -779,6 +790,9 @@ public class DuntalePlugin extends JavaPlugin {
         }
         if (npcArchetypeRegistry != null) {
             npcArchetypeRegistry.shutdown();
+        }
+        if (gearCurveRegistry != null) {
+            gearCurveRegistry.shutdown();
         }
         if (blockOcclusionManager != null) {
             // Retrieve world from any online player; if no players remain the
@@ -2235,7 +2249,7 @@ public class DuntalePlugin extends JavaPlugin {
             var api = DynamicTooltipsApiProvider.get();
             if (api != null) {
                 api.registerProvider(
-                        new GearScalingTooltipProvider(assetCatalog));
+                        new GearScalingTooltipProvider(assetCatalog, gearCurveRegistry));
                 api.registerProvider(
                         new MerchantTooltipProvider(merchantPriceRegistry));
                 LOGGER.atInfo().log("Registered tooltip providers with DynamicTooltipsLib");

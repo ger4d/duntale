@@ -27,4 +27,39 @@ class CombatScalingTest {
         assertTrue(CombatScaling.npcScaledHp(100, 100, CombatScaling.NpcVariant.NORMAL)
                 > CombatScaling.npcScaledHp(100, 60, CombatScaling.NpcVariant.NORMAL));
     }
+
+    @Test
+    @DisplayName("Authored DR should rise monotonically with level for a slot")
+    void shouldIncreaseAuthoredDrWithLevel() {
+        float low = CombatScaling.armorBudgetDR(0.40f, 15, 0.10f, 0.55f);
+        float high = CombatScaling.armorBudgetDR(0.40f, 60, 0.10f, 0.55f);
+        assertTrue(high > low);
+    }
+
+    @Test
+    @DisplayName("Authored DR should equal share x budget at the level floor and ceiling")
+    void shouldAnchorAuthoredDrAtFloorAndCeiling() {
+        // sigmoid is 0 at MIN_LEVEL and 1 at MAX_LEVEL, so DR collapses to share x min / share x max.
+        assertEquals(0.40f * 0.10f, CombatScaling.armorBudgetDR(0.40f, 1, 0.10f, 0.55f), 1e-4f);
+        assertEquals(0.40f * 0.55f, CombatScaling.armorBudgetDR(0.40f, 100, 0.10f, 0.55f), 1e-4f);
+    }
+
+    @Test
+    @DisplayName("A full on-level set should sum to the budget and stay under the combined cap")
+    void shouldKeepFullSetUnderCap() {
+        // Shares sum to 1.0, so a complete set lands on the budget curve (max < MAX_ARMOR_DR).
+        float total = CombatScaling.armorBudgetDR(0.40f, 100, 0.10f, 0.55f)
+                + CombatScaling.armorBudgetDR(0.25f, 100, 0.10f, 0.55f)
+                + CombatScaling.armorBudgetDR(0.20f, 100, 0.10f, 0.55f)
+                + CombatScaling.armorBudgetDR(0.15f, 100, 0.10f, 0.55f);
+        assertEquals(0.55f, total, 1e-4f);
+        assertTrue(total < CombatScaling.MAX_ARMOR_DR);
+    }
+
+    @Test
+    @DisplayName("Authored per-hit should equal anchor x weaponMult x rarity nudge")
+    void shouldComputeAuthoredPerHit() {
+        float expected = 12.0f * CombatScaling.weaponMult(30) * 1.075f;
+        assertEquals(expected, CombatScaling.weaponAuthoredPerHit(12.0f, 30, 1.075f), 1e-4f);
+    }
 }

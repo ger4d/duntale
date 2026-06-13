@@ -1,0 +1,139 @@
+{
+  "DefaultWeaponAnchor": 12.0,
+  "ArmorDrBudgetMin": 0.1,
+  "ArmorDrBudgetMax": 0.55,
+  "WeaponFamilies": [
+    {
+      "Name": "Arrow",
+      "AnchorDamage": 12.0
+    },
+    {
+      "Name": "Axe",
+      "AnchorDamage": 12.0
+    },
+    {
+      "Name": "Battleaxe",
+      "AnchorDamage": 12.0
+    },
+    {
+      "Name": "Bomb",
+      "AnchorDamage": 12.0
+    },
+    {
+      "Name": "Bow",
+      "AnchorDamage": 9.0
+    },
+    {
+      "Name": "Club",
+      "AnchorDamage": 12.0
+    },
+    {
+      "Name": "Crossbow",
+      "AnchorDamage": 9.0
+    },
+    {
+      "Name": "Dagger",
+      "AnchorDamage": 12.0
+    },
+    {
+      "Name": "Gun",
+      "AnchorDamage": 9.0
+    },
+    {
+      "Name": "Kunai",
+      "AnchorDamage": 12.0
+    },
+    {
+      "Name": "Longsword",
+      "AnchorDamage": 12.0
+    },
+    {
+      "Name": "Mace",
+      "AnchorDamage": 12.0
+    },
+    {
+      "Name": "Magic",
+      "AnchorDamage": 12.0
+    },
+    {
+      "Name": "Scythe",
+      "AnchorDamage": 12.0
+    },
+    {
+      "Name": "Shield",
+      "AnchorDamage": 12.0
+    },
+    {
+      "Name": "Sickle",
+      "AnchorDamage": 12.0
+    },
+    {
+      "Name": "Soulblight",
+      "AnchorDamage": 12.0
+    },
+    {
+      "Name": "Spear",
+      "AnchorDamage": 12.0
+    },
+    {
+      "Name": "Spellbook",
+      "AnchorDamage": 12.0
+    },
+    {
+      "Name": "Staff",
+      "AnchorDamage": 12.0
+    },
+    {
+      "Name": "Stick",
+      "AnchorDamage": 12.0
+    },
+    {
+      "Name": "Sword",
+      "AnchorDamage": 12.0
+    },
+    {
+      "Name": "Wand",
+      "AnchorDamage": 12.0
+    }
+  ],
+  "RarityNudges": [
+    {
+      "Rarity": "Common",
+      "Multiplier": 1.0
+    },
+    {
+      "Rarity": "Uncommon",
+      "Multiplier": 1.015
+    },
+    {
+      "Rarity": "Rare",
+      "Multiplier": 1.03
+    },
+    {
+      "Rarity": "Epic",
+      "Multiplier": 1.05
+    },
+    {
+      "Rarity": "Legendary",
+      "Multiplier": 1.075
+    }
+  ],
+  "ArmorSlots": [
+    {
+      "Slot": "Chest",
+      "DrShare": 0.4
+    },
+    {
+      "Slot": "Legs",
+      "DrShare": 0.25
+    },
+    {
+      "Slot": "Head",
+      "DrShare": 0.2
+    },
+    {
+      "Slot": "Hands",
+      "DrShare": 0.15
+    }
+  ]
+}

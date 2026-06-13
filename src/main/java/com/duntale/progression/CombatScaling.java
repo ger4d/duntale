@@ -220,7 +220,9 @@ public final class CombatScaling {
     }
 
     /**
-     * Computes the armor damage reduction for a single piece at the given level.
+     * Computes the legacy armor damage reduction for a single piece at the given level, derived from
+     * the item's authored asset resist. Retained for the fallback path when no authored curves are
+     * loaded (or a piece's slot is unmapped).
      *
      * @param baseResist sum of {@code DamageResistance.Physical[].Amount} from the item asset
      *                   (NOT {@code BaseDamageResistance}, which is 0 for most armor)
@@ -231,6 +233,40 @@ public final class CombatScaling {
         float resistMult = Math.max(1.0f + (ARMOR_K - 1.0f) * sigmoid(level), 1.0f);
         float dr = baseResist * resistMult;
         return Math.min(dr, MAX_ARMOR_DR);
+    }
+
+    /**
+     * Computes a single armor piece's authored damage reduction: its slot's share of the total
+     * on-level DR budget, where the budget rises with level along the shared sigmoid from
+     * {@code minDr} (level 1) to {@code maxDr} (the level ceiling).
+     *
+     * <p>The piece's own asset resist is not consulted — power comes from slot and level alone. No
+     * per-piece cap is applied here; the caller sums all worn pieces and clamps the total to
+     * {@link #MAX_ARMOR_DR}.
+     *
+     * @param slotShare the slot's share of the total DR budget (e.g. {@code 0.40} for chest)
+    * @param level     the armor's gear level ({@value #MIN_LEVEL}-{@value #MAX_LEVEL})
+     * @param minDr     the total on-level DR at level 1
+     * @param maxDr     the total on-level DR at the level ceiling
+     * @return the uncapped DR contribution for this piece
+     */
+    public static float armorBudgetDR(float slotShare, int level, float minDr, float maxDr) {
+        float budget = minDr + (maxDr - minDr) * sigmoid(level);
+        return slotShare * budget;
+    }
+
+    /**
+     * Computes a weapon's authored per-hit damage: its family anchor scaled by the level curve and
+     * nudged by rarity. Used by the display/feedback sites; the damage interception applies the
+     * equivalent value as a corrective ratio over the live asset per-hit.
+     *
+     * @param anchor      the family's level-1 per-hit anchor
+    * @param level       the weapon's gear level ({@value #MIN_LEVEL}-{@value #MAX_LEVEL})
+     * @param rarityNudge the rarity power multiplier ({@code 1.0} for unstamped/common)
+     * @return the authored per-hit damage before variance
+     */
+    public static float weaponAuthoredPerHit(float anchor, int level, float rarityNudge) {
+        return anchor * weaponMult(level) * rarityNudge;
     }
 
     // ── Deployable (turret) scaling ──────────────────────────────────

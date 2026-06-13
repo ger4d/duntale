@@ -23,6 +23,7 @@ import com.hypixel.hytale.server.core.modules.entity.damage.ResistanceModifier;
 import com.hypixel.hytale.server.core.universe.world.storage.EntityStore;
 
 import javax.annotation.Nonnull;
+import javax.annotation.Nullable;
 import java.util.Map;
 import java.util.Set;
 
@@ -55,14 +56,22 @@ public class CombatScalingSystem extends DamageEventSystem {
     );
 
     private final ComponentType<EntityStore, CombatScalingComponent> combatScalingType;
+    private final AssetCatalog assetCatalog;
+    private final GearCurveRegistry gearCurves;
 
     /**
      * Creates a new combat scaling system.
      *
      * @param combatScalingType the registered combat scaling component type
+     * @param assetCatalog      the asset catalog, for resolving a weapon's family and live per-hit
+     * @param gearCurves        the authored gear-curve registry (empty snapshot drives legacy fallback)
      */
-    public CombatScalingSystem(@Nonnull ComponentType<EntityStore, CombatScalingComponent> combatScalingType) {
+    public CombatScalingSystem(@Nonnull ComponentType<EntityStore, CombatScalingComponent> combatScalingType,
+                               @Nonnull AssetCatalog assetCatalog,
+                               @Nonnull GearCurveRegistry gearCurves) {
         this.combatScalingType = combatScalingType;
+        this.assetCatalog = assetCatalog;
+        this.gearCurves = gearCurves;
     }
 
     @Nonnull
@@ -140,8 +149,18 @@ public class CombatScalingSystem extends DamageEventSystem {
     }
 
     /**
-     * Computes the weapon damage multiplier from the attacker's held item.
-     * Formula is uniform across all weapons — only the gear level matters.
+     * Computes the total damage factor applied to the attacker's raw per-hit, so the final per-hit
+     * follows the authored family curve rather than the weapon's own asset number.
+     *
+     * <p>The factor is {@code (anchor / assetPerHit) * weaponMult(level) * rarityNudge * variance}.
+     * The {@code anchor / assetPerHit} corrective ratio divides out the weapon's authored damage and
+     * substitutes the family anchor, so two same-level weapons of the same family land on equal power
+     * regardless of how their assets were authored (e.g. an outlier "Common" longsword normalizes to
+     * its family). Multi-move weapons keep their internal light/heavy ratio because the ratio is
+     * applied to whatever specific move damage the engine resolved.
+     *
+     * <p>Falls back to the legacy {@code weaponMult * variance} when no authored curves are loaded or
+     * when the weapon's asset per-hit can't be resolved (so no corrective ratio can be formed).
      */
     private float computePlayerWeaponMult(@Nonnull Ref<EntityStore> attackerRef,
                                           @Nonnull Store<EntityStore> store) {
@@ -155,22 +174,35 @@ public class CombatScalingSystem extends DamageEventSystem {
             return 0f;
         }
 
-        float mult = CombatScaling.weaponMult(weaponLevel);
+        float variance = varianceOrOne(GearLevelService.getWeaponVariance(heldItem));
+        float legacyFactor = CombatScaling.weaponMult(weaponLevel) * variance;
 
-        Float variance = GearLevelService.getWeaponVariance(heldItem);
-        if (variance != null) {
-            mult *= variance;
+        if (!gearCurves.isLoaded()) {
+            return legacyFactor;
         }
 
-        return mult;
+        String weaponId = heldItem.getItem().getId();
+        AssetCatalog.WeaponBaseRow row = weaponId != null ? assetCatalog.getWeaponBase(weaponId) : null;
+        if (row == null || row.baseDamage() <= 0f) {
+            // No authored asset per-hit to divide out — keep the legacy curve for this weapon.
+            LOGGER.atFine().log("No catalog per-hit for weapon %s — using legacy scaling", weaponId);
+            return legacyFactor;
+        }
+
+        float anchor = gearCurves.weaponAnchor(row.family());
+        float nudge = gearCurves.rarityNudge(GearLevelService.getRarity(heldItem));
+        float corrective = anchor / row.baseDamage();
+        return corrective * CombatScaling.weaponMult(weaponLevel) * nudge * variance;
     }
 
     /**
-     * Computes the combined armor damage reduction from all leveled armor pieces
-     * worn by the target entity.
+     * Computes the combined armor damage reduction from all leveled armor pieces worn by the target.
      *
-     * <p>Reads physical resist directly from the Hytale Item API
-     * ({@code DamageResistance.Physical[].Amount}), NOT {@code BaseDamageResistance}.
+     * <p>With authored curves loaded, each piece's DR is its slot's share of the level-driven DR
+     * budget ({@code slotShare * drBudget(level) * rarityNudge * variance}); the piece's own asset
+     * resist is ignored, so gear power follows slot and level alone. A piece whose slot is unmapped
+     * (or any piece when no curves are loaded) falls back to the legacy asset-resist DR. The summed
+     * total is capped at {@link CombatScaling#MAX_ARMOR_DR}.
      */
     private float computePlayerArmorDR(@Nonnull Ref<EntityStore> targetRef,
                                        @Nonnull Store<EntityStore> store) {
@@ -180,6 +212,7 @@ public class CombatScalingSystem extends DamageEventSystem {
         }
 
         ItemContainer armorContainer = armorComponent.getInventory();
+        boolean curvesLoaded = gearCurves.isLoaded();
         float totalDr = 0f;
 
         for (short slot = 0; slot < armorContainer.getCapacity(); slot++) {
@@ -193,34 +226,59 @@ public class CombatScalingSystem extends DamageEventSystem {
                 continue;
             }
 
-            // Read physical resist from Hytale item asset — no DB needed
             ItemArmor itemArmor = piece.getItem().getArmor();
             if (itemArmor == null) {
                 continue;
             }
 
-            float baseResist = 0f;
-            Map<DamageCause, ResistanceModifier[]> resistMap = itemArmor.getDamageResistanceValues();
-            DamageCause physicalCause = DamageCause.getAssetMap().getAsset("Physical");
-            if (resistMap != null && physicalCause != null) {
-                ResistanceModifier[] physMods = resistMap.get(physicalCause);
-                if (physMods != null) {
-                    for (ResistanceModifier mod : physMods) {
-                        baseResist += mod.getAmount();
-                    }
+            float variance = varianceOrOne(GearLevelService.getArmorVariance(piece));
+
+            Float share = null;
+            if (curvesLoaded) {
+                String slotName = itemArmor.getArmorSlot() != null ? itemArmor.getArmorSlot().name() : null;
+                share = slotName != null ? gearCurves.slotShare(slotName) : null;
+                if (share == null) {
+                    LOGGER.atWarning().log(
+                            "Armor %s has unmapped slot '%s' — using legacy resist scaling",
+                            piece.getItem().getId(), slotName);
                 }
             }
 
-            float dr = CombatScaling.armorDR(baseResist, armorLevel);
-
-            Float variance = GearLevelService.getArmorVariance(piece);
-            if (variance != null) {
-                dr *= variance;
+            float dr;
+            if (share != null) {
+                float nudge = gearCurves.rarityNudge(GearLevelService.getRarity(piece));
+                dr = CombatScaling.armorBudgetDR(share, armorLevel,
+                        gearCurves.drBudgetMin(), gearCurves.drBudgetMax()) * nudge * variance;
+            } else {
+                dr = CombatScaling.armorDR(legacyAssetResist(itemArmor), armorLevel) * variance;
             }
 
             totalDr += dr;
         }
 
         return Math.min(totalDr, CombatScaling.MAX_ARMOR_DR);
+    }
+
+    /**
+     * Sums the asset's authored physical resist ({@code DamageResistance.Physical[].Amount}, NOT
+     * {@code BaseDamageResistance}) for the legacy DR fallback.
+     */
+    private static float legacyAssetResist(@Nonnull ItemArmor itemArmor) {
+        float baseResist = 0f;
+        Map<DamageCause, ResistanceModifier[]> resistMap = itemArmor.getDamageResistanceValues();
+        DamageCause physicalCause = DamageCause.getAssetMap().getAsset("Physical");
+        if (resistMap != null && physicalCause != null) {
+            ResistanceModifier[] physMods = resistMap.get(physicalCause);
+            if (physMods != null) {
+                for (ResistanceModifier mod : physMods) {
+                    baseResist += mod.getAmount();
+                }
+            }
+        }
+        return baseResist;
+    }
+
+    private static float varianceOrOne(@Nullable Float variance) {
+        return variance != null ? variance : 1.0f;
     }
 }

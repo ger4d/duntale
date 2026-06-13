@@ -19,6 +19,7 @@ public final class GearLevelService {
     private static final String ARMOR_LEVEL_KEY = "duntale_armor_level";
     private static final String WEAPON_VARIANCE_KEY = "duntale_weapon_variance";
     private static final String ARMOR_VARIANCE_KEY = "duntale_armor_variance";
+    private static final String RARITY_KEY = "duntale_rarity";
 
     /** Default variance range: ±5% (0.95–1.05). */
     public static final float VARIANCE_MIN = 0.95f;
@@ -128,5 +129,20 @@ public final class GearLevelService {
     @Nullable
     public static Float getArmorVariance(@Nonnull ItemStack stack) {
         return stack.getFromMetadataOrNull(ARMOR_VARIANCE_KEY, Codec.FLOAT);
+    }
+
+    /**
+     * Reads the rarity tier from an item stack, used to look up the gear-curve rarity nudge.
+     *
+     * <p>Nothing stamps this key yet, so it currently returns {@code null} for all gear and the
+     * power nudge resolves to the no-op default. The read seam is in place so a later rarity system
+     * can stamp items without touching the damage-time scaling path.
+     *
+     * @param stack the item stack to inspect
+     * @return the rarity name (e.g. "Legendary"), or {@code null} if unstamped
+     */
+    @Nullable
+    public static String getRarity(@Nonnull ItemStack stack) {
+        return stack.getFromMetadataOrNull(RARITY_KEY, Codec.STRING);
     }
 }

@@ -2,6 +2,7 @@ package com.duntale.command;
 
 import com.duntale.progression.AssetCatalog;
 import com.duntale.progression.CombatScaling;
+import com.duntale.progression.GearCurveRegistry;
 import com.duntale.progression.GearLevelService;
 import com.hypixel.hytale.component.Ref;
 import com.hypixel.hytale.component.Store;
@@ -45,15 +46,18 @@ public class DGiveCommand extends CommandBase {
     private static final String CYAN = "#55FFFF";
 
     private final AssetCatalog assetCatalog;
+    private final GearCurveRegistry gearCurves;
 
     /**
      * Creates a new /dgive command.
      *
      * @param assetCatalog the asset catalog
+     * @param gearCurves   the authored gear-curve registry, for matching in-game feedback to runtime
      */
-    public DGiveCommand(@Nonnull AssetCatalog assetCatalog) {
+    public DGiveCommand(@Nonnull AssetCatalog assetCatalog, @Nonnull GearCurveRegistry gearCurves) {
         super("dgive", "Give leveled gear for dungeon testing");
         this.assetCatalog = assetCatalog;
+        this.gearCurves = gearCurves;
 
         this.addSubCommand(new WeaponSubCommand());
         this.addSubCommand(new ArmorSubCommand());
@@ -120,8 +124,8 @@ public class DGiveCommand extends CommandBase {
                 return;
             }
 
-            // Fetch scaling data for feedback
-            float damageMult = CombatScaling.weaponMult(level);
+            // Fetch scaling data for feedback — mirror the runtime authored per-hit when curves are
+            // loaded, else fall back to the legacy asset-based number.
             AssetCatalog.WeaponBaseRow base = assetCatalog.getWeaponBase(weaponId);
 
             context.sendMessage(
@@ -130,8 +134,15 @@ public class DGiveCommand extends CommandBase {
                             .insert(Message.raw(" Lv." + level).color(CYAN))
             );
 
-            if (base != null) {
-                float scaledDmg = base.baseDamage() * damageMult * variance;
+            Float scaledDmg = null;
+            if (gearCurves.isLoaded()) {
+                String family = base != null ? base.family() : null;
+                float anchor = gearCurves.weaponAnchor(family);
+                scaledDmg = CombatScaling.weaponAuthoredPerHit(anchor, level, gearCurves.rarityNudge(null)) * variance;
+            } else if (base != null) {
+                scaledDmg = base.baseDamage() * CombatScaling.weaponMult(level) * variance;
+            }
+            if (scaledDmg != null) {
                 context.sendMessage(
                         Message.raw("  Damage: ").color(GRAY)
                                 .insert(Message.raw(String.format("%.1f", scaledDmg)).color(YELLOW))
@@ -195,10 +206,20 @@ public class DGiveCommand extends CommandBase {
                 return;
             }
 
-            // Fetch scaling data for feedback
+            // Fetch scaling data for feedback — mirror the runtime authored DR when curves are
+            // loaded, else fall back to the legacy asset-resist DR.
             AssetCatalog.ArmorBaseRow base = assetCatalog.getArmorBase(armorId);
-            float baseResist = base != null ? base.physResist() : 0f;
-            float effectiveDr = CombatScaling.armorDR(baseResist, level) * variance;
+            String slot = base != null ? base.slot() : null;
+            Float share = slot != null && gearCurves.isLoaded() ? gearCurves.slotShare(slot) : null;
+            float effectiveDr;
+            if (share != null) {
+                effectiveDr = CombatScaling.armorBudgetDR(share, level,
+                        gearCurves.drBudgetMin(), gearCurves.drBudgetMax())
+                        * gearCurves.rarityNudge(null) * variance;
+            } else {
+                float baseResist = base != null ? base.physResist() : 0f;
+                effectiveDr = CombatScaling.armorDR(baseResist, level) * variance;
+            }
 
             context.sendMessage(
                     Message.raw("Gave ").color(GREEN)

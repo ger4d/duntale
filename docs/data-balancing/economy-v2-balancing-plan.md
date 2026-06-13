@@ -66,6 +66,49 @@ sigmoid: HP ×(1+8s), damage ×(1+5s)):
   (Wans/Zets) automatically inherit sane power from their stamped level —
   fixes the Praetorian problem and the Relic/Mythical pricing holes at once.
 
+**Resolved during W3 specification (2026-06-13):**
+
+- **Attack speed (researched):** CTM melee attack cadence is a single
+  Agility-driven throttle (`computeAttackThrottleNs`: 400 ms @ Agility 0 →
+  140 ms floor), identical for every weapon — *not* per-weapon timing. So the
+  "per-hit differs by attack period (daggers fast / mace slow)" assumption above
+  does **not** hold: equal per-hit ⇒ equal DPS. Consequence: no per-family
+  attack-speed table and no parser change; **all melee families share one anchor**,
+  and a separate **Ranged** class anchor (bows/crossbows/flamethrower —
+  Secondary-slot, charge/projectile cadence, not throttle-gated) is set by
+  derivation + playtest. Implemented as a corrective ratio
+  (`anchor / assetBaseDamage`) over the live asset per-hit, reusing `AssetCatalog`'s
+  per-weapon base damage — so the Praetorian fix is automatic.
+- **Armor HP deferred to W4:** W3 authors **DR only** (a clean damage-time formula
+  swap). Flat-HP-per-slot authoring *and* suppression of the engine's native armor
+  HP move to W4, which builds the equip/unequip stat hooks for rarity attributes
+  anyway. Engine still grants asset armor HP in the interim — neutralized in W4.
+- **Pricing untouched:** `MerchantPriceRegistry` keeps the old asset axis through
+  W3–W5; the interim power/price mismatch is reconciled by the W6 single-
+  `combatValue` rework.
+- **Rarity nudge** plumbed now but **inert** (new `duntale_rarity` metadata seam
+  defaults to Common/1.0 until W4 stamps it).
+
+**Implemented (2026-06-13):** `GearCurveConfigAsset` + hot-reloadable
+`GearCurveRegistry` (mirroring `NpcArchetypes`), `CombatScaling.armorBudgetDR` /
+`weaponAuthoredPerHit`, and the damage-time rewire in `CombatScalingSystem`
+(weapon corrective ratio `anchor/assetPerHit`, armor slot-share DR). Derived by
+`scripts/scaling/derive_gear_curves.py`:
+- Melee anchor **12.0** per-hit @ L1 (solved for ~5 hits to kill an on-level
+  Standard at the level floor); all melee families share it. Ranged **9.0**
+  (×0.75, **playtest**). Hits-to-kill an on-level Standard stays ~5.1–6.5 across
+  L1–L100.
+- Armor DR budget **10% → 55%** (L1 → L100), per-slot Chest .40 / Legs .25 /
+  Head .20 / Hands .15, combined cap unchanged at 65%.
+- **Open playtest item:** `simulate_combat.py` was switched to the authored anchor
+  + the Agility throttle floor (400 ms @ Agility 0). On that floor the *seconds*-TTK
+  reads below the legacy 6–10 s band, because the real melee swing cadence (windup +
+  recovery, not just the throttle floor) isn't modeled. Balance is therefore tracked
+  on the **hits-to-kill** axis (~5–6, on target); the seconds-band needs in-game
+  confirmation. Elite/Boss seconds-TTK/LETHAL flags in the sim are dominated by the
+  variant HP/damage multipliers still **deferred to W6** (see W2 note), not the
+  on-level Standard axis.
+
 ## W4. Rarity + attribute system (P3, P5) — new feature, biggest
 
 - Rarity rolled at generation per source ladder (draft odds):

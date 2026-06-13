@@ -27,14 +27,18 @@ public class GearScalingTooltipProvider implements TooltipProvider {
     private static final String COLOR_YELLOW = "#FFEE55";
 
     private final AssetCatalog assetCatalog;
+    private final GearCurveRegistry gearCurves;
 
     /**
-     * Creates a new tooltip provider backed by the given asset catalog.
+     * Creates a new tooltip provider backed by the given asset catalog and gear curves.
      *
      * @param assetCatalog the asset catalog for weapon/armor lookups
+     * @param gearCurves   the authored gear-curve registry (empty snapshot drives legacy display)
      */
-    public GearScalingTooltipProvider(@Nonnull AssetCatalog assetCatalog) {
+    public GearScalingTooltipProvider(@Nonnull AssetCatalog assetCatalog,
+                                      @Nonnull GearCurveRegistry gearCurves) {
         this.assetCatalog = assetCatalog;
+        this.gearCurves = gearCurves;
     }
 
     @Nonnull
@@ -85,7 +89,6 @@ public class GearScalingTooltipProvider implements TooltipProvider {
     @Nullable
     private TooltipData buildWeaponTooltip(@Nonnull String itemId, int level, float variance) {
         AssetCatalog.WeaponBaseRow base = assetCatalog.getWeaponBase(itemId);
-        float damageMult = CombatScaling.weaponMult(level);
 
         // Include variance in hash so different rolls get distinct virtual IDs
         int varHash = Math.round(variance * 1000);
@@ -95,20 +98,33 @@ public class GearScalingTooltipProvider implements TooltipProvider {
         // Level tag
         builder.addLine(colorTag(COLOR_CYAN, "Lv." + level) + " " + colorTag(COLOR_GRAY, "Dungeon Weapon"));
 
-        if (base != null) {
-            float scaledDmg = base.baseDamage() * damageMult * variance;
+        if (gearCurves.isLoaded()) {
+            // Authored per-hit: family anchor on the level curve, severed from the asset number.
+            // Rarity is unstamped in the current build, so the nudge resolves to its 1.0 default.
+            String family = base != null ? base.family() : null;
+            float anchor = gearCurves.weaponAnchor(family);
+            float nudge = gearCurves.rarityNudge(null);
+            float perHit = CombatScaling.weaponAuthoredPerHit(anchor, level, nudge) * variance;
+            builder.addLine(
+                    colorTag(COLOR_GRAY, "Power: ") +
+                    colorTag(COLOR_YELLOW, String.format("%.1f", perHit))
+            );
+            if (family != null) {
+                builder.addLine(colorTag(COLOR_GRAY, "Type: ") + colorTag(COLOR_WHITE, family));
+            }
+        } else if (base != null) {
+            float scaledDmg = base.baseDamage() * CombatScaling.weaponMult(level) * variance;
             builder.addLine(
                     colorTag(COLOR_GRAY, "Power: ") +
                     colorTag(COLOR_YELLOW, String.format("%.1f", scaledDmg))
             );
-
             if (base.family() != null) {
                 builder.addLine(colorTag(COLOR_GRAY, "Type: ") + colorTag(COLOR_WHITE, base.family()));
             }
         } else {
             builder.addLine(
                     colorTag(COLOR_GRAY, "Dmg Mult: ") +
-                    colorTag(COLOR_YELLOW, String.format("×%.2f", damageMult * variance))
+                    colorTag(COLOR_YELLOW, String.format("×%.2f", CombatScaling.weaponMult(level) * variance))
             );
         }
 
@@ -121,8 +137,20 @@ public class GearScalingTooltipProvider implements TooltipProvider {
     @Nullable
     private TooltipData buildArmorTooltip(@Nonnull String itemId, int level, float variance) {
         AssetCatalog.ArmorBaseRow base = assetCatalog.getArmorBase(itemId);
-        float baseResist = base != null ? base.physResist() : 0f;
-        float effectiveDr = CombatScaling.armorDR(baseResist, level) * variance;
+        String slot = base != null ? base.slot() : null;
+
+        // Authored DR: slot share of the level-driven budget, severed from the asset resist. Falls
+        // back to legacy asset-resist DR when no curves are loaded or the slot is unmapped.
+        Float share = slot != null && gearCurves.isLoaded() ? gearCurves.slotShare(slot) : null;
+        float effectiveDr;
+        if (share != null) {
+            float nudge = gearCurves.rarityNudge(null);
+            effectiveDr = CombatScaling.armorBudgetDR(share, level,
+                    gearCurves.drBudgetMin(), gearCurves.drBudgetMax()) * nudge * variance;
+        } else {
+            float baseResist = base != null ? base.physResist() : 0f;
+            effectiveDr = CombatScaling.armorDR(baseResist, level) * variance;
+        }
 
         int varHash = Math.round(variance * 1000);
         TooltipData.Builder builder = TooltipData.builder()
@@ -136,26 +164,15 @@ public class GearScalingTooltipProvider implements TooltipProvider {
                 colorTag(COLOR_YELLOW, String.format("%.1f%%", effectiveDr * 100))
         );
 
-        if (base != null) {
+        if (slot != null) {
+            builder.addLine(colorTag(COLOR_GRAY, "Slot: ") + colorTag(COLOR_WHITE, slot));
+        }
+        // Engine still grants the asset's flat armor HP, so it remains worth surfacing.
+        if (base != null && base.healthBonus() > 0) {
             builder.addLine(
-                    colorTag(COLOR_GRAY, "Phys Resist: ") +
-                    colorTag(COLOR_WHITE, String.format("%.1f%%", base.physResist() * 100))
+                    colorTag(COLOR_GRAY, "Health: ") +
+                    colorTag(COLOR_GREEN, "+" + base.healthBonus())
             );
-            if (base.projResist() > 0) {
-                builder.addLine(
-                        colorTag(COLOR_GRAY, "Proj Resist: ") +
-                        colorTag(COLOR_WHITE, String.format("%.1f%%", base.projResist() * 100))
-                );
-            }
-            if (base.healthBonus() > 0) {
-                builder.addLine(
-                        colorTag(COLOR_GRAY, "Health: ") +
-                        colorTag(COLOR_GREEN, "+" + base.healthBonus())
-                );
-            }
-            if (base.slot() != null) {
-                builder.addLine(colorTag(COLOR_GRAY, "Slot: ") + colorTag(COLOR_WHITE, base.slot()));
-            }
         }
 
         return builder.build();
