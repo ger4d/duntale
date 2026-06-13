@@ -1,9 +1,19 @@
 #!/usr/bin/env python3
 """
-generate_scaling.py — Compute scaled stats for levels 1–60 and populate *_scaled tables.
+generate_scaling.py — Compute scaled stats for levels 1–100 and populate *_scaled tables.
 
-Reads *_base tables from scaling.db, applies sigmoid scaling formulas,
-and writes precomputed values to *_scaled tables.
+Reads *_base tables from scaling.db, applies the LIVE runtime scaling formulas
+(mirrors src/main/java/com/duntale/progression/CombatScaling.java), and writes
+precomputed values to *_scaled tables.
+
+Live formula notes (CombatScaling.java):
+  - sigmoid: normalized logistic over [1,100], midpoint 50, steepness 7.2/100,
+    rescaled so s(1)=0 and s(100)=1
+  - NPC HP:      base × (1 + NPC_HP_K × s)        NPC_HP_K = 8
+  - NPC damage:  1 + NPC_DMG_K × s                NPC_DMG_K = 5
+  - Weapon mult: 1 + WEAPON_K × s                 WEAPON_K = 6
+  - Armor mult:  max(1 + (ARMOR_K − 1) × s, 1)    ARMOR_K = 4, DR cap 0.65
+  - Elite/Boss:  stepped per-level-range multipliers (see variant tables below)
 
 Usage:
     uv run generate_scaling.py [--db scaling.db] [--verify]
@@ -18,51 +28,71 @@ import sys
 from pathlib import Path
 
 
-# ── Scaling Formulas ──────────────────────────────────────────────────
+# ── Scaling Formulas (mirror CombatScaling.java) ──────────────────────
 
-def sigmoid(level: int, midpoint: float = 30.0, steepness: float = 0.12) -> float:
-    """Normalized sigmoid scaling factor. S(1)≈0.03, S(30)=0.50, S(60)≈0.97."""
-    return 1.0 / (1.0 + math.exp(-steepness * (level - midpoint)))
-
-
-def scale_stat(base: float, level: int, k: float) -> float:
-    """Apply sigmoid scaling: base × (1 + (k-1) × S(L))."""
-    return base * (1.0 + (k - 1.0) * sigmoid(level))
+MIN_LEVEL = 1
+MAX_LEVEL = 100
+MIDPOINT = MAX_LEVEL / 2.0
+STEEPNESS = 7.2 / MAX_LEVEL
 
 
-# ── Monster Scaling Config ────────────────────────────────────────────
+def _raw_sigmoid(level: float) -> float:
+    return 1.0 / (1.0 + math.exp(-STEEPNESS * (level - MIDPOINT)))
 
-MONSTER_HP_K = 8.0       # Max HP multiplier at L60
-MONSTER_DMG_K = 5.0      # Max damage multiplier at L60
-BOSS_HP_K = 4.0          # Bosses scale more slowly
-BOSS_DMG_K = 3.0
 
-# Elite multipliers per level range
-ELITE_TIERS = [
-    (1, 10, 1.0, 1.0),     # No elites
-    (10, 20, 1.5, 1.3),
-    (20, 30, 2.0, 1.5),
-    (30, 45, 2.5, 1.8),
-    (45, 61, 3.0, 2.0),
-]
+_S_MIN = _raw_sigmoid(MIN_LEVEL)
+_S_MAX = _raw_sigmoid(MAX_LEVEL)
 
-# Weapon and armor scaling
-WEAPON_DMG_K = 6.0       # Max weapon damage multiplier
-ARMOR_RESIST_K = 4.0     # Max armor resistance multiplier
+
+def sigmoid(level: int) -> float:
+    """Normalized sigmoid matching CombatScaling: s(1)=0, s(100)=1."""
+    clamped = max(MIN_LEVEL, min(level, MAX_LEVEL))
+    raw = _raw_sigmoid(clamped)
+    return max(0.0, min((raw - _S_MIN) / (_S_MAX - _S_MIN), 1.0))
+
+
+# ── Monster Scaling Config (live values) ──────────────────────────────
+
+MONSTER_HP_K = 8.0       # HP multiplier reaches 9× at L100
+MONSTER_DMG_K = 5.0      # Damage multiplier reaches 6× at L100
+
+# Weapon and armor scaling (live values)
+WEAPON_DMG_K = 6.0       # Weapon damage multiplier reaches 7× at L100
+ARMOR_RESIST_K = 4.0     # Armor resistance multiplier reaches 4× at L100
 ARMOR_DR_CAP = 0.65      # Hard cap on damage reduction (65%)
 
-# Safeguards
-MAX_HP = 10_000
-MAX_DAMAGE = 500.0
 MIN_MULTIPLIER = 1.0
 
 
-def get_elite_multipliers(level: int) -> tuple[float, float]:
-    """Return (hp_mult, dmg_mult) for elites at the given level."""
-    for low, high, hp_m, dmg_m in ELITE_TIERS:
-        if low <= level < high:
-            return hp_m, dmg_m
-    return 1.0, 1.0
+def _threshold(ratio: float) -> int:
+    """Mirror CombatScaling.threshold: max(MIN_LEVEL, round(MAX_LEVEL × ratio))."""
+    return max(MIN_LEVEL, round(MAX_LEVEL * ratio))
+
+
+def elite_multipliers(level: int) -> tuple[float, float]:
+    """Return (hp_mult, dmg_mult) for elites at the given level (live values)."""
+    if level >= _threshold(0.75):
+        return 6.5, 2.25
+    if level >= _threshold(0.50):
+        return 5.5, 2.0
+    if level >= _threshold(1.0 / 3.0):
+        return 4.5, 1.75
+    if level >= _threshold(1.0 / 6.0):
+        return 3.5, 1.5
+    return 2.5, 1.25
+
+
+def boss_multipliers(level: int) -> tuple[float, float]:
+    """Return (hp_mult, dmg_mult) for bosses at the given level (live values)."""
+    if level >= _threshold(0.75):
+        return 25.0, 5.2
+    if level >= _threshold(0.50):
+        return 22.5, 4.5
+    if level >= _threshold(1.0 / 3.0):
+        return 17.5, 3.2
+    if level >= _threshold(1.0 / 6.0):
+        return 15.0, 2.5
+    return 10.0, 2.0
 
 
 # ── Schema ────────────────────────────────────────────────────────────
@@ -78,6 +108,8 @@ CREATE TABLE monsters_scaled (
     effective_dps   REAL,
     elite_hp        INTEGER,
     elite_damage    REAL,
+    boss_hp         INTEGER,
+    boss_damage     REAL,
     modifiers_json  TEXT,
     PRIMARY KEY (npc_id, level)
 );
@@ -110,74 +142,70 @@ CREATE INDEX IF NOT EXISTS idx_armor_scaled_level ON armor_scaled(level, armor_i
 
 
 def generate_monster_scaling(conn: sqlite3.Connection) -> int:
-    """Generate scaled stats for all monsters at levels 1–60."""
+    """Generate scaled stats for all monsters at levels 1–100.
+
+    Mirrors CombatScaling.npcScaledHp / npcDamageMult: a single shared base
+    curve plus runtime variant multipliers (NORMAL/ELITE/BOSS columns).
+    """
     rows = conn.execute(
         "SELECT npc_id, tier, base_hp, base_damage FROM monsters_base"
     ).fetchall()
 
     count = 0
-    for npc_id, tier, base_hp, base_damage in rows:
-        is_boss = tier == "Boss"
-        hp_k = BOSS_HP_K if is_boss else MONSTER_HP_K
-        dmg_k = BOSS_DMG_K if is_boss else MONSTER_DMG_K
-
-        for level in range(1, 61):
+    for npc_id, _tier, base_hp, base_damage in rows:
+        for level in range(MIN_LEVEL, MAX_LEVEL + 1):
             s = sigmoid(level)
 
-            scaled_hp = int(round(base_hp * (1.0 + (hp_k - 1.0) * s)))
-            scaled_hp = min(scaled_hp, MAX_HP)
-            scaled_hp = max(scaled_hp, base_hp)
-
-            dmg_mult = max(1.0 + (dmg_k - 1.0) * s, MIN_MULTIPLIER)
-            scaled_damage = min(base_damage * dmg_mult, MAX_DAMAGE)
+            # Live: baseHp + NPC_HP_K × baseHp × s
+            scaled_hp = int(round(base_hp * (1.0 + MONSTER_HP_K * s)))
+            dmg_mult = max(1.0 + MONSTER_DMG_K * s, MIN_MULTIPLIER)
+            scaled_damage = base_damage * dmg_mult
 
             # Assume ~1 attack per 2s for basic DPS estimate
             effective_dps = scaled_damage / 2.0
 
-            # Elite values
-            elite_hp_mult, elite_dmg_mult = get_elite_multipliers(level)
-            elite_hp = int(round(scaled_hp * elite_hp_mult))
-            elite_hp = min(elite_hp, MAX_HP)
-            elite_damage = min(scaled_damage * elite_dmg_mult, MAX_DAMAGE)
+            elite_hp_mult, elite_dmg_mult = elite_multipliers(level)
+            boss_hp_mult, boss_dmg_mult = boss_multipliers(level)
 
             modifiers = {
                 "hp_multiplier": round(scaled_hp / base_hp, 3),
                 "dmg_multiplier": round(dmg_mult, 3),
                 "sigmoid": round(s, 4),
             }
-            if is_boss:
-                modifiers["boss"] = True
 
             conn.execute(
                 """INSERT INTO monsters_scaled
                    (npc_id, level, scaled_hp, scaled_damage, damage_mult,
-                    effective_dps, elite_hp, elite_damage, modifiers_json)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                    effective_dps, elite_hp, elite_damage, boss_hp, boss_damage,
+                    modifiers_json)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 (
                     npc_id, level, scaled_hp, round(scaled_damage, 2),
                     round(dmg_mult, 4), round(effective_dps, 2),
-                    elite_hp, round(elite_damage, 2),
+                    int(round(scaled_hp * elite_hp_mult)), round(scaled_damage * elite_dmg_mult, 2),
+                    int(round(scaled_hp * boss_hp_mult)), round(scaled_damage * boss_dmg_mult, 2),
                     json.dumps(modifiers),
                 ),
             )
             count += 1
 
     conn.commit()
-    print(f"  Generated {count} monster scaling rows ({len(rows)} NPCs × 60 levels)")
+    print(f"  Generated {count} monster scaling rows ({len(rows)} NPCs × {MAX_LEVEL} levels)")
     return count
 
 
 def generate_weapon_scaling(conn: sqlite3.Connection) -> int:
-    """Generate scaled damage multipliers for all weapons at levels 1–60."""
+    """Generate scaled damage multipliers for all weapons at levels 1–100."""
     rows = conn.execute(
         "SELECT weapon_id, base_damage FROM weapons_base"
     ).fetchall()
 
     count = 0
     for weapon_id, base_damage in rows:
-        for level in range(1, 61):
+        for level in range(MIN_LEVEL, MAX_LEVEL + 1):
             s = sigmoid(level)
-            dmg_mult = max(1.0 + (WEAPON_DMG_K - 1.0) * s, MIN_MULTIPLIER)
+            # Live: 1 + WEAPON_K × s
+            dmg_mult = max(1.0 + WEAPON_DMG_K * s, MIN_MULTIPLIER)
 
             # Assume 1.5s attack cycle for DPS estimate
             effective_dps = (base_damage * dmg_mult) / 1.5
@@ -199,23 +227,24 @@ def generate_weapon_scaling(conn: sqlite3.Connection) -> int:
             count += 1
 
     conn.commit()
-    print(f"  Generated {count} weapon scaling rows ({len(rows)} weapons × 60 levels)")
+    print(f"  Generated {count} weapon scaling rows ({len(rows)} weapons × {MAX_LEVEL} levels)")
     return count
 
 
 def generate_armor_scaling(conn: sqlite3.Connection) -> int:
-    """Generate scaled resistance values for all armor at levels 1–60."""
+    """Generate scaled resistance values for all armor at levels 1–100."""
     rows = conn.execute(
         "SELECT armor_id, phys_resist, health_bonus FROM armor_base"
     ).fetchall()
 
     count = 0
     for armor_id, phys_resist, health_bonus in rows:
-        for level in range(1, 61):
+        for level in range(MIN_LEVEL, MAX_LEVEL + 1):
             s = sigmoid(level)
+            # Live: max(1 + (ARMOR_K − 1) × s, 1)
             resist_mult = max(1.0 + (ARMOR_RESIST_K - 1.0) * s, MIN_MULTIPLIER)
 
-            # Effective DR with diminishing returns + hard cap
+            # Effective DR with hard cap
             effective_dr = phys_resist * resist_mult
             effective_dr = min(effective_dr, ARMOR_DR_CAP)
 
@@ -244,7 +273,7 @@ def generate_armor_scaling(conn: sqlite3.Connection) -> int:
             count += 1
 
     conn.commit()
-    print(f"  Generated {count} armor scaling rows ({len(rows)} pieces × 60 levels)")
+    print(f"  Generated {count} armor scaling rows ({len(rows)} pieces × {MAX_LEVEL} levels)")
     return count
 
 
@@ -252,18 +281,6 @@ def verify_scaling(conn: sqlite3.Connection) -> bool:
     """Verify all scaled values are within bounds."""
     print("\n── Verification ──")
     ok = True
-
-    # Check monster HP bounds
-    row = conn.execute("SELECT COUNT(*) FROM monsters_scaled WHERE scaled_hp > ?", (MAX_HP,)).fetchone()
-    if row[0] > 0:
-        print(f"  FAIL: {row[0]} monster rows exceed max HP {MAX_HP}")
-        ok = False
-
-    # Check damage bounds
-    row = conn.execute("SELECT COUNT(*) FROM monsters_scaled WHERE scaled_damage > ?", (MAX_DAMAGE,)).fetchone()
-    if row[0] > 0:
-        print(f"  FAIL: {row[0]} monster rows exceed max damage {MAX_DAMAGE}")
-        ok = False
 
     # Check multiplier floors
     row = conn.execute("SELECT COUNT(*) FROM monsters_scaled WHERE damage_mult < ?", (MIN_MULTIPLIER,)).fetchone()
@@ -281,16 +298,33 @@ def verify_scaling(conn: sqlite3.Connection) -> bool:
         print(f"  FAIL: {row[0]} armor rows exceed DR cap {ARMOR_DR_CAP}")
         ok = False
 
-    # Spot-check: Zombie at L30 should have ~4.5× HP
+    # Curve endpoints: s(1)=0 → mult 1.0; s(100)=1 → weapon mult 7.0
     row = conn.execute(
-        "SELECT scaled_hp, damage_mult FROM monsters_scaled WHERE npc_id = 'Zombie' AND level = 30"
+        "SELECT damage_mult FROM weapons_scaled WHERE level = 1 LIMIT 1"
+    ).fetchone()
+    if row and abs(row[0] - 1.0) > 0.001:
+        print(f"  FAIL: weapon mult at L1 = {row[0]} (expected 1.0)")
+        ok = False
+    row = conn.execute(
+        "SELECT damage_mult FROM weapons_scaled WHERE level = ? LIMIT 1", (MAX_LEVEL,)
+    ).fetchone()
+    if row and abs(row[0] - (1.0 + WEAPON_DMG_K)) > 0.001:
+        print(f"  FAIL: weapon mult at L{MAX_LEVEL} = {row[0]} (expected {1.0 + WEAPON_DMG_K})")
+        ok = False
+
+    # Spot-check: Zombie at L50 (midpoint) should have ~(1 + 8×0.473) ≈ 4.8× HP
+    row = conn.execute(
+        "SELECT scaled_hp, damage_mult FROM monsters_scaled WHERE npc_id = 'Zombie' AND level = 50"
     ).fetchone()
     if row:
-        hp_mult = row[0] / 49.0  # base Zombie HP
-        if not (3.5 <= hp_mult <= 5.5):
-            print(f"  WARN: Zombie L30 HP mult = {hp_mult:.2f} (expected ~4.5)")
-        else:
-            print(f"  OK: Zombie L30 HP = {row[0]} (×{hp_mult:.2f}), Dmg mult = ×{row[1]:.2f}")
+        base = conn.execute("SELECT base_hp FROM monsters_base WHERE npc_id = 'Zombie'").fetchone()
+        if base:
+            hp_mult = row[0] / base[0]
+            expected = 1.0 + MONSTER_HP_K * sigmoid(50)
+            if abs(hp_mult - expected) > 0.5:
+                print(f"  WARN: Zombie L50 HP mult = {hp_mult:.2f} (expected ~{expected:.2f})")
+            else:
+                print(f"  OK: Zombie L50 HP = {row[0]} (×{hp_mult:.2f}), Dmg mult = ×{row[1]:.2f}")
 
     if ok:
         print("  All checks passed!")
@@ -300,7 +334,7 @@ def verify_scaling(conn: sqlite3.Connection) -> bool:
 def print_sample_table(conn: sqlite3.Connection):
     """Print sample scaling values for key NPCs at breakpoint levels."""
     print("\n── Sample Scaling Table (Monsters) ──")
-    levels = [1, 10, 15, 20, 30, 40, 45, 50, 60]
+    levels = [1, 10, 20, 30, 40, 50, 60, 75, 90, 100]
     npcs = ["Zombie", "Skeleton_Fighter", "Bear_Grizzly", "Werewolf", "Shadow_Knight", "Dragon_Fire"]
 
     header = f"{'NPC':<22s}" + "".join(f"{'L'+str(l):>8s}" for l in levels)
@@ -356,7 +390,7 @@ def print_sample_table(conn: sqlite3.Connection):
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Generate scaled stats for levels 1–60")
+    parser = argparse.ArgumentParser(description="Generate scaled stats for levels 1–100")
     parser.add_argument(
         "--db",
         default=str(Path(__file__).resolve().parent / "scaling.db"),
@@ -402,13 +436,14 @@ def main():
         config = {
             "monster_hp_k": MONSTER_HP_K,
             "monster_dmg_k": MONSTER_DMG_K,
-            "boss_hp_k": BOSS_HP_K,
-            "boss_dmg_k": BOSS_DMG_K,
             "weapon_dmg_k": WEAPON_DMG_K,
             "armor_resist_k": ARMOR_RESIST_K,
             "armor_dr_cap": ARMOR_DR_CAP,
-            "sigmoid_midpoint": 30.0,
-            "sigmoid_steepness": 0.12,
+            "sigmoid_midpoint": MIDPOINT,
+            "sigmoid_steepness": STEEPNESS,
+            "sigmoid_normalized": True,
+            "max_level": MAX_LEVEL,
+            "variant_model": "live stepped multipliers (CombatScaling.elite/bossMultiplier)",
         }
         conn.execute(
             "INSERT OR REPLACE INTO scaling_config (key, value) VALUES (?, ?)",

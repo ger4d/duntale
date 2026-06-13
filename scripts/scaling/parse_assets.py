@@ -1,23 +1,40 @@
 #!/usr/bin/env python3
 """
-parse_assets.py — Scan HytaleAssets to populate *_base tables in scaling.db.
+parse_assets.py — Scan asset sources to populate *_base tables in scaling.db.
+
+Scans one or more asset roots (HytaleAssets, the v3-zsquad mod resources, and
+third-party mod jars) and records every NPC, weapon, and armor piece with a
+`source` label so downstream analysis can distinguish built-in content from
+modded content.
 
 Resolves full NPC inheritance chains (Reference → Template → Component)
 to extract MaxHealth, MaxSpeed, damage, attack distance, etc.
-Also parses weapon and armor definitions.
+Weapons resolve damage two ways, mirroring the runtime AssetCatalog:
+  1. inline   — InteractionVars[*].Interactions[*].DamageCalculator.BaseDamage
+  2. chain    — Interactions.{Primary,...} → RootInteraction → Interaction assets
+Weapons with no resolvable damage are KEPT with damage_method='none' because the
+runtime MerchantPriceRegistry still prices them via the tier/quality fallback.
 
 Usage:
-    uv run parse_assets.py [--assets-root ../../HytaleAssets] [--db scaling.db]
+    uv run parse_assets.py [--source label=path ...] [--db scaling.db]
+
+Default sources (load order; later sources override same-named assets):
+    builtin = <repo>/HytaleAssets
+    duntale = <repo>/v3-zsquad/src/main/resources
+    wans    = <repo>/server/Server/mods/WansWonderWeapon-1.0.25.jar
+    zets    = <repo>/server/Server/mods/ZetsMysticWeapons-1.2.2.jar
+
+Jar sources are transparently extracted (Server/** only) to a temp directory.
 """
 from __future__ import annotations
 
 import argparse
 import json
-import math
-import os
-import re
 import sqlite3
 import sys
+import tempfile
+import zipfile
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -25,9 +42,11 @@ from typing import Any
 # ── Schema DDL ────────────────────────────────────────────────────────
 
 SCHEMA_DDL = """
-CREATE TABLE IF NOT EXISTS monsters_base (
+DROP TABLE IF EXISTS monsters_base;
+CREATE TABLE monsters_base (
     npc_id          TEXT PRIMARY KEY,
     name            TEXT NOT NULL,
+    source          TEXT NOT NULL DEFAULT 'builtin',
     category        TEXT NOT NULL,
     tier            TEXT NOT NULL,
     base_hp         INTEGER NOT NULL,
@@ -40,19 +59,24 @@ CREATE TABLE IF NOT EXISTS monsters_base (
     extra_json      TEXT
 );
 
-CREATE TABLE IF NOT EXISTS weapons_base (
+DROP TABLE IF EXISTS weapons_base;
+CREATE TABLE weapons_base (
     weapon_id       TEXT PRIMARY KEY,
     name            TEXT NOT NULL,
+    source          TEXT NOT NULL DEFAULT 'builtin',
     family          TEXT NOT NULL,
     quality         TEXT NOT NULL,
     item_level      INTEGER NOT NULL,
     base_damage     REAL NOT NULL,
+    damage_method   TEXT NOT NULL DEFAULT 'none',
     attack_moves_json TEXT
 );
 
-CREATE TABLE IF NOT EXISTS armor_base (
+DROP TABLE IF EXISTS armor_base;
+CREATE TABLE armor_base (
     armor_id        TEXT PRIMARY KEY,
     name            TEXT NOT NULL,
+    source          TEXT NOT NULL DEFAULT 'builtin',
     slot            TEXT NOT NULL,
     quality         TEXT NOT NULL,
     item_level      INTEGER NOT NULL,
@@ -70,11 +94,60 @@ CREATE TABLE IF NOT EXISTS scaling_config (
 
 
 def init_db(db_path: str) -> sqlite3.Connection:
-    """Create/open the database and ensure schema exists."""
+    """Create/open the database and (re)create the base-table schema."""
     conn = sqlite3.connect(db_path)
     conn.executescript(SCHEMA_DDL)
     conn.commit()
     return conn
+
+
+# ── Source handling ───────────────────────────────────────────────────
+
+@dataclass(frozen=True)
+class AssetSource:
+    """A labeled asset root containing a Server/ directory."""
+    label: str
+    root: Path
+
+
+def prepare_sources(specs: list[str], repo_root: Path, temp_dir: Path) -> list[AssetSource]:
+    """Resolve --source label=path specs (or defaults) into AssetSource roots.
+
+    Jar paths are extracted (Server/** and manifest.json) into temp_dir/<label>.
+    """
+    if not specs:
+        specs = [
+            f"builtin={repo_root / 'HytaleAssets'}",
+            f"duntale={repo_root / 'v3-zsquad' / 'src' / 'main' / 'resources'}",
+            f"wans={repo_root / 'server' / 'Server' / 'mods' / 'WansWonderWeapon-1.0.25.jar'}",
+            f"zets={repo_root / 'server' / 'Server' / 'mods' / 'ZetsMysticWeapons-1.2.2.jar'}",
+        ]
+
+    sources: list[AssetSource] = []
+    for spec in specs:
+        if "=" not in spec:
+            print(f"ERROR: --source must be label=path, got: {spec}", file=sys.stderr)
+            sys.exit(1)
+        label, _, raw_path = spec.partition("=")
+        path = Path(raw_path)
+        if not path.exists():
+            print(f"  WARN: source '{label}' not found at {path}, skipping", file=sys.stderr)
+            continue
+
+        if path.suffix.lower() in (".jar", ".zip"):
+            extract_root = temp_dir / label
+            extract_root.mkdir(parents=True, exist_ok=True)
+            with zipfile.ZipFile(path) as zf:
+                members = [m for m in zf.namelist() if m.startswith("Server/")]
+                zf.extractall(extract_root, members)
+            sources.append(AssetSource(label, extract_root))
+        else:
+            sources.append(AssetSource(label, path))
+
+    if not sources:
+        print("ERROR: no usable asset sources", file=sys.stderr)
+        sys.exit(1)
+    return sources
 
 
 # ── JSON Helpers ──────────────────────────────────────────────────────
@@ -102,13 +175,21 @@ def deep_merge(base: dict, overlay: dict) -> dict:
 
 # ── NPC Parsing ───────────────────────────────────────────────────────
 
-def discover_npc_files(roles_root: Path) -> dict[str, Path]:
-    """Build name→path map for all NPC role JSON files."""
+def discover_npc_files(sources: list[AssetSource]) -> tuple[dict[str, Path], dict[str, str], dict[str, Path]]:
+    """Build name→path, name→source, and name→roles_root maps across all sources."""
     name_to_path: dict[str, Path] = {}
-    for json_path in roles_root.rglob("*.json"):
-        name = json_path.stem  # filename without .json
-        name_to_path[name] = json_path
-    return name_to_path
+    name_to_source: dict[str, str] = {}
+    name_to_root: dict[str, Path] = {}
+    for src in sources:
+        roles_root = src.root / "Server" / "NPC" / "Roles"
+        if not roles_root.exists():
+            continue
+        for json_path in roles_root.rglob("*.json"):
+            name = json_path.stem  # filename without .json
+            name_to_path[name] = json_path
+            name_to_source[name] = src.label
+            name_to_root[name] = roles_root
+    return name_to_path, name_to_source, name_to_root
 
 
 def resolve_compute(data: dict, params: dict) -> Any:
@@ -217,7 +298,7 @@ def extract_primary_damage(interaction_vars: dict | None) -> tuple[float, dict]:
     """Extract primary damage and all attack move damages from InteractionVars.
 
     Returns (primary_damage, all_moves_dict).
-    primary_damage is the first/average melee damage found.
+    primary_damage is the average melee damage found.
     """
     if not interaction_vars:
         return 0.0, {}
@@ -412,16 +493,14 @@ def should_skip_npc(name: str, data: dict, resolved: dict | None = None) -> bool
     return False
 
 
-def parse_npcs(roles_root: Path, conn: sqlite3.Connection) -> int:
-    """Parse all NPCs and insert into monsters_base. Returns count."""
-    print(f"Scanning NPCs from {roles_root}...")
-    name_to_path = discover_npc_files(roles_root)
+def parse_npcs(sources: list[AssetSource], conn: sqlite3.Connection) -> int:
+    """Parse all NPCs from every source and insert into monsters_base. Returns count."""
+    name_to_path, name_to_source, name_to_root = discover_npc_files(sources)
+    print(f"Scanning NPCs from {len(sources)} sources...")
     print(f"  Found {len(name_to_path)} NPC role files")
 
     cache: dict[str, dict] = {}
     inserted = 0
-
-    conn.execute("DELETE FROM monsters_base")
 
     for name, path in sorted(name_to_path.items()):
         resolved = resolve_npc(name, name_to_path, cache)
@@ -454,7 +533,7 @@ def parse_npcs(roles_root: Path, conn: sqlite3.Connection) -> int:
         attack_dist = extract_attack_distance(resolved)
         view_range = extract_view_range(resolved)
         hearing_range = extract_hearing_range(resolved)
-        category = infer_category(path, roles_root)
+        category = infer_category(path, name_to_root[name])
         tier = classify_tier(max_health)
         ai_template = infer_ai_template(resolved)
 
@@ -464,16 +543,20 @@ def parse_npcs(roles_root: Path, conn: sqlite3.Connection) -> int:
         attitude = resolved.get("DefaultPlayerAttitude")
         if attitude:
             extra["player_attitude"] = attitude
+        summon_kind = resolved.get("SummonKind")
+        if isinstance(summon_kind, str) and summon_kind:
+            extra["summon_kind"] = summon_kind
 
         try:
             conn.execute(
                 """INSERT OR REPLACE INTO monsters_base
-                   (npc_id, name, category, tier, base_hp, base_damage, base_speed,
+                   (npc_id, name, source, category, tier, base_hp, base_damage, base_speed,
                     attack_distance, ai_template, view_range, hearing_range, extra_json)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 (
                     name,
                     name.replace("_", " "),
+                    name_to_source[name],
                     category,
                     tier,
                     max_health,
@@ -495,93 +578,219 @@ def parse_npcs(roles_root: Path, conn: sqlite3.Connection) -> int:
     return inserted
 
 
-# ── Weapon Parsing ────────────────────────────────────────────────────
+# ── Item Discovery (weapons + armor) ──────────────────────────────────
 
-def discover_item_files(items_root: Path, subfolder: str) -> dict[str, tuple[Path, dict]]:
-    """Load all item JSON files from a subfolder, returning name→(path, data)."""
-    result: dict[str, tuple[Path, dict]] = {}
-    target = items_root / subfolder
-    if not target.exists():
-        print(f"  WARN: {target} not found", file=sys.stderr)
-        return result
-    for json_path in target.rglob("*.json"):
-        data = load_json(json_path)
-        if data is not None:
-            result[json_path.stem] = (json_path, data)
+def discover_items(sources: list[AssetSource]) -> dict[str, tuple[Path, dict, str]]:
+    """Load all item JSON files across sources, returning name→(path, data, source).
+
+    Later sources override earlier ones for the same asset name, matching the
+    server's mod-pack override order.
+    """
+    result: dict[str, tuple[Path, dict, str]] = {}
+    for src in sources:
+        items_root = src.root / "Server" / "Item" / "Items"
+        if not items_root.exists():
+            continue
+        for json_path in items_root.rglob("*.json"):
+            data = load_json(json_path)
+            if data is not None:
+                result[json_path.stem] = (json_path, data, src.label)
     return result
 
 
-def resolve_weapon_damage(
-    data: dict, all_weapons: dict[str, tuple[Path, dict]]
-) -> tuple[float, dict]:
-    """Extract primary damage and all attack moves from a weapon.
+def build_interaction_indexes(sources: list[AssetSource]) -> tuple[dict[str, dict], dict[str, dict]]:
+    """Index RootInteraction and Interaction assets by stem across all sources."""
+    roots: dict[str, dict] = {}
+    interactions: dict[str, dict] = {}
+    for src in sources:
+        for subfolder, target in (("RootInteractions", roots), ("Interactions", interactions)):
+            folder = src.root / "Server" / "Item" / subfolder
+            if not folder.exists():
+                continue
+            for json_path in folder.rglob("*.json"):
+                data = load_json(json_path)
+                if data is not None:
+                    target[json_path.stem] = data
+    return roots, interactions
 
-    Handles Parent inheritance: if the weapon has a Parent, we merge
-    the parent's InteractionVars as fallback.
-    """
-    # Resolve parent chain for InteractionVars
+
+def resolve_item(
+    name: str,
+    all_items: dict[str, tuple[Path, dict, str]],
+    cache: dict[str, dict],
+    depth: int = 0,
+) -> dict | None:
+    """Resolve an item's full Parent inheritance chain into one merged dict."""
+    if name in cache:
+        return cache[name]
+    entry = all_items.get(name)
+    if entry is None or depth > 12:
+        return None
+
+    _, data, _ = entry
     parent_name = data.get("Parent")
-    parent_iv: dict = {}
-    if parent_name and parent_name in all_weapons:
-        _, parent_data = all_weapons[parent_name]
-        parent_iv = parent_data.get("InteractionVars", {})
+    base: dict = {}
+    if isinstance(parent_name, str):
+        parent = resolve_item(parent_name, all_items, cache, depth + 1)
+        if parent:
+            base = parent
+    merged = deep_merge(base, data)
+    cache[name] = merged
+    return merged
 
-    iv = data.get("InteractionVars", {})
-    merged_iv = deep_merge(parent_iv, iv)
 
-    return extract_primary_damage(merged_iv)
+def _walk_interaction_graph(
+    node: Any,
+    doc_name: str,
+    interactions: dict[str, dict],
+    visited: set[str],
+    moves: dict[str, float],
+) -> None:
+    """Recursively collect DamageCalculator.BaseDamage totals reachable from node.
+
+    Interaction chains nest through Charging/Chaining "Next" maps, "Interactions"
+    lists, and "Parent" references, so any string anywhere in a reachable document
+    that names another interaction asset is followed (each document only once).
+    """
+    if isinstance(node, str):
+        if node in visited:
+            return
+        data = interactions.get(node)
+        if data is None:
+            return
+        visited.add(node)
+        _walk_interaction_graph(data, node, interactions, visited, moves)
+        return
+
+    if isinstance(node, list):
+        for child in node:
+            _walk_interaction_graph(child, doc_name, interactions, visited, moves)
+        return
+
+    if not isinstance(node, dict):
+        return
+
+    dc = node.get("DamageCalculator")
+    if isinstance(dc, dict):
+        base_damage = dc.get("BaseDamage")
+        if isinstance(base_damage, dict):
+            total = sum(v for v in base_damage.values() if isinstance(v, (int, float)) and v > 0)
+            if total > 0:
+                moves[doc_name] = max(moves.get(doc_name, 0.0), total)
+
+    for value in node.values():
+        _walk_interaction_graph(value, doc_name, interactions, visited, moves)
 
 
-def parse_weapons(items_root: Path, conn: sqlite3.Connection) -> int:
+def chain_damage(
+    merged_item: dict,
+    roots: dict[str, dict],
+    interactions: dict[str, dict],
+) -> tuple[float, dict]:
+    """Extract damage via Interactions.{slot} → RootInteraction → Interaction chains.
+
+    Used for items (e.g. WansWonderWeapon) that author damage in standalone
+    interaction assets instead of inline InteractionVars. The runtime AssetCatalog
+    only inspects direct root children, but authored damage commonly sits several
+    Charging/Chaining hops deep, so we walk the full reachable interaction graph.
+    """
+    refs = merged_item.get("Interactions")
+    if not isinstance(refs, dict):
+        return 0.0, {}
+
+    moves: dict[str, float] = {}
+    visited: set[str] = set()
+    for slot, root_id in refs.items():
+        if not isinstance(root_id, str):
+            continue
+        root = roots.get(root_id)
+        if not isinstance(root, dict):
+            continue
+        _walk_interaction_graph(root, f"{root_id}:{slot}", interactions, visited, moves)
+
+    if not moves:
+        return 0.0, {}
+    return sum(moves.values()) / len(moves), moves
+
+
+def is_skippable_item(name: str, quality: str) -> bool:
+    """Mirror the runtime AssetCatalog skip rules for templates/debug items."""
+    if name.startswith("Template_") or quality in ("Template", "Developer", "Technical", "Debug", "QA"):
+        return True
+    lower = name.lower()
+    return "debug" in lower or "test" in lower or "_qa_" in lower
+
+
+def is_npc_item(name: str) -> bool:
+    """Mirror runtime AssetCatalog NPC-held item detection."""
+    lower = name.lower()
+    return lower.endswith("_npc") or "_npc_" in lower
+
+
+def parse_weapons(
+    all_items: dict[str, tuple[Path, dict, str]],
+    roots: dict[str, dict],
+    interactions: dict[str, dict],
+    conn: sqlite3.Connection,
+) -> int:
     """Parse all weapons and insert into weapons_base. Returns count."""
-    print(f"Scanning weapons from {items_root / 'Weapon'}...")
-    all_weapons = discover_item_files(items_root, "Weapon")
-    print(f"  Found {len(all_weapons)} weapon files")
-
-    conn.execute("DELETE FROM weapons_base")
+    cache: dict[str, dict] = {}
     inserted = 0
 
-    for name, (path, data) in sorted(all_weapons.items()):
-        # Skip templates
-        quality = data.get("Quality", "")
-        if quality == "Template" or name.startswith("Template_"):
+    for name in sorted(all_items):
+        path, _, source = all_items[name]
+        merged = resolve_item(name, all_items, cache)
+        if merged is None:
             continue
 
-        # Skip arrows, ammo, debug items
+        # Weapon = has a Weapon config (runtime: item.getWeapon() != null)
+        # or lives under an Items/**/Weapon/ folder.
+        if not isinstance(merged.get("Weapon"), dict) and "Weapon" not in path.parts:
+            continue
+
+        quality = merged.get("Quality", "")
+        if is_skippable_item(name, quality) or is_npc_item(name):
+            continue
+
+        # Skip arrows and ammo (runtime does the same)
         lower = name.lower()
-        if "arrow" in lower or "ammo" in lower or "debug" in lower or "test" in lower:
+        if "arrow" in lower or "ammo" in lower:
             continue
 
         # Extract family from Tags or directory
-        tags = data.get("Tags", {})
-        family_list = tags.get("Family", [])
+        tags = merged.get("Tags", {})
+        family_list = tags.get("Family", []) if isinstance(tags, dict) else []
         if family_list and isinstance(family_list, list):
             family = family_list[0]
         else:
-            # Infer from parent directory name
             family = path.parent.name
 
-        item_level = data.get("ItemLevel", 0)
+        item_level = merged.get("ItemLevel", 0)
         if not isinstance(item_level, int):
             item_level = 0
 
-        primary_damage, all_moves = resolve_weapon_damage(data, all_weapons)
-
+        # Damage resolution: inline InteractionVars first, then interaction chains
+        primary_damage, all_moves = extract_primary_damage(merged.get("InteractionVars"))
+        damage_method = "inline"
         if primary_damage <= 0:
-            continue  # No damage defined — skip
+            primary_damage, all_moves = chain_damage(merged, roots, interactions)
+            damage_method = "chain" if primary_damage > 0 else "none"
 
         try:
             conn.execute(
                 """INSERT OR REPLACE INTO weapons_base
-                   (weapon_id, name, family, quality, item_level, base_damage, attack_moves_json)
-                   VALUES (?, ?, ?, ?, ?, ?, ?)""",
+                   (weapon_id, name, source, family, quality, item_level, base_damage,
+                    damage_method, attack_moves_json)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 (
                     name,
                     name.replace("_", " "),
+                    source,
                     family,
                     quality if quality else "Common",
                     item_level,
                     round(primary_damage, 2),
+                    damage_method,
                     json.dumps(all_moves) if all_moves else None,
                 ),
             )
@@ -594,60 +803,37 @@ def parse_weapons(items_root: Path, conn: sqlite3.Connection) -> int:
     return inserted
 
 
-# ── Armor Parsing ─────────────────────────────────────────────────────
-
-def resolve_armor_stats(
-    data: dict, all_armor: dict[str, tuple[Path, dict]]
-) -> dict:
-    """Extract armor stats, resolving Parent inheritance."""
-    parent_name = data.get("Parent")
-    parent_armor: dict = {}
-    if parent_name and parent_name in all_armor:
-        _, parent_data = all_armor[parent_name]
-        parent_armor = parent_data.get("Armor", {})
-
-    armor = data.get("Armor", {})
-    merged = deep_merge(parent_armor, armor)
-    return merged
-
-
-def parse_armor(items_root: Path, conn: sqlite3.Connection) -> int:
+def parse_armor(
+    all_items: dict[str, tuple[Path, dict, str]],
+    conn: sqlite3.Connection,
+) -> int:
     """Parse all armor and insert into armor_base. Returns count."""
-    print(f"Scanning armor from {items_root / 'Armor'}...")
-    all_armor = discover_item_files(items_root, "Armor")
-    print(f"  Found {len(all_armor)} armor files")
-
-    conn.execute("DELETE FROM armor_base")
+    cache: dict[str, dict] = {}
     inserted = 0
 
-    for name, (path, data) in sorted(all_armor.items()):
-        # Skip templates
-        quality = data.get("Quality", "")
-        if quality == "Template" or name.startswith("Template_"):
-            continue
-        if name.startswith("Armor_Iron_") and not data.get("Parent"):
-            # Iron is the base — include it
-            pass
-
-        lower = name.lower()
-        if "debug" in lower or "test" in lower or "qa" in lower:
-            continue
-        if quality in ("Debug", "QA"):
+    for name in sorted(all_items):
+        path, _, source = all_items[name]
+        merged = resolve_item(name, all_items, cache)
+        if merged is None:
             continue
 
-        armor_stats = resolve_armor_stats(data, all_armor)
-        if not armor_stats:
+        armor_stats = merged.get("Armor")
+        if not isinstance(armor_stats, dict) or not armor_stats:
+            continue
+
+        quality = merged.get("Quality", "")
+        if is_skippable_item(name, quality) or is_npc_item(name):
             continue
 
         slot = armor_stats.get("ArmorSlot", "Unknown")
-        item_level = data.get("ItemLevel", 0)
+        item_level = merged.get("ItemLevel", 0)
         if not isinstance(item_level, int):
             item_level = 0
 
         # Extract Physical resistance
         phys_resist = 0.0
         dr = armor_stats.get("DamageResistance", {})
-        phys_entries = dr.get("Physical", [])
+        phys_entries = dr.get("Physical", []) if isinstance(dr, dict) else []
         if isinstance(phys_entries, list):
             for entry in phys_entries:
                 if isinstance(entry, dict):
@@ -655,7 +841,7 @@ def parse_armor(items_root: Path, conn: sqlite3.Connection) -> int:
 
         # Extract Projectile resistance
         proj_resist = 0.0
-        proj_entries = dr.get("Projectile", [])
+        proj_entries = dr.get("Projectile", []) if isinstance(dr, dict) else []
         if isinstance(proj_entries, list):
             for entry in proj_entries:
                 if isinstance(entry, dict):
@@ -664,7 +850,7 @@ def parse_armor(items_root: Path, conn: sqlite3.Connection) -> int:
         # Extract health bonus
         health_bonus = 0
         stat_mods = armor_stats.get("StatModifiers", {})
-        health_entries = stat_mods.get("Health", [])
+        health_entries = stat_mods.get("Health", []) if isinstance(stat_mods, dict) else []
         if isinstance(health_entries, list):
             for entry in health_entries:
                 if isinstance(entry, dict):
@@ -673,27 +859,24 @@ def parse_armor(items_root: Path, conn: sqlite3.Connection) -> int:
         # Special features
         specials = []
         dce = armor_stats.get("DamageClassEnhancement", {})
-        for dc_name, dc_entries in dce.items():
-            if isinstance(dc_entries, list):
-                for entry in dc_entries:
-                    if isinstance(entry, dict):
-                        amt = entry.get("Amount", 0)
-                        specials.append(f"{dc_name} +{amt*100:.0f}%")
-
-        # Infer family from Tags
-        tags = data.get("Tags", {})
-        family_list = tags.get("Family", [])
-        family = family_list[0] if family_list else path.parent.name
+        if isinstance(dce, dict):
+            for dc_name, dc_entries in dce.items():
+                if isinstance(dc_entries, list):
+                    for entry in dc_entries:
+                        if isinstance(entry, dict):
+                            amt = entry.get("Amount", 0)
+                            specials.append(f"{dc_name} +{amt*100:.0f}%")
 
         try:
             conn.execute(
                 """INSERT OR REPLACE INTO armor_base
-                   (armor_id, name, slot, quality, item_level, phys_resist,
+                   (armor_id, name, source, slot, quality, item_level, phys_resist,
                     proj_resist, health_bonus, special)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 (
                     name,
                     name.replace("_", " "),
+                    source,
                     slot,
                     quality if quality else "Common",
                     item_level,
@@ -715,11 +898,14 @@ def parse_armor(items_root: Path, conn: sqlite3.Connection) -> int:
 # ── Main ──────────────────────────────────────────────────────────────
 
 def main():
-    parser = argparse.ArgumentParser(description="Parse HytaleAssets into scaling.db base tables")
+    parser = argparse.ArgumentParser(description="Parse asset sources into scaling.db base tables")
     parser.add_argument(
-        "--assets-root",
-        default=str(Path(__file__).resolve().parent.parent.parent.parent / "HytaleAssets"),
-        help="Path to HytaleAssets root (default: ../../HytaleAssets relative to this module)",
+        "--source",
+        action="append",
+        default=[],
+        metavar="LABEL=PATH",
+        help="Asset source as label=path (dir with Server/, or a mod .jar). "
+             "Repeatable; defaults to builtin + duntale + wans + zets.",
     )
     parser.add_argument(
         "--db",
@@ -728,57 +914,59 @@ def main():
     )
     args = parser.parse_args()
 
-    assets_root = Path(args.assets_root)
-    if not assets_root.exists():
-        print(f"ERROR: Assets root not found: {assets_root}", file=sys.stderr)
-        sys.exit(1)
+    repo_root = Path(__file__).resolve().parent.parent.parent.parent
 
-    roles_root = assets_root / "Server" / "NPC" / "Roles"
-    items_root = assets_root / "Server" / "Item" / "Items"
+    with tempfile.TemporaryDirectory(prefix="duntale-assets-") as temp_dir:
+        sources = prepare_sources(args.source, repo_root, Path(temp_dir))
 
-    if not roles_root.exists():
-        print(f"ERROR: NPC roles directory not found: {roles_root}", file=sys.stderr)
-        sys.exit(1)
-
-    print(f"Assets root: {assets_root}")
-    print(f"Database: {args.db}")
-    print()
-
-    conn = init_db(args.db)
-
-    try:
-        npc_count = parse_npcs(roles_root, conn)
-        print()
-        weapon_count = parse_weapons(items_root, conn)
-        print()
-        armor_count = parse_armor(items_root, conn)
+        print("Asset sources:")
+        for src in sources:
+            print(f"  {src.label:8s} → {src.root}")
+        print(f"Database: {args.db}")
         print()
 
-        print(f"Done! Parsed {npc_count} NPCs, {weapon_count} weapons, {armor_count} armor pieces.")
+        conn = init_db(args.db)
 
-        # Store metadata
-        conn.execute(
-            "INSERT OR REPLACE INTO scaling_config (key, value) VALUES (?, ?)",
-            ("parse_assets_root", str(assets_root)),
-        )
-        conn.execute(
-            "INSERT OR REPLACE INTO scaling_config (key, value) VALUES (?, ?)",
-            ("parse_assets_counts", json.dumps({"npcs": npc_count, "weapons": weapon_count, "armor": armor_count})),
-        )
-        conn.commit()
+        try:
+            npc_count = parse_npcs(sources, conn)
+            print()
 
-        # Print summary
-        print("\n── Summary ──")
-        for row in conn.execute("SELECT tier, COUNT(*) FROM monsters_base GROUP BY tier ORDER BY tier"):
-            print(f"  {row[0]:10s}: {row[1]} NPCs")
-        print()
-        for row in conn.execute("SELECT family, COUNT(*) FROM weapons_base GROUP BY family ORDER BY family"):
-            print(f"  {row[0]:12s}: {row[1]} weapons")
-        print()
-        for row in conn.execute("SELECT slot, COUNT(*) FROM armor_base GROUP BY slot ORDER BY slot"):
-            print(f"  {row[0]:8s}: {row[1]} armor pieces")
-    finally:
-        conn.close()
+            all_items = discover_items(sources)
+            roots, interactions = build_interaction_indexes(sources)
+            print(f"Scanning items: {len(all_items)} item files, "
+                  f"{len(roots)} root interactions, {len(interactions)} interactions")
+            weapon_count = parse_weapons(all_items, roots, interactions, conn)
+            armor_count = parse_armor(all_items, conn)
+            print()
+
+            print(f"Done! Parsed {npc_count} NPCs, {weapon_count} weapons, {armor_count} armor pieces.")
+
+            # Store metadata
+            conn.execute(
+                "INSERT OR REPLACE INTO scaling_config (key, value) VALUES (?, ?)",
+                ("parse_assets_sources", json.dumps({s.label: str(s.root) for s in sources})),
+            )
+            conn.execute(
+                "INSERT OR REPLACE INTO scaling_config (key, value) VALUES (?, ?)",
+                ("parse_assets_counts", json.dumps({"npcs": npc_count, "weapons": weapon_count, "armor": armor_count})),
+            )
+            conn.commit()
+
+            # Print summary
+            print("\n── Summary ──")
+            for row in conn.execute("SELECT source, COUNT(*) FROM monsters_base GROUP BY source ORDER BY source"):
+                print(f"  NPCs   [{row[0]:8s}]: {row[1]}")
+            for row in conn.execute("SELECT source, COUNT(*) FROM weapons_base GROUP BY source ORDER BY source"):
+                print(f"  Weapons[{row[0]:8s}]: {row[1]}")
+            for row in conn.execute("SELECT source, COUNT(*) FROM armor_base GROUP BY source ORDER BY source"):
+                print(f"  Armor  [{row[0]:8s}]: {row[1]}")
+            print()
+            for row in conn.execute(
+                "SELECT damage_method, COUNT(*) FROM weapons_base GROUP BY damage_method ORDER BY damage_method"
+            ):
+                print(f"  Weapon damage via {row[0]:7s}: {row[1]}")
+        finally:
+            conn.close()
 
 
 if __name__ == "__main__":
