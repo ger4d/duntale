@@ -42,7 +42,7 @@ public enum Rarity {
     }
 
     /**
-     * Returns the zero-based tier index, with {@link #COMMON} at {@code 0} and {@link #LEGENDARY}
+     * Returns the zero-based tier index, with {@link #COMMON} at {@code 0} and {@link #ABYSSAL}
      * at {@code VALUES.length - 1}.
      *
      * @return the tier index
@@ -82,7 +82,7 @@ public enum Rarity {
     }
 
     /**
-     * Returns the next rarity up the ladder, capped at {@link #LEGENDARY}.
+     * Returns the next rarity up the ladder, capped at {@link #ABYSSAL}.
      *
      * @return the next rarity, or this rarity when already at the ceiling
      */
@@ -93,7 +93,7 @@ public enum Rarity {
 
     /**
      * Promotes this rarity up the ladder by the given number of tiers, capped at
-     * {@link #LEGENDARY}. Non-positive promotions return this rarity unchanged.
+     * {@link #ABYSSAL}. Non-positive promotions return this rarity unchanged.
      *
      * @param tiers the number of tiers to promote by
      * @return the promoted rarity

@@ -36,6 +36,8 @@ public class LootTableConfig
     protected int rolls = 1;
     protected double dropChance = 1.0;
     protected LootEntryConfig[] entries = new LootEntryConfig[0];
+    protected double goldChance = 0.0;
+    protected LootEntryConfig[] goldEntries = new LootEntryConfig[0];
 
     public LootTableConfig() {
     }
@@ -61,6 +63,14 @@ public class LootTableConfig
                 .append(new KeyedCodec<>("Entries", LootEntryConfig.ARRAY_CODEC),
                         (asset, value) -> asset.entries = value,
                         asset -> asset.entries)
+                .add()
+                .append(new KeyedCodec<>("GoldChance", Codec.DOUBLE),
+                        (asset, value) -> asset.goldChance = value,
+                        asset -> asset.goldChance)
+                .add()
+                .append(new KeyedCodec<>("GoldEntries", LootEntryConfig.ARRAY_CODEC),
+                        (asset, value) -> asset.goldEntries = value,
+                        asset -> asset.goldEntries)
                 .add()
                 .build();
     }
@@ -114,7 +124,11 @@ public class LootTableConfig
         for (LootEntryConfig entry : entries) {
             runtimeEntries.add(entry.toLootEntry());
         }
-        return new LootTable(runtimeEntries, rolls, dropChance);
+        List<LootEntry> runtimeGoldEntries = new ArrayList<>(goldEntries.length);
+        for (LootEntryConfig entry : goldEntries) {
+            runtimeGoldEntries.add(entry.toLootEntry());
+        }
+        return new LootTable(runtimeEntries, rolls, dropChance, runtimeGoldEntries, goldChance);
     }
 
     @Override
@@ -141,13 +155,32 @@ public class LootTableConfig
     }
 
     /**
-     * Returns the configured loot entries.
+     * Returns the configured gear loot entries.
      *
-     * @return a defensive copy of the configured entries
+     * @return a defensive copy of the configured gear entries
      */
     @Nonnull
     public LootEntryConfig[] getEntries() {
         return entries.clone();
+    }
+
+    /**
+     * Returns the configured gold drop chance.
+     *
+     * @return the gold drop chance
+     */
+    public double getGoldChance() {
+        return goldChance;
+    }
+
+    /**
+     * Returns the configured gold loot entries.
+     *
+     * @return a defensive copy of the configured gold entries (may be empty)
+     */
+    @Nonnull
+    public LootEntryConfig[] getGoldEntries() {
+        return goldEntries.clone();
     }
 
     @Nonnull
@@ -160,22 +193,39 @@ public class LootTableConfig
         if (dropChance < 0.0 || dropChance > 1.0) {
             errors.add("DropChance must be between 0.0 and 1.0");
         }
-        if (entries == null || entries.length == 0) {
-            errors.add("Entries must not be empty");
+        if (goldChance < 0.0 || goldChance > 1.0) {
+            errors.add("GoldChance must be between 0.0 and 1.0");
+        }
+
+        // A table must define at least one pool. Gold-only tables (empty gear Entries) are valid —
+        // e.g. swarm roles that drop only small gold and never gear.
+        boolean hasGear = entries != null && entries.length > 0;
+        boolean hasGold = goldEntries != null && goldEntries.length > 0;
+        if (!hasGear && !hasGold) {
+            errors.add("A loot table must define at least one of Entries or GoldEntries");
             return errors;
         }
 
-        for (int index = 0; index < entries.length; index++) {
-            LootEntryConfig entry = entries[index];
+        validatePool("Entry", entries, errors);
+        validatePool("GoldEntry", goldEntries, errors);
+
+        return errors;
+    }
+
+    private static void validatePool(@Nonnull String label, @Nullable LootEntryConfig[] pool,
+                                     @Nonnull List<String> errors) {
+        if (pool == null) {
+            return;
+        }
+        for (int index = 0; index < pool.length; index++) {
+            LootEntryConfig entry = pool[index];
             if (entry == null) {
-                errors.add("Entry at index " + index + " must not be null");
+                errors.add(label + " at index " + index + " must not be null");
                 continue;
             }
             for (String error : entry.validationErrors()) {
-                errors.add("Entry[" + index + "]: " + error);
+                errors.add(label + "[" + index + "]: " + error);
             }
         }
-
-        return errors;
     }
 }

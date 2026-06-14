@@ -1,0 +1,56 @@
+{
+  "_comment": "Per-archetype loot authoring template for generate_loot_tables.py (offline only; never loaded at runtime). gearDropChance is the GEAR pool chance (Luck-boosted in game); goldChance is the independent gold pool chance; goldQuantity* is a small PER-LEVEL base that the runtime LootRollService.scaleGold multiplies by npcLevel. Swarm is gold-only. Final gold amounts are reconciled in the income pass; these are starting anchors.",
+  "levelBandHalfWidth": 3,
+  "weaponSources": ["duntale", "builtin", "wans", "zets"],
+  "gearItemsPerTable": 4,
+  "templates": {
+    "Swarm": {
+      "gearDropChance": 0.0,
+      "goldChance": 0.40,
+      "goldQuantityMin": 1,
+      "goldQuantityMax": 2,
+      "weaponFamilies": [],
+      "armorSlots": []
+    },
+    "Standard": {
+      "gearDropChance": 0.10,
+      "goldChance": 0.55,
+      "goldQuantityMin": 3,
+      "goldQuantityMax": 6,
+      "weaponFamilies": ["Sword", "Axe", "Mace", "Spear", "Club", "Dagger"],
+      "armorSlots": ["Chest", "Legs", "Head", "Hands"]
+    },
+    "Caster": {
+      "gearDropChance": 0.10,
+      "goldChance": 0.55,
+      "goldQuantityMin": 3,
+      "goldQuantityMax": 6,
+      "weaponFamilies": ["Staff", "Wand", "Magic", "Spellbook", "Scythe"],
+      "armorSlots": ["Chest", "Legs", "Head", "Hands"]
+    },
+    "Tough": {
+      "gearDropChance": 0.12,
+      "goldChance": 0.58,
+      "goldQuantityMin": 3,
+      "goldQuantityMax": 5,
+      "weaponFamilies": ["Sword", "Axe", "Mace", "Battleaxe", "Longsword", "Spear"],
+      "armorSlots": ["Chest", "Legs", "Head", "Hands"]
+    },
+    "Heavy": {
+      "gearDropChance": 0.12,
+      "goldChance": 0.60,
+      "goldQuantityMin": 4,
+      "goldQuantityMax": 7,
+      "weaponFamilies": ["Battleaxe", "Mace", "Longsword", "Axe", "Sword"],
+      "armorSlots": ["Chest", "Legs", "Head", "Hands"]
+    },
+    "Boss": {
+      "gearDropChance": 0.10,
+      "goldChance": 0.60,
+      "goldQuantityMin": 5,
+      "goldQuantityMax": 9,
+      "weaponFamilies": ["Longsword", "Battleaxe", "Mace", "Sword", "Axe", "Scythe"],
+      "armorSlots": ["Chest", "Legs", "Head", "Hands"]
+    }
+  }
+}

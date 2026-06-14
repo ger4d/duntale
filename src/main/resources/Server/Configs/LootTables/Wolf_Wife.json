@@ -1,0 +1,48 @@
+{
+  "Rolls": 1,
+  "DropChance": 0.12,
+  "Entries": [
+    {
+      "Type": "LEVELED",
+      "ItemId": "Weapon_Axe_Iron",
+      "Weight": 1.0,
+      "GearType": "WEAPON",
+      "GearLevelMin": 17,
+      "GearLevelMax": 23
+    },
+    {
+      "Type": "LEVELED",
+      "ItemId": "Weapon_Battleaxe_Iron",
+      "Weight": 1.0,
+      "GearType": "WEAPON",
+      "GearLevelMin": 17,
+      "GearLevelMax": 23
+    },
+    {
+      "Type": "LEVELED",
+      "ItemId": "Armor_Iron_Chest",
+      "Weight": 0.8,
+      "GearType": "ARMOR",
+      "GearLevelMin": 17,
+      "GearLevelMax": 23
+    },
+    {
+      "Type": "LEVELED",
+      "ItemId": "Armor_Iron_Legs",
+      "Weight": 0.8,
+      "GearType": "ARMOR",
+      "GearLevelMin": 17,
+      "GearLevelMax": 23
+    }
+  ],
+  "GoldChance": 0.58,
+  "GoldEntries": [
+    {
+      "Type": "SIMPLE",
+      "ItemId": "Gold_Coin",
+      "Weight": 1.0,
+      "QuantityMin": 3,
+      "QuantityMax": 5
+    }
+  ]
+}

@@ -97,7 +97,7 @@ public class LootRollService {
             return List.of();
         }
 
-        List<ItemStack> rolledDrops = lootTable.roll(npcLevel, luckLevel);
+        List<ItemStack> rolledDrops = rollDrops(lootTable, variant, npcLevel, luckLevel);
         if (rolledDrops.isEmpty()) {
             return List.of();
         }
@@ -133,6 +133,24 @@ public class LootRollService {
      */
     public boolean hasTable(@Nonnull String roleName, @Nonnull CombatScaling.NpcVariant variant) {
         return resolveTableId(roleName, variant) != null;
+    }
+
+    /**
+     * Composes the raw drops for a table according to the variant's faucet policy.
+     *
+     * <p>NORMAL and ELITE roll the gear and gold pools independently (so gold stays a steady faucet
+     * alongside occasional gear). BOSS is exclusive: it yields gear, or — only when no gear drops —
+     * a single gold reward instead, preserving the "gold instead of gear" boss payout. The gold
+     * stack is later upgraded to the boss reward amount by {@link #scaleGold}.
+     */
+    @Nonnull
+    private List<ItemStack> rollDrops(@Nonnull LootTable table, @Nonnull CombatScaling.NpcVariant variant,
+                                      int npcLevel, int luckLevel) {
+        if (variant == CombatScaling.NpcVariant.BOSS) {
+            List<ItemStack> gear = table.rollGear(npcLevel, luckLevel);
+            return gear.isEmpty() ? table.rollGold(npcLevel) : gear;
+        }
+        return table.roll(npcLevel, luckLevel);
     }
 
     @Nonnull

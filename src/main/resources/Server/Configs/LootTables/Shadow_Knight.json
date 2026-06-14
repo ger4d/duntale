@@ -1,6 +1,6 @@
 {
   "Rolls": 1,
-  "DropChance": 0.9,
+  "DropChance": 0.1,
   "Entries": [
     {
       "Type": "LEVELED",
@@ -33,13 +33,16 @@
       "GearType": "ARMOR",
       "GearLevelMin": 24,
       "GearLevelMax": 30
-    },
+    }
+  ],
+  "GoldChance": 0.6,
+  "GoldEntries": [
     {
       "Type": "SIMPLE",
       "ItemId": "Gold_Coin",
-      "Weight": 6.0,
-      "QuantityMin": 10,
-      "QuantityMax": 24
+      "Weight": 1.0,
+      "QuantityMin": 5,
+      "QuantityMax": 9
     }
   ]
 }

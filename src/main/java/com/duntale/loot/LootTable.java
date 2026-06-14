@@ -10,21 +10,31 @@ import java.util.List;
 import java.util.concurrent.ThreadLocalRandom;
 
 /**
- * A loot table that produces randomised {@link ItemStack} drops from a weighted pool of {@link LootEntry} items.
+ * A loot table that produces randomised {@link ItemStack} drops from weighted pools of
+ * {@link LootEntry} items.
  *
- * <p>Each table stores a default roll count and drop chance used by the NPC loot flow,
- * while the entry pool itself remains generic enough for other callers such as chest rolls.
+ * <p>A table has two independent pools that roll separately:
+ * <ul>
+ *   <li>the <em>gear</em> pool ({@code entries} / {@code dropChance}, scaled by Luck), and</li>
+ *   <li>the <em>gold</em> pool ({@code goldEntries} / {@code goldChance}, Luck-independent).</li>
+ * </ul>
+ * Rolling both independently keeps gold a steady faucet even when gear does not drop. The gold pool
+ * is optional — a table created without it behaves exactly like a single gear pool, so existing
+ * single-pool tables (including ones that list {@code Gold_Coin} as a gear entry) are unaffected.
+ * The gear pool also stays generic enough for non-NPC callers such as chest rolls.
  */
 public class LootTable {
 
     private final List<LootEntry> entries;
     private final int rolls;
     private final double dropChance;
+    private final List<LootEntry> goldEntries;
+    private final double goldChance;
 
     /**
-     * Creates a new loot table with a guaranteed drop.
+     * Creates a new gear-only loot table with a guaranteed drop.
      *
-     * @param entries the pool of possible drops
+     * @param entries the gear pool of possible drops
      * @param rolls   number of weighted-random rolls to perform (each roll picks one entry)
      */
     public LootTable(@Nonnull List<LootEntry> entries, int rolls) {
@@ -32,43 +42,53 @@ public class LootTable {
     }
 
     /**
-     * Creates a new loot table.
+     * Creates a new gear-only loot table (no gold pool).
      *
-     * @param entries    the pool of possible drops
+     * @param entries    the gear pool of possible drops
      * @param rolls      number of weighted-random rolls to perform (each roll picks one entry)
-     * @param dropChance probability (0.0–1.0) that this table produces any loot at all;
+     * @param dropChance probability (0.0–1.0) that the gear pool produces any loot at all;
      *                   checked once before rolling. A value of {@code 1.0} means always drops.
      */
     public LootTable(@Nonnull List<LootEntry> entries, int rolls, double dropChance) {
-        this.entries = List.copyOf(entries);
-        this.rolls = Math.max(rolls, 0);
-        this.dropChance = Math.clamp(dropChance, 0.0, 1.0);
+        this(entries, rolls, dropChance, List.of(), 0.0);
     }
 
     /**
-     * Rolls this loot table and produces a list of item stacks to drop.
+     * Creates a new loot table with independent gear and gold pools.
      *
-     * <p>First checks {@link #dropChance} — if the random check fails, returns an empty list.
-     * Then entries whose level gate excludes the given {@code npcLevel} are skipped.
-     * Duplicate item IDs from multiple rolls are <em>not</em> merged — the caller
-     * may merge them if desired.
+     * @param entries     the gear pool of possible drops
+     * @param rolls       number of weighted-random rolls to perform on the gear pool
+     * @param dropChance  probability (0.0–1.0) that the gear pool produces any loot at all
+     * @param goldEntries the gold pool of possible drops (rolled once); may be empty
+     * @param goldChance  probability (0.0–1.0) that the gold pool produces any loot at all
+     */
+    public LootTable(@Nonnull List<LootEntry> entries, int rolls, double dropChance,
+                     @Nonnull List<LootEntry> goldEntries, double goldChance) {
+        this.entries = List.copyOf(entries);
+        this.rolls = Math.max(rolls, 0);
+        this.dropChance = Math.clamp(dropChance, 0.0, 1.0);
+        this.goldEntries = List.copyOf(goldEntries);
+        this.goldChance = Math.clamp(goldChance, 0.0, 1.0);
+    }
+
+    /**
+     * Rolls both pools (gear with no Luck, then gold) and returns their combined drops.
      *
      * @param npcLevel the dying NPC's dungeon level
      * @return an unmodifiable list of rolled drops (may be empty)
      */
     @Nonnull
     public List<ItemStack> roll(int npcLevel) {
-        return roll(LootContext.forNpcLevel(npcLevel), new RollRequest(rolls, dropChance, true));
+        return roll(npcLevel, 0);
     }
 
     /**
-     * Rolls this loot table with Luck bonus applied.
+     * Rolls both pools independently and returns their combined drops.
      *
-     * <p>Luck provides two bonuses:
-     * <ul>
-     *   <li>Drop chance bonus: increases the base drop chance</li>
-     *   <li>Bonus rolls: additional rolls on the loot table</li>
-     * </ul>
+     * <p>The gear pool's drop chance is boosted by Luck via
+     * {@link RpgStatEffects#computeLuckDropChance(double, int)}; the gold pool is Luck-independent so
+     * the gold faucet stays steady. Each pool is gated by its own chance, so a kill may yield gear,
+     * gold, both, or nothing.
      *
      * @param npcLevel  the dying NPC's dungeon level
      * @param luckLevel the attacker's Luck stat level (0 = no bonus)
@@ -76,24 +96,51 @@ public class LootTable {
      */
     @Nonnull
     public List<ItemStack> roll(int npcLevel, int luckLevel) {
-        if (luckLevel <= 0) {
-            return roll(npcLevel);
+        List<ItemStack> gear = rollGear(npcLevel, luckLevel);
+        List<ItemStack> gold = rollGold(npcLevel);
+        if (gold.isEmpty()) {
+            return gear;
         }
-
-        // Adjusted drop chance with Luck bonus
-        float dropBonus = RpgStatEffects.computeLuckDropBonus(luckLevel);
-        double adjustedDropChance = Math.min(1.0, dropChance + dropBonus);
-
-        // Total rolls = base rolls + Luck bonus rolls
-        int bonusRolls = RpgStatEffects.computeLuckBonusRolls(luckLevel);
-        return roll(
-                LootContext.forNpcLevel(npcLevel),
-                new RollRequest(rolls + bonusRolls, adjustedDropChance, true)
-        );
+        if (gear.isEmpty()) {
+            return gold;
+        }
+        List<ItemStack> combined = new ArrayList<>(gear.size() + gold.size());
+        combined.addAll(gear);
+        combined.addAll(gold);
+        return Collections.unmodifiableList(combined);
     }
 
     /**
-     * Rolls this loot table using an explicit runtime context and selection mode.
+     * Rolls the gear pool only, applying the Luck drop-chance bonus.
+     *
+     * @param npcLevel  the dying NPC's dungeon level
+     * @param luckLevel the attacker's Luck stat level (0 = base chance, no bonus)
+     * @return an unmodifiable list of rolled gear drops (may be empty)
+     */
+    @Nonnull
+    public List<ItemStack> rollGear(int npcLevel, int luckLevel) {
+        double effectiveChance = luckLevel > 0
+                ? RpgStatEffects.computeLuckDropChance(dropChance, luckLevel)
+                : dropChance;
+        return roll(entries, LootContext.forNpcLevel(npcLevel), new RollRequest(rolls, effectiveChance, true));
+    }
+
+    /**
+     * Rolls the gold pool only (a single roll at {@link #goldChance}, Luck-independent).
+     *
+     * @param npcLevel the dying NPC's dungeon level
+     * @return an unmodifiable list of rolled gold drops (may be empty, including when no gold pool exists)
+     */
+    @Nonnull
+    public List<ItemStack> rollGold(int npcLevel) {
+        if (goldEntries.isEmpty()) {
+            return Collections.emptyList();
+        }
+        return roll(goldEntries, LootContext.forNpcLevel(npcLevel), new RollRequest(1, goldChance, true));
+    }
+
+    /**
+     * Rolls the gear pool using an explicit runtime context and selection mode.
      *
      * <p>This is used by non-NPC callers such as chest rolls, which may want fixed
      * stack counts or no-replacement selection while reusing the same weighted pool.
@@ -105,7 +152,7 @@ public class LootTable {
      */
     @Nonnull
     public List<ItemStack> roll(@Nonnull LootContext context, int requestedRolls, boolean withReplacement) {
-        return roll(context, new RollRequest(requestedRolls, 1.0, withReplacement));
+        return roll(entries, context, new RollRequest(requestedRolls, 1.0, withReplacement));
     }
 
     /**
@@ -130,7 +177,7 @@ public class LootTable {
     }
 
     @Nonnull
-    private List<ItemStack> roll(@Nonnull LootContext context, @Nonnull RollRequest request) {
+    private List<ItemStack> roll(@Nonnull List<LootEntry> pool, @Nonnull LootContext context, @Nonnull RollRequest request) {
         ThreadLocalRandom random = ThreadLocalRandom.current();
 
         if (request.rolls() <= 0) {
@@ -142,7 +189,7 @@ public class LootTable {
 
         List<LootEntry> eligible = new ArrayList<>();
         double totalWeight = 0;
-        for (LootEntry entry : entries) {
+        for (LootEntry entry : pool) {
             if (entry.isEligible(context)) {
                 eligible.add(entry);
                 totalWeight += entry.weight();
@@ -181,7 +228,7 @@ public class LootTable {
     }
 
     /**
-     * Returns the configured number of rolls.
+     * Returns the configured number of gear-pool rolls.
      *
      * @return the roll count
      */
@@ -190,21 +237,40 @@ public class LootTable {
     }
 
     /**
-     * Returns the drop chance probability (0.0–1.0).
+     * Returns the gear-pool drop chance probability (0.0–1.0).
      *
-     * @return the drop chance
+     * @return the gear drop chance
      */
     public double getDropChance() {
         return dropChance;
     }
 
     /**
-     * Returns an unmodifiable view of this table's entries.
+     * Returns the gold-pool drop chance probability (0.0–1.0).
      *
-     * @return the loot entries
+     * @return the gold drop chance
+     */
+    public double getGoldChance() {
+        return goldChance;
+    }
+
+    /**
+     * Returns an unmodifiable view of this table's gear entries.
+     *
+     * @return the gear loot entries
      */
     @Nonnull
     public List<LootEntry> getEntries() {
         return entries;
+    }
+
+    /**
+     * Returns an unmodifiable view of this table's gold entries.
+     *
+     * @return the gold loot entries (may be empty)
+     */
+    @Nonnull
+    public List<LootEntry> getGoldEntries() {
+        return goldEntries;
     }
 }

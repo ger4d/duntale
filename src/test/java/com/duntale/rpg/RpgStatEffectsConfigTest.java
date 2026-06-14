@@ -24,7 +24,7 @@ class RpgStatEffectsConfigTest {
                 0, 100,
                 100.0f, 0.0f, 1.0f,            // speed -> flat 100
                 0.0f, 25.0f,                   // strength bonus 0 -> multiplier 1.0
-                0.30f, 20.0f, 7,               // luck: 7 levels per bonus roll
+                0.50f, 2.0f, 40, 0.90f,        // luck drop curve: coeff 0.50, exp 2.0, ref 40, maxChance 0.90
                 3.0f,                          // stamina per point 3
                 400_000_000L, 0.65f, 25.0f, 140_000_000L,
                 0.40f, 30.0f,
@@ -42,7 +42,26 @@ class RpgStatEffectsConfigTest {
         assertEquals(1.0f, RpgStatEffects.computeStrengthMultiplier(50), 1e-4f);
         assertEquals(12.0f, RpgStatEffects.computeStaminaBonus(4), 1e-4f);
         assertEquals(10.0f, RpgStatEffects.computeVitalityBonus(5), 1e-4f);
-        assertEquals(2, RpgStatEffects.computeLuckBonusRolls(14));
+        // ref 40 -> luck 40 normalizes to 1.0: 0.10 + 0.50 * 1^2 = 0.60.
+        // Deltas are 1e-6 because the coefficient/maxChance are stored as float.
+        assertEquals(0.60, RpgStatEffects.computeLuckDropChance(0.10, 40), 1e-6);
+        // base + full bonus exceeds the snapshot's 0.90 maxChance -> clamped.
+        assertEquals(0.90, RpgStatEffects.computeLuckDropChance(0.80, 40), 1e-6);
+    }
+
+    @Test
+    @DisplayName("Default Luck drop-chance curve hits the briefed anchors")
+    void defaultLuckDropCurve() {
+        RpgConfig.resetForTest();
+
+        assertEquals(0.10, RpgStatEffects.computeLuckDropChance(0.10, 0), 1e-6);
+        assertEquals(0.41, RpgStatEffects.computeLuckDropChance(0.10, 30), 0.01);
+        assertEquals(0.80, RpgStatEffects.computeLuckDropChance(0.10, 50), 1e-6);
+        // Luck is clamped to the reference, so beyond it the chance stops climbing.
+        assertEquals(0.80, RpgStatEffects.computeLuckDropChance(0.10, 100), 1e-6);
+        // A high base chance plus the full bonus is capped at the max-chance clamp.
+        assertEquals(0.95, RpgStatEffects.computeLuckDropChance(0.50, 50), 1e-6);
+        assertEquals(0.50, RpgStatEffects.computeLuckDropChance(0.50, 0), 1e-6);
     }
 
     @Test

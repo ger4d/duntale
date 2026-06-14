@@ -21,7 +21,10 @@ class RpgConfigValuesTest {
         assertEquals(RpgConstants.SPEED_BASE, d.speedBase());
         assertEquals(RpgConstants.SPEED_MAX_BONUS, d.speedMaxBonus());
         assertEquals(RpgConstants.SPEED_HALF_POINT, d.speedHalfPoint());
-        assertEquals(RpgConstants.LUCK_LEVELS_PER_BONUS_ROLL, d.luckLevelsPerBonusRoll());
+        assertEquals(RpgConstants.LUCK_DROP_COEFFICIENT, d.luckDropCoefficient());
+        assertEquals(RpgConstants.LUCK_DROP_EXPONENT, d.luckDropExponent());
+        assertEquals(RpgConstants.LUCK_DROP_REFERENCE, d.luckDropReference());
+        assertEquals(RpgConstants.LUCK_DROP_MAX_CHANCE, d.luckDropMaxChance());
         assertEquals(RpgConstants.AGILITY_BASE_THROTTLE_NS, d.agilityBaseThrottleNs());
         assertEquals(RpgConstants.AGILITY_MIN_THROTTLE_NS, d.agilityMinThrottleNs());
         assertEquals(RpgConstants.VITALITY_HP_PER_POINT, d.vitalityHpPerPoint());

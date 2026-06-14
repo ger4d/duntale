@@ -1,6 +1,7 @@
 package com.duntale.config.asset;
 
 import com.duntale.rpg.RpgConfigValues;
+import com.duntale.rpg.RpgConstants;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
@@ -14,14 +15,17 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 class RpgConfigAssetTest {
 
     @Test
-    @DisplayName("Clamps maxStat >= minStat, half-points >= 0, and luckLevelsPerBonusRoll >= 1")
+    @DisplayName("Clamps maxStat >= minStat, half-points >= 0, and the Luck drop-curve guards")
     void clampsInvalidValues() {
         RpgConfigAsset asset = new RpgConfigAsset();
         asset.minStat = 10;
         asset.maxStat = -5;                 // below minStat
         asset.speedHalfPoint = -3.0f;       // negative denominator
         asset.agilityHalfPoint = -1.0f;
-        asset.luckLevelsPerBonusRoll = 0;   // divisor
+        asset.luckDropCoefficient = -0.5f;  // negative bonus
+        asset.luckDropExponent = 0.0f;      // a 0 exponent would grant the full bonus at any luck
+        asset.luckDropReference = 0;        // divisor
+        asset.luckDropMaxChance = 1.5f;     // above 1.0
 
         RpgConfigValues v = RpgConfigValues.fromAsset(asset);
 
@@ -29,7 +33,10 @@ class RpgConfigAssetTest {
         assertEquals(10, v.maxStat());
         assertEquals(0.0f, v.speedHalfPoint());
         assertEquals(0.0f, v.agilityHalfPoint());
-        assertEquals(1, v.luckLevelsPerBonusRoll());
+        assertEquals(0.0f, v.luckDropCoefficient());
+        assertEquals(RpgConstants.LUCK_DROP_EXPONENT, v.luckDropExponent());
+        assertEquals(1, v.luckDropReference());
+        assertEquals(1.0f, v.luckDropMaxChance());
     }
 
     @Test

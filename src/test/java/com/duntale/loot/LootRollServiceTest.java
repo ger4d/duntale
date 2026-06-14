@@ -123,6 +123,63 @@ class LootRollServiceTest {
     }
 
     @Test
+    @DisplayName("Should fall back to the base loot table for an elite with no elite overlay")
+    void shouldFallBackToBaseLootTableForEliteVariant() {
+        LootTableRegistry registry = new LootTableRegistry();
+        registry.register("Wraith_Test", new RecordingLootTable(List.of(new ItemStack("Weapon_Axe_Crude", 1))));
+
+        LootRollService service = new LootRollService(registry);
+        List<ItemStack> drops = service.roll("Wraith_Test", CombatScaling.NpcVariant.ELITE, 10, 0);
+
+        assertEquals(1, drops.size());
+        assertEquals("Weapon_Axe_Crude", drops.getFirst().getItemId());
+    }
+
+    @Test
+    @DisplayName("A boss that drops gear suppresses the gold reward")
+    void bossGearDropSuppressesGold() {
+        LootTableRegistry registry = new LootTableRegistry();
+        registry.register("Ogre_Test", new LootTable(
+                List.of(new LootEntry("Weapon_Sword_Iron", 1.0)), 1, 1.0,   // gear always drops
+                List.of(new LootEntry("Gold_Coin", 1.0)), 1.0));            // gold always drops
+
+        LootRollService service = new LootRollService(registry);
+        List<ItemStack> drops = service.roll("Ogre_Test", CombatScaling.NpcVariant.BOSS, 10, 0);
+
+        assertEquals(1, drops.size());
+        assertEquals("Weapon_Sword_Iron", drops.getFirst().getItemId());
+    }
+
+    @Test
+    @DisplayName("A boss with no gear drop yields the gold reward instead")
+    void bossNoGearYieldsGold() {
+        LootTableRegistry registry = new LootTableRegistry();
+        registry.register("Ogre_Test", new LootTable(
+                List.of(new LootEntry("Weapon_Sword_Iron", 1.0)), 1, 0.0,   // gear never drops
+                List.of(new LootEntry("Gold_Coin", 1.0)), 1.0));            // gold always drops
+
+        LootRollService service = new LootRollService(registry);
+        List<ItemStack> drops = service.roll("Ogre_Test", CombatScaling.NpcVariant.BOSS, 10, 0);
+
+        assertEquals(1, drops.size());
+        assertEquals("Gold_Coin", drops.getFirst().getItemId());
+    }
+
+    @Test
+    @DisplayName("A non-boss rolls the gear and gold pools independently")
+    void nonBossRollsBothPools() {
+        LootTableRegistry registry = new LootTableRegistry();
+        registry.register("Grunt_Test", new LootTable(
+                List.of(new LootEntry("Weapon_Sword_Iron", 1.0)), 1, 1.0,
+                List.of(new LootEntry("Gold_Coin", 1.0)), 1.0));
+
+        LootRollService service = new LootRollService(registry);
+        List<ItemStack> drops = service.roll("Grunt_Test", CombatScaling.NpcVariant.ELITE, 10, 0);
+
+        assertEquals(2, drops.size());
+    }
+
+    @Test
     @DisplayName("Should report boss table availability when only a boss-specific table exists")
     void shouldReportBossTableAvailability() {
         LootTableRegistry registry = new LootTableRegistry();
@@ -149,6 +206,18 @@ class LootRollServiceTest {
             this.lastNpcLevel = npcLevel;
             this.lastLuckLevel = luckLevel;
             return drops;
+        }
+
+        @Override
+        public List<ItemStack> rollGear(int npcLevel, int luckLevel) {
+            this.lastNpcLevel = npcLevel;
+            this.lastLuckLevel = luckLevel;
+            return drops;
+        }
+
+        @Override
+        public List<ItemStack> rollGold(int npcLevel) {
+            return List.of();
         }
     }
 

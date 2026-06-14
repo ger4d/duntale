@@ -684,86 +684,25 @@ hits-to-kill axis and confirmed in playtest):
 
 Mapped families (23): Arrow, Axe, Battleaxe, Bomb, Bow, Club, Crossbow, Dagger, Gun, Kunai, Longsword, Mace, Magic, Scythe, Shield, Sickle, Soulblight, Spear, Spellbook, Staff, Stick, Sword, Wand.
 
-## Rarity derivation (derive_rarity.py)
+## Luck power-budget derivation (derive_luck_budget.py)
 
-Base rarity distribution per source (pre-promotion):
+Promotion gate: L0 5.0%, L50 13.0% (BaseChance 0.05, LuckCoeff 0.08, LuckExp 1.2, tiers [(1, 85), (2, 12), (3, 3)]). Rarity-value uplift 1.020x.
 
-- `MOB`: Common 70%, Uncommon 25%, Rare 5%
-- `ELITE`: Uncommon 45%, Rare 40%, Epic 15%
-- `BOSS`: Rare 40%, Epic 40%, Legendary 20%
-- `CHEST_REGULAR`: Common 35%, Uncommon 40%, Rare 25%
-- `CHEST_GOLDEN`: Uncommon 35%, Rare 45%, Epic 20%
-- `CHEST_EPIC`: Rare 30%, Epic 45%, Legendary 25%
-- `CHEST_LEGENDARY`: Rare 35%, Epic 40%, Legendary 25%
-- `MERCHANT`: Common 20%, Uncommon 45%, Rare 25%, Epic 8%, Legendary 2%
+Drop chance (@0.10 base) and promotion gate across Luck:
 
-Promotion gate chance: L0 5%, L10 6%, L25 9%, L50 15%, L100 15%
+| Luck | 0 | 10 | 20 | 30 | 40 | 50 |
+|---|---|---|---|---|---|---|
+| drop | 0.10 | 0.15 | 0.26 | 0.41 | 0.59 | 0.80 |
+| gate | 0.05 | 0.06 | 0.08 | 0.09 | 0.11 | 0.13 |
 
-Attribute spec (count @ per-attribute value range, rolled independently):
+Total loot-value EV(50)/EV(0) per archetype (budget 6x, gear value grounded in on-level buy price x 0.5 resale + template gold):
 
-- `Common` ×1: L1 1-1, L10 3-3, L25 5-5, L50 10-10, L75 14-14, L100 19-19
-- `Uncommon` ×1: L1 1-3, L10 3-5, L25 5-7, L50 10-12, L75 14-16, L100 19-21
-- `Rare` ×2: L1 1-3, L10 3-5, L25 5-7, L50 10-12, L75 14-16, L100 19-21
-- `Epic` ×3: L1 1-4, L10 3-6, L25 5-8, L50 10-13, L75 14-17, L100 19-22
-- `Legendary` ×4-5: L1 2-4, L10 4-6, L25 6-8, L50 11-13, L75 15-17, L100 20-22
-- `Relic` ×5-6: L1 3-5, L10 5-7, L25 7-9, L50 12-14, L75 16-18, L100 21-23
-- `Abyssal` ×6-7: L1 4-6, L10 6-8, L25 8-10, L50 13-15, L75 17-19, L100 22-24
+| archetype | L10 | L30 | L50 | worst | verdict |
+|---|---|---|---|---|---|
+| Standard | 5.79 | 5.14 | 5.26 | 5.79 | PASS |
+| Caster | 5.79 | 5.14 | 5.26 | 5.79 | PASS |
+| Tough | 5.31 | 4.80 | 4.89 | 5.31 | PASS |
+| Heavy | 4.85 | 4.29 | 4.40 | 4.85 | PASS |
+| Boss | 4.89 | 4.20 | 4.32 | 4.89 | PASS |
 
-Price multipliers: Common x1, Uncommon x1.15, Rare x1.4, Epic x1.9, Legendary x3, Relic x4.5, Abyssal x7
-
-
-## Rarity derivation (derive_rarity.py)
-
-Base rarity distribution per source (pre-promotion):
-
-- `MOB`: Common 70%, Uncommon 25%, Rare 5%
-- `ELITE`: Uncommon 45%, Rare 40%, Epic 15%
-- `BOSS`: Rare 40%, Epic 40%, Legendary 20%
-- `CHEST_REGULAR`: Common 35%, Uncommon 40%, Rare 25%
-- `CHEST_GOLDEN`: Uncommon 35%, Rare 45%, Epic 20%
-- `CHEST_EPIC`: Rare 30%, Epic 45%, Legendary 25%
-- `CHEST_LEGENDARY`: Rare 35%, Epic 40%, Legendary 25%
-- `MERCHANT`: Common 20%, Uncommon 45%, Rare 25%, Epic 8%, Legendary 2%
-
-Promotion gate chance: L0 5%, L10 6%, L25 9%, L50 15%, L100 15%
-
-Attribute spec (count @ per-attribute value range, rolled independently):
-
-- `Common` ×0-1: L1 1-2, L15 2-3, L30 3-4, L45 4-5, L60 5-6, L80 6-7
-- `Uncommon` ×1: L1 1-3, L15 2-4, L30 3-5, L45 4-6, L60 5-7, L80 6-8
-- `Rare` ×2: L1 1-3, L15 2-4, L30 3-5, L45 4-6, L60 5-7, L80 6-8
-- `Epic` ×3: L1 1-4, L15 2-5, L30 3-6, L45 4-7, L60 5-8, L80 6-9
-- `Legendary` ×4-5: L1 1-4, L15 2-5, L30 3-6, L45 4-7, L60 5-8, L80 6-9
-- `Relic` ×5-6: L1 2-5, L15 3-6, L30 4-7, L45 5-8, L60 6-9, L80 7-10
-- `Abyssal` ×6-7: L1 2-6, L15 3-7, L30 4-8, L45 5-9, L60 6-10, L80 7-11
-
-Price multipliers: Common x1, Uncommon x1.15, Rare x1.4, Epic x1.9, Legendary x3, Relic x4.5, Abyssal x7
-
-
-## Rarity derivation (derive_rarity.py)
-
-Base rarity distribution per source (pre-promotion):
-
-- `MOB`: Common 70%, Uncommon 25%, Rare 5%
-- `ELITE`: Uncommon 45%, Rare 40%, Epic 15%
-- `BOSS`: Rare 20%, Epic 45%, Legendary 25%, Relic 7%, Abyssal 3%
-- `CHEST_REGULAR`: Common 35%, Uncommon 40%, Rare 25%
-- `CHEST_GOLDEN`: Uncommon 35%, Rare 45%, Epic 20%
-- `CHEST_EPIC`: Rare 30%, Epic 45%, Legendary 25%
-- `CHEST_LEGENDARY`: Rare 35%, Epic 40%, Legendary 24%, Relic 0%, Abyssal 0%
-- `MERCHANT`: Common 20%, Uncommon 44%, Rare 25%, Epic 8%, Legendary 2%, Relic 1%, Abyssal 0%
-
-Promotion gate chance: L0 5%, L10 6%, L25 9%, L50 15%, L100 15%
-
-Attribute spec (count @ per-attribute value range, rolled independently):
-
-- `Common` ×0-1: L1 1-2, L15 2-3, L30 3-4, L45 4-5, L60 5-6, L80 6-7
-- `Uncommon` ×1: L1 1-3, L15 2-4, L30 3-5, L45 4-6, L60 5-7, L80 6-8
-- `Rare` ×2: L1 1-3, L15 2-4, L30 3-5, L45 4-6, L60 5-7, L80 6-8
-- `Epic` ×3: L1 1-4, L15 2-5, L30 3-6, L45 4-7, L60 5-8, L80 6-9
-- `Legendary` ×4-5: L1 1-4, L15 2-5, L30 3-6, L45 4-7, L60 5-8, L80 6-9
-- `Relic` ×5-6: L1 2-5, L15 3-6, L30 4-7, L45 5-8, L60 6-9, L80 7-10
-- `Abyssal` ×6-7: L1 2-6, L15 3-7, L30 4-8, L45 5-9, L60 6-10, L80 7-11
-
-Price multipliers: Common x1, Uncommon x1.15, Rare x1.4, Epic x1.9, Legendary x3, Relic x4.5, Abyssal x7
-
+The drop-chance curve alone is ~8x at the 0.10 base, so the budget holds only because the Luck-independent gold faucet dilutes the total; promotion is kept gentle so the rarity-mix uplift adds little. Gold quantities here are starting floors — the income pass refines them.

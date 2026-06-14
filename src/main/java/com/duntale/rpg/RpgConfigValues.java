@@ -21,9 +21,10 @@ public record RpgConfigValues(
         float speedHalfPoint,
         float strengthMaxBonus,
         float strengthHalfPoint,
-        float luckMaxDropBonus,
-        float luckHalfPoint,
-        int luckLevelsPerBonusRoll,
+        float luckDropCoefficient,
+        float luckDropExponent,
+        int luckDropReference,
+        float luckDropMaxChance,
         float staminaPerPoint,
         long agilityBaseThrottleNs,
         float agilityMaxReduction,
@@ -44,9 +45,10 @@ public record RpgConfigValues(
             RpgConstants.SPEED_HALF_POINT,
             RpgConstants.STRENGTH_MAX_BONUS,
             RpgConstants.STRENGTH_HALF_POINT,
-            RpgConstants.LUCK_MAX_DROP_BONUS,
-            RpgConstants.LUCK_HALF_POINT,
-            RpgConstants.LUCK_LEVELS_PER_BONUS_ROLL,
+            RpgConstants.LUCK_DROP_COEFFICIENT,
+            RpgConstants.LUCK_DROP_EXPONENT,
+            RpgConstants.LUCK_DROP_REFERENCE,
+            RpgConstants.LUCK_DROP_MAX_CHANCE,
             RpgConstants.STAMINA_PER_POINT,
             RpgConstants.AGILITY_BASE_THROTTLE_NS,
             RpgConstants.AGILITY_MAX_REDUCTION,
@@ -61,8 +63,10 @@ public record RpgConfigValues(
     /**
      * Builds a snapshot from a config asset, defensively guarding values that would otherwise
      * break the formulas: half-points are clamped to {@code >= 0} (used as hyperbolic
-     * denominators), {@code maxStat} is clamped to {@code >= minStat}, and
-     * {@code luckLevelsPerBonusRoll} is clamped to {@code >= 1} (used as a divisor).
+     * denominators), {@code maxStat} is clamped to {@code >= minStat}, the Luck drop coefficient
+     * is clamped to {@code >= 0}, the Luck drop reference to {@code >= 1} (used as a divisor), the
+     * Luck drop exponent to a strictly positive value (a 0 exponent would make every Luck level
+     * grant the full bonus), and the Luck drop max chance into {@code [0, 1]}.
      *
      * @param asset the loaded RPG config asset
      * @return an immutable snapshot reflecting the asset's values
@@ -78,9 +82,12 @@ public record RpgConfigValues(
                 Math.max(0.0f, asset.getSpeedHalfPoint()),
                 asset.getStrengthMaxBonus(),
                 Math.max(0.0f, asset.getStrengthHalfPoint()),
-                asset.getLuckMaxDropBonus(),
-                Math.max(0.0f, asset.getLuckHalfPoint()),
-                Math.max(1, asset.getLuckLevelsPerBonusRoll()),
+                Math.max(0.0f, asset.getLuckDropCoefficient()),
+                asset.getLuckDropExponent() > 0.0f
+                        ? asset.getLuckDropExponent()
+                        : RpgConstants.LUCK_DROP_EXPONENT,
+                Math.max(1, asset.getLuckDropReference()),
+                Math.clamp(asset.getLuckDropMaxChance(), 0.0f, 1.0f),
                 asset.getStaminaPerPoint(),
                 asset.getAgilityBaseThrottleNs(),
                 asset.getAgilityMaxReduction(),

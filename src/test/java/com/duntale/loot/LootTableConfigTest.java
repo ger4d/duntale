@@ -174,9 +174,56 @@ class LootTableConfigTest {
     }
 
     @Test
-    @DisplayName("Should reject empty entry arrays")
+    @DisplayName("Should reject a table with no gear and no gold entries")
     void shouldRejectEmptyEntries() {
         LootTableConfig config = table("EmptyEntries", 1, 1.0);
+
+        assertThrows(IllegalArgumentException.class, config::toLootTable);
+    }
+
+    @Test
+    @DisplayName("Should accept a gold-only table with empty gear entries")
+    void shouldAcceptGoldOnlyTable() {
+        LootTableConfig config = table("GoldOnly", 1, 0.0);
+        setField(config, "goldChance", 0.5);
+        setField(config, "goldEntries", new LootEntryConfig[]{
+                entry("SIMPLE", "Gold_Coin", "WEAPON", 1, 1, 1, 3, 1.0, 0, 0)
+        });
+
+        LootTable runtime = config.toLootTable();
+
+        assertEquals(0.5, runtime.getGoldChance());
+        assertEquals(1, runtime.getGoldEntries().size());
+        assertTrue(runtime.getEntries().isEmpty());
+    }
+
+    @Test
+    @DisplayName("Should build independent gear and gold pools")
+    void shouldBuildBothPools() {
+        LootTableConfig config = table("Both", 1, 0.10,
+                entry("LEVELED", "Weapon_Sword_Iron", "WEAPON", 5, 8, 1, 1, 1.0, 0, 0));
+        setField(config, "goldChance", 0.55);
+        setField(config, "goldEntries", new LootEntryConfig[]{
+                entry("SIMPLE", "Gold_Coin", "WEAPON", 1, 1, 3, 6, 1.0, 0, 0)
+        });
+
+        LootTable runtime = config.toLootTable();
+
+        assertEquals(0.10, runtime.getDropChance());
+        assertEquals(0.55, runtime.getGoldChance());
+        assertEquals(1, runtime.getEntries().size());
+        assertEquals(1, runtime.getGoldEntries().size());
+    }
+
+    @Test
+    @DisplayName("Should reject gold chance outside zero to one")
+    void shouldRejectGoldChanceOutsideRange() {
+        LootTableConfig config = table("BadGoldChance", 1, 1.0,
+                entry("LEVELED", "Weapon_Sword_Iron", "WEAPON", 5, 8, 1, 1, 1.0, 0, 0));
+        setField(config, "goldChance", 1.5);
+        setField(config, "goldEntries", new LootEntryConfig[]{
+                entry("SIMPLE", "Gold_Coin", "WEAPON", 1, 1, 1, 3, 1.0, 0, 0)
+        });
 
         assertThrows(IllegalArgumentException.class, config::toLootTable);
     }

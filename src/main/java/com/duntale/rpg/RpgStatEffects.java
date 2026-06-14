@@ -3,8 +3,9 @@ package com.duntale.rpg;
 /**
  * Static utility for computing effective gameplay values from RPG stat levels.
  *
- * <p>All formulas use a hyperbolic curve {@code maxBonus * (level / (level + halfPoint))}
- * to provide diminishing returns. Each stat maps to one or more gameplay values.
+ * <p>Most formulas use a hyperbolic curve {@code maxBonus * (level / (level + halfPoint))}
+ * to provide diminishing returns; the Luck drop chance instead uses an accelerating power curve
+ * (see {@link #computeLuckDropChance}). Each stat maps to one or more gameplay values.
  *
  * <p>Tuning values are read live from {@link RpgConfig#values()} on every call, so changes to
  * the {@code RpgConfig} asset (hot reload) take effect immediately.
@@ -61,30 +62,26 @@ public final class RpgStatEffects {
     }
 
     /**
-     * Computes the loot drop bonus chance for the given Luck stat level.
+     * Computes the effective gear drop chance for a base chance and the given Luck stat level.
      *
-     * <p>Formula: {@code luckMaxDropBonus * (level / (level + luckHalfPoint))}.
-     * At level 0 returns {@code 0.0f}.
+     * <p>Accelerating curve:
+     * {@code baseChance + coefficient * (min(luck, reference) / reference)^exponent}, clamped to
+     * {@code [0, maxChance]}. Luck below 0 is treated as 0, and Luck at or above the reference
+     * contributes the full coefficient (so the per-kill bonus cannot grow without bound). With the
+     * default tuning and a 0.10 base this yields ~0.10 at Luck 0, ~0.41 at Luck 30, and 0.80 at
+     * Luck 50; the {@code maxChance} clamp only engages for tables whose base chance is already high.
      *
-     * @param luckLevel the Luck stat level
-     * @return the drop bonus as a fraction (0.0 to luckMaxDropBonus)
+     * @param baseChance the table's unmodified gear drop chance
+     * @param luckLevel  the Luck stat level (0 = no bonus)
+     * @return the Luck-adjusted drop chance, clamped to the configured maximum
      */
-    public static float computeLuckDropBonus(int luckLevel) {
+    public static double computeLuckDropChance(double baseChance, int luckLevel) {
         RpgConfigValues v = RpgConfig.values();
-        return hyperbolic(luckLevel, v.luckMaxDropBonus(), v.luckHalfPoint());
-    }
-
-    /**
-     * Computes the number of bonus loot rolls for the given Luck stat level.
-     *
-     * <p>Formula: {@code Math.floorDiv(luckLevel, luckLevelsPerBonusRoll)}.
-     * At level 0 returns {@code 0}.
-     *
-     * @param luckLevel the Luck stat level
-     * @return the number of bonus rolls (>= 0)
-     */
-    public static int computeLuckBonusRolls(int luckLevel) {
-        return Math.floorDiv(luckLevel, RpgConfig.values().luckLevelsPerBonusRoll());
+        int reference = Math.max(1, v.luckDropReference());
+        int clampedLuck = Math.clamp(luckLevel, 0, reference);
+        double normalized = (double) clampedLuck / reference;
+        double bonus = v.luckDropCoefficient() * Math.pow(normalized, v.luckDropExponent());
+        return Math.clamp(baseChance + bonus, 0.0, v.luckDropMaxChance());
     }
 
     /**

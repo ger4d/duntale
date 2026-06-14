@@ -24,10 +24,12 @@ public final class RpgConstants {
     public static final float STRENGTH_MAX_BONUS = 1.0f;
     public static final float STRENGTH_HALF_POINT = 25.0f;
 
-    // Luck
-    public static final float LUCK_MAX_DROP_BONUS = 0.30f;
-    public static final float LUCK_HALF_POINT = 20.0f;
-    public static final int LUCK_LEVELS_PER_BONUS_ROLL = 15;
+    // Luck — accelerating gear drop-chance curve:
+    // chance = baseChance + coefficient * (min(luck, reference) / reference)^exponent, clamped to maxChance.
+    public static final float LUCK_DROP_COEFFICIENT = 0.70f;
+    public static final float LUCK_DROP_EXPONENT = 1.6f;
+    public static final int LUCK_DROP_REFERENCE = 50;
+    public static final float LUCK_DROP_MAX_CHANCE = 0.95f;
 
     // Stamina
     public static final float STAMINA_PER_POINT = 5.0f;

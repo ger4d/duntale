@@ -157,7 +157,7 @@ public class RarityRollService {
     /**
      * Applies the two-step Luck promotion to a base rarity: a single promotion gate
      * ({@code p = baseChance + luckCoeff * (min(luck,luckRef)/luckRef)^luckExp}) followed by a
-     * weighted tier-jump pick, capped at {@link Rarity#LEGENDARY}.
+     * weighted tier-jump pick, capped at {@link Rarity#ABYSSAL}.
      *
      * @param base      the base rarity
      * @param luckLevel the effective Luck

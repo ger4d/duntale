@@ -199,6 +199,52 @@ sigmoid: HP ×(1+8s), damage ×(1+5s)):
 - Variant overlays (`_Elite`/`_Boss`) become thin rarity-shift wrappers over
   the archetype template instead of hand-authored item lists.
 
+**Implemented (2026-06-14):**
+
+- **Independent gear/gold pools.** `LootTable` now rolls a gear pool
+  (`entries`/`DropChance`, Luck-boosted) and a gold pool
+  (`GoldEntries`/`GoldChance`, Luck-independent) separately;
+  `LootTableConfig` parses both and allows a gold-only table (empty gear
+  `Entries`) for swarm roles.
+- **Boss exclusivity (P5).** NORMAL/ELITE roll both pools independently; BOSS
+  rolls gear first and only falls back to the gold reward when no gear drops, so
+  the "gold instead of gear" boss payout (`bossGold`) is preserved. The variant
+  rarity-shift wrapper was already shipped in W4 (base-table fallback + the
+  variant `RaritySource`), so no new wrapper code was needed — only deleting the
+  18 `_Elite`/`_Boss` overlays. Signature boss weapons are intentionally dropped.
+- **Accelerating Luck drop curve.** `computeLuckDropBonus`/`computeLuckBonusRolls`
+  (and the three old `Luck*` RpgConfig keys) are removed; replaced by
+  `computeLuckDropChance(base, luck) = min(maxChance, base + coeff·(min(luck,ref)/ref)^exp)`.
+  Final keys: `LuckDropCoefficient 0.70`, `LuckDropExponent 1.6`,
+  `LuckDropReference 50`, `LuckDropMaxChance 0.95` (0.10 base → ~0.41 @30 → 0.80
+  @50). Luck is clamped to the reference, so the per-kill bonus cannot grow
+  unbounded. The bonus-roll mechanic is removed.
+- **Loot tables regenerated** by `scripts/scaling/generate_loot_tables.py` +
+  `archetype_loot_templates.json` (idempotent; writes `loot_table_manifest.json`):
+  39 existing base tables transformed in place (thematic **gear** preserved, gold
+  moved to the new gold pool, gear `DropChance` 0.10–0.12), 31 new tables created
+  for the 24 missing roster roles + 7 summons (DB-queried, level-banded gear),
+  swarm roles set gold-only. Gold quantity is **archetype-template-driven** (not
+  preserved per-table) so every table matches the validated Luck budget; W6
+  refines the amounts. The 2 orphan tables (Risen_Knight, Trork_Guard) are left
+  untouched. Hand-authored tables opt out of regeneration with a top-level
+  `"Authored": true` flag (runtime-inert). Summons get full archetype tables (farm
+  risk accepted; revisit in W6).
+- **Luck power budget** derived + validated by
+  `scripts/scaling/derive_luck_budget.py` (owns the `Rarity.json` `Promotion`
+  block from here on; idempotent report). Promotion tuned gentle — gate L0 5% →
+  L50 13%, rarity-value uplift only ~1.02× — so the Luck loot-value ratio is
+  dominated by the drop curve, not promotion. Final promotion:
+  `BaseChance 0.05, LuckCoeff 0.08, LuckExp 1.2, tiers 85/12/3`. The script
+  computes the **actual total loot-value EV(50)/EV(0)** per archetype (gear value
+  grounded in on-level buy price × 0.5 resale + the template gold faucet, at
+  L10/30/50) and **fails (non-zero exit) on any breach** of the ≤6× guardrail.
+  Current result: every archetype within budget (worst 5.79× for Standard/Caster
+  @L10). The drop curve alone is ~8× on gear, so the budget holds only because the
+  Luck-independent gold faucet dilutes the total — gold floors were set to satisfy
+  it; W6 refines them via the income split. Rarity ladder is the full 7 tiers
+  (Relic/Abyssal); promotion caps at Abyssal.
+
 ## W6. Income & price targets (P6, P7, P8, P9) — the tuning pass
 
 Single price axis for gear: `buy = g(combatValue(level)) × rarityPriceMult`,

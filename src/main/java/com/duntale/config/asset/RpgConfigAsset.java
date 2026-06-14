@@ -45,10 +45,11 @@ public class RpgConfigAsset
     // Strength
     protected float strengthMaxBonus = RpgConstants.STRENGTH_MAX_BONUS;
     protected float strengthHalfPoint = RpgConstants.STRENGTH_HALF_POINT;
-    // Luck
-    protected float luckMaxDropBonus = RpgConstants.LUCK_MAX_DROP_BONUS;
-    protected float luckHalfPoint = RpgConstants.LUCK_HALF_POINT;
-    protected int luckLevelsPerBonusRoll = RpgConstants.LUCK_LEVELS_PER_BONUS_ROLL;
+    // Luck — accelerating gear drop-chance curve
+    protected float luckDropCoefficient = RpgConstants.LUCK_DROP_COEFFICIENT;
+    protected float luckDropExponent = RpgConstants.LUCK_DROP_EXPONENT;
+    protected int luckDropReference = RpgConstants.LUCK_DROP_REFERENCE;
+    protected float luckDropMaxChance = RpgConstants.LUCK_DROP_MAX_CHANCE;
     // Stamina
     protected float staminaPerPoint = RpgConstants.STAMINA_PER_POINT;
     // Agility
@@ -91,13 +92,18 @@ public class RpgConfigAsset
                         (asset, value) -> asset.strengthMaxBonus = value, asset -> asset.strengthMaxBonus).add()
                 .append(new KeyedCodec<>("StrengthHalfPoint", Codec.FLOAT),
                         (asset, value) -> asset.strengthHalfPoint = value, asset -> asset.strengthHalfPoint).add()
-                .append(new KeyedCodec<>("LuckMaxDropBonus", Codec.FLOAT),
-                        (asset, value) -> asset.luckMaxDropBonus = value, asset -> asset.luckMaxDropBonus).add()
-                .append(new KeyedCodec<>("LuckHalfPoint", Codec.FLOAT),
-                        (asset, value) -> asset.luckHalfPoint = value, asset -> asset.luckHalfPoint).add()
-                .append(new KeyedCodec<>("LuckLevelsPerBonusRoll", Codec.INTEGER),
-                        (asset, value) -> asset.luckLevelsPerBonusRoll = value,
-                        asset -> asset.luckLevelsPerBonusRoll).add()
+                .append(new KeyedCodec<>("LuckDropCoefficient", Codec.FLOAT),
+                        (asset, value) -> asset.luckDropCoefficient = value,
+                        asset -> asset.luckDropCoefficient).add()
+                .append(new KeyedCodec<>("LuckDropExponent", Codec.FLOAT),
+                        (asset, value) -> asset.luckDropExponent = value,
+                        asset -> asset.luckDropExponent).add()
+                .append(new KeyedCodec<>("LuckDropReference", Codec.INTEGER),
+                        (asset, value) -> asset.luckDropReference = value,
+                        asset -> asset.luckDropReference).add()
+                .append(new KeyedCodec<>("LuckDropMaxChance", Codec.FLOAT),
+                        (asset, value) -> asset.luckDropMaxChance = value,
+                        asset -> asset.luckDropMaxChance).add()
                 .append(new KeyedCodec<>("StaminaPerPoint", Codec.FLOAT),
                         (asset, value) -> asset.staminaPerPoint = value, asset -> asset.staminaPerPoint).add()
                 .append(new KeyedCodec<>("AgilityBaseThrottleNs", Codec.LONG),
@@ -196,16 +202,20 @@ public class RpgConfigAsset
         return strengthHalfPoint;
     }
 
-    public float getLuckMaxDropBonus() {
-        return luckMaxDropBonus;
+    public float getLuckDropCoefficient() {
+        return luckDropCoefficient;
     }
 
-    public float getLuckHalfPoint() {
-        return luckHalfPoint;
+    public float getLuckDropExponent() {
+        return luckDropExponent;
     }
 
-    public int getLuckLevelsPerBonusRoll() {
-        return luckLevelsPerBonusRoll;
+    public int getLuckDropReference() {
+        return luckDropReference;
+    }
+
+    public float getLuckDropMaxChance() {
+        return luckDropMaxChance;
     }
 
     public float getStaminaPerPoint() {
