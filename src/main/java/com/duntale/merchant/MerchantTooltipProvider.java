@@ -1,5 +1,6 @@
 package com.duntale.merchant;
 
+import com.duntale.loot.Rarity;
 import org.herolias.tooltips.api.TooltipData;
 import org.herolias.tooltips.api.TooltipPriority;
 import org.herolias.tooltips.api.TooltipProvider;
@@ -74,8 +75,7 @@ public class MerchantTooltipProvider implements TooltipProvider {
 
         // 2. Any sellable item (always shows sell value for items in the registry)
         if (priceRegistry.isSellable(itemId)) {
-            int dungeonLevel = extractDungeonLevel(metadata);
-            long sellPrice = priceRegistry.getSellPrice(itemId, dungeonLevel);
+            long sellPrice = resolveDisplayedSellPrice(itemId, metadata);
             return TooltipData.builder()
                     .hashInput("merch_sell:" + sellPrice)
                     .addLine(colorTag(COLOR_GREEN, "Sell: " + formatGold(sellPrice)))
@@ -153,6 +153,70 @@ public class MerchantTooltipProvider implements TooltipProvider {
     @Nonnull
     private static String colorTag(@Nonnull String color, @Nonnull String text) {
         return "<color is=\"" + color + "\">" + text + "</color>";
+    }
+
+    /**
+     * Resolves the sell price to display in the tooltip.
+     *
+     * <p>Merchant-bought items carry a stamped {@code merchant_sell_price} tag; when present it is
+     * shown verbatim so the tooltip matches the actual resale credit. Items without the tag (drops,
+     * chest loot, etc.) are priced from the registry and scaled by the item's rarity multiplier.
+     *
+     * @param itemId   the item asset ID
+     * @param metadata the raw metadata string
+     * @return the displayed sell price in gold
+     */
+    private long resolveDisplayedSellPrice(@Nonnull String itemId, @Nullable String metadata) {
+        if (metadata != null) {
+            Long taggedSellPrice = extractLong(metadata, MerchantService.META_SELL_PRICE);
+            if (taggedSellPrice != null && taggedSellPrice > 0) {
+                return taggedSellPrice;
+            }
+        }
+
+        int dungeonLevel = extractDungeonLevel(metadata);
+        Rarity rarity = metadata != null
+                ? Rarity.fromId(extractString(metadata, "duntale_rarity"))
+                : null;
+        return Math.round(priceRegistry.getSellPrice(itemId, dungeonLevel)
+                * priceRegistry.rarityPriceMult(rarity));
+    }
+
+    /**
+     * Extracts a quoted string value from a metadata string containing BSON-like key-value pairs.
+     *
+     * @param metadata the metadata string
+     * @param key      the key to extract
+     * @return the extracted string value, or {@code null} if not found
+     */
+    @Nullable
+    private static String extractString(@Nonnull String metadata, @Nonnull String key) {
+        int keyIndex = metadata.indexOf(key);
+        if (keyIndex < 0) {
+            return null;
+        }
+
+        int afterKey = keyIndex + key.length();
+        int quoteStart = -1;
+        for (int i = afterKey; i < metadata.length(); i++) {
+            char c = metadata.charAt(i);
+            if (c == '"') {
+                quoteStart = i + 1;
+                break;
+            }
+            if (c != ':' && c != ' ' && c != ',' && c != '{' && c != '}') {
+                break;
+            }
+        }
+        if (quoteStart < 0) {
+            return null;
+        }
+
+        int quoteEnd = metadata.indexOf('"', quoteStart);
+        if (quoteEnd < 0) {
+            return null;
+        }
+        return metadata.substring(quoteStart, quoteEnd);
     }
 
     /**

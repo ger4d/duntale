@@ -281,7 +281,11 @@ public class MerchantPriceRegistry {
      */
     public long getBuyPrice(@Nonnull String itemId) {
         Long price = buyPriceCache.get(itemId);
-        return price != null ? price : 0L;
+        if (price != null) {
+            return price;
+        }
+        Long custom = customBuyPrices.get(itemId);
+        return custom != null ? custom : 0L;
     }
 
     /**

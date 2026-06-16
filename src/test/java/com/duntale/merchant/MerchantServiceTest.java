@@ -8,6 +8,7 @@ import com.hypixel.hytale.codec.Codec;
 import com.hypixel.hytale.server.core.asset.type.item.config.Item;
 import com.hypixel.hytale.event.EventBus;
 import com.hypixel.hytale.event.IEventBus;
+import com.duntale.items.CustomItems;
 import com.hypixel.hytale.server.core.inventory.ItemStack;
 import com.hypixel.hytale.server.core.inventory.container.ItemContainer;
 import com.hypixel.hytale.server.core.inventory.container.SimpleItemContainer;
@@ -78,6 +79,43 @@ class MerchantServiceTest {
         assertNull(updated.getFromMetadataOrNull(MerchantService.META_GOLD, Codec.LONG));
         assertEquals(2_100L,
                 updated.getFromMetadataOrNull(MerchantService.META_SELL_PRICE, Codec.LONG));
+    }
+
+    @Test
+    @DisplayName("Should use stamped sell-price tag over registry fallback")
+    void shouldUseStampedSellPriceTagOverRegistryFallback() {
+        MerchantPriceRegistry registry = new MerchantPriceRegistry();
+        registry.registerCustomItem(CustomItems.VAMPIRE_JUICE, 50_000L);
+
+        ItemStack tagged = new ItemStack(CustomItems.VAMPIRE_JUICE, 1)
+                .withMetadata(MerchantService.META_SELL_PRICE, Codec.LONG, 7_500L);
+
+        assertEquals(7_500L, MerchantService.resolveSellPrice(registry, tagged));
+        assertEquals(7_500L, MerchantService.computeSellPrice(registry, tagged));
+    }
+
+    @Test
+    @DisplayName("Should fall back to registry sell price when no stamped tag exists")
+    void shouldFallBackToRegistrySellPriceWhenNoStampedTag() {
+        MerchantPriceRegistry registry = new MerchantPriceRegistry();
+        registry.registerCustomItem(CustomItems.VAMPIRE_JUICE, 50_000L);
+
+        ItemStack plain = new ItemStack(CustomItems.VAMPIRE_JUICE, 1);
+
+        long expected = (long) Math.floor(50_000L * MerchantPriceRegistry.SELL_RATIO);
+        assertEquals(expected, MerchantService.resolveSellPrice(registry, plain));
+        assertEquals(expected, MerchantService.computeSellPrice(registry, plain));
+    }
+
+    @Test
+    @DisplayName("Should multiply per-unit sell price by stack quantity")
+    void shouldMultiplyPerUnitSellPriceByStackQuantity() {
+        MerchantPriceRegistry registry = new MerchantPriceRegistry();
+
+        ItemStack stack = new ItemStack("Weapon_Arrow_Crude", 10)
+                .withMetadata(MerchantService.META_SELL_PRICE, Codec.LONG, 2L);
+
+        assertEquals(20L, MerchantService.computeSellPrice(registry, stack));
     }
 
     private static ItemStack merchantDisplayItem(String itemId, long buyPrice, long gold) {

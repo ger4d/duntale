@@ -101,7 +101,11 @@ public class CatalogGenerator {
             new ConsumableDef("Upgrade_Backpack_1", 25_000, 1),
             new ConsumableDef("Upgrade_Backpack_2", 50_000, 1),
             new ConsumableDef("Upgrade_Backpack_3", 75_000, 1),
-            // ── Custom utility items (prices sourced from CustomItems.BUY_PRICES) ──
+            // ── Custom utility items ──
+            // Prices are resolved at catalog-build time from MerchantPriceRegistry (which is
+            // overwritten from Pricing.json after asset load). The static BUY_PRICES values here
+            // are only a fallback for the offline/initial-registration path and are ignored at
+            // runtime by toConsumableEntry for any item registered as a custom item.
             new ConsumableDef(CustomItems.IMMUNITY_TRAP_RING, CustomItems.BUY_PRICES.get(CustomItems.IMMUNITY_TRAP_RING), 1),
             new ConsumableDef(CustomItems.SPEED_BOOTS_I, CustomItems.BUY_PRICES.get(CustomItems.SPEED_BOOTS_I), 1),
             new ConsumableDef(CustomItems.SPEED_BOOTS_II, CustomItems.BUY_PRICES.get(CustomItems.SPEED_BOOTS_II), 1),
@@ -224,18 +228,26 @@ public class CatalogGenerator {
      * about catalog gear and authored custom items, so plain consumables are rejected
      * as "unsellable" and show no sell price in tooltips. Registering each at its
      * merchant unit buy price makes it sellable at {@link MerchantPriceRegistry#SELL_RATIO}
-     * per unit. Custom utility items are already registered from
-     * {@link CustomItems#BUY_PRICES}; re-registering them here with the same unit price
-     * is a harmless no-op.</p>
+     * per unit. Custom utility items are skipped because they are registered separately
+     * (from {@link CustomItems#BUY_PRICES} at setup and then overwritten from
+     * {@code Pricing.json} at asset load); re-registering them here would clobber the
+     * asset-driven prices.</p>
      *
      * @param priceRegistry the price registry to populate (kept across its initialize())
      */
     public static void registerConsumableResalePrices(@Nonnull MerchantPriceRegistry priceRegistry) {
         for (ConsumableDef def : CONSUMABLE_POOL) {
+            if (priceRegistry.isCustomItem(def.itemId())) {
+                continue;
+            }
             priceRegistry.registerCustomItem(def.itemId(), def.unitPrice());
         }
-        priceRegistry.registerCustomItem(HEALTH_POTION_LOW.itemId(), HEALTH_POTION_LOW.unitPrice());
-        priceRegistry.registerCustomItem(HEALTH_POTION_HIGH.itemId(), HEALTH_POTION_HIGH.unitPrice());
+        if (!priceRegistry.isCustomItem(HEALTH_POTION_LOW.itemId())) {
+            priceRegistry.registerCustomItem(HEALTH_POTION_LOW.itemId(), HEALTH_POTION_LOW.unitPrice());
+        }
+        if (!priceRegistry.isCustomItem(HEALTH_POTION_HIGH.itemId())) {
+            priceRegistry.registerCustomItem(HEALTH_POTION_HIGH.itemId(), HEALTH_POTION_HIGH.unitPrice());
+        }
     }
 
     /**
@@ -388,7 +400,7 @@ public class CatalogGenerator {
         catalog.add(toConsumableEntry(new ConsumableDef("Weapon_Arrow_Crude", 5)));
 
         // Village Teleport x1, x5, x10 options
-        long warpUnitPrice = CustomItems.BUY_PRICES.get(CustomItems.VILLAGE_WARP);
+        long warpUnitPrice = priceRegistry.getBuyPrice(CustomItems.VILLAGE_WARP);
         catalog.add(toConsumableEntry(new ConsumableDef(CustomItems.VILLAGE_WARP, warpUnitPrice, 1)));
         catalog.add(toConsumableEntry(new ConsumableDef(CustomItems.VILLAGE_WARP, warpUnitPrice, 5)));
         catalog.add(toConsumableEntry(new ConsumableDef(CustomItems.VILLAGE_WARP, warpUnitPrice, 10)));
@@ -396,15 +408,6 @@ public class CatalogGenerator {
         return List.copyOf(catalog);
     }
 
-    /**
-    * Builds a consumable catalog entry. By default the item is offered as a full
-    * stack, resolving the item's max stack size and scaling the per-unit price by
-    * that quantity. Definitions with a fixed quantity override bypass the max-stack
-    * lookup and instead use the configured quantity directly.
-     *
-     * @param def the consumable definition (item ID, price, and stacking behaviour)
-     * @return a catalog entry with the resolved quantity and price
-     */
     /**
      * Builds a gear catalog entry with a rolled rarity, its attributes, and the rarity-adjusted
      * buy price.
@@ -418,10 +421,23 @@ public class CatalogGenerator {
         return CatalogEntry.gear(itemId, gearLevel, price, rarity, attributes);
     }
 
+    /**
+     * Builds a consumable catalog entry. Custom-item unit prices are resolved from the
+     * price registry so they stay in sync with {@link MerchantPriceRegistry} (and therefore
+     * with any loaded {@code Pricing.json} overrides). By default the item is offered as a
+     * full stack, resolving the item's max stack size and scaling the per-unit price by that
+     * quantity. Definitions with a fixed quantity override bypass the max-stack lookup.
+     *
+     * @param def the consumable definition (item ID, price, and stacking behaviour)
+     * @return a catalog entry with the resolved quantity and price
+     */
     @Nonnull
-    private static CatalogEntry toConsumableEntry(@Nonnull ConsumableDef def) {
+    private CatalogEntry toConsumableEntry(@Nonnull ConsumableDef def) {
+        long unitPrice = priceRegistry.isCustomItem(def.itemId())
+                ? priceRegistry.getBuyPrice(def.itemId())
+                : def.unitPrice();
         if (def.fixedQuantity() > 0) {
-            return CatalogEntry.consumable(def.itemId(), def.unitPrice() * def.fixedQuantity(), def.fixedQuantity());
+            return CatalogEntry.consumable(def.itemId(), unitPrice * def.fixedQuantity(), def.fixedQuantity());
         }
         Item item = null;
         var assetStore = Item.getAssetStore();
@@ -429,7 +445,7 @@ public class CatalogGenerator {
             item = Item.getAssetMap().getAsset(def.itemId());
         }
         int maxStack = item != null ? Math.max(1, item.getMaxStack()) : 1;
-        long stackPrice = def.unitPrice() * maxStack;
+        long stackPrice = unitPrice * maxStack;
         return CatalogEntry.consumable(def.itemId(), stackPrice, maxStack);
     }
 

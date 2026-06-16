@@ -404,6 +404,28 @@ class MerchantPriceRegistryTest {
             assertEquals((long) Math.floor(7_500L * MerchantPriceRegistry.SELL_RATIO),
                     registry.getSellPrice(CustomItems.STAT_POINT_TOKEN));
         }
+
+        @Test
+        @DisplayName("Should return custom buy price from getBuyPrice(String)")
+        void shouldReturnCustomBuyPriceFromGetBuyPrice() {
+            MerchantPriceRegistry registry = new MerchantPriceRegistry();
+            registry.registerCustomItem(CustomItems.VAMPIRE_JUICE, 50_000L);
+
+            assertEquals(50_000L, registry.getBuyPrice(CustomItems.VAMPIRE_JUICE));
+        }
+
+        @Test
+        @DisplayName("Should reflect re-registered custom buy price after initialize()")
+        void shouldReflectReRegisteredCustomBuyPriceAfterInitialize() {
+            MerchantPriceRegistry registry = new MerchantPriceRegistry();
+            registry.registerCustomItem(CustomItems.SPEED_BOOTS_I, 30_000L);
+            registry.initialize(new TestAssetCatalog(List.of(), List.of()));
+            registry.registerCustomItem(CustomItems.SPEED_BOOTS_I, 141_000L);
+
+            assertEquals(141_000L, registry.getBuyPrice(CustomItems.SPEED_BOOTS_I));
+            assertEquals((long) Math.floor(141_000L * MerchantPriceRegistry.SELL_RATIO),
+                    registry.getSellPrice(CustomItems.SPEED_BOOTS_I));
+        }
     }
 
     @Nested
@@ -493,6 +515,29 @@ class MerchantPriceRegistryTest {
             assertTrue(sawPalporterSingle);
             assertTrue(sawVillageWarpSingle);
         }
+
+        @Test
+        @DisplayName("Should use re-registered custom prices in generated catalogs")
+        void shouldUseReRegisteredCustomPricesInGeneratedCatalogs() {
+            MerchantPriceRegistry registry = initializedRegistry(List.of(), List.of());
+            registry.registerCustomItem(CustomItems.VILLAGE_WARP, 5_000L);
+            CatalogGenerator generator = generator(registry, false);
+
+            long firstPrice = generator.generateVillageCatalog().stream()
+                    .filter(entry -> CustomItems.VILLAGE_WARP.equals(entry.itemId()))
+                    .findFirst()
+                    .map(CatalogEntry::buyPrice)
+                    .orElseThrow();
+            assertEquals(5_000L, firstPrice);
+
+            registry.registerCustomItem(CustomItems.VILLAGE_WARP, 23_500L);
+            long secondPrice = generator.generateVillageCatalog().stream()
+                    .filter(entry -> CustomItems.VILLAGE_WARP.equals(entry.itemId()))
+                    .findFirst()
+                    .map(CatalogEntry::buyPrice)
+                    .orElseThrow();
+            assertEquals(23_500L, secondPrice);
+        }
     }
 
     @Nested
@@ -533,11 +578,21 @@ class MerchantPriceRegistryTest {
         );
     }
 
+    /**
+     * Registers the fallback custom-item prices in the registry, mirroring
+     * {@link com.duntale.DuntalePlugin#setup()} so tests exercise the production
+     * registry-driven catalog path rather than the static fallback path.
+     */
+    private static void registerFallbackCustomPrices(@Nonnull MerchantPriceRegistry registry) {
+        CustomItems.BUY_PRICES.forEach(registry::registerCustomItem);
+    }
+
     private static MerchantPriceRegistry initializedRegistry(
             List<AssetCatalog.WeaponBaseRow> weapons,
             List<AssetCatalog.ArmorBaseRow> armor
     ) {
         MerchantPriceRegistry registry = new MerchantPriceRegistry();
+        registerFallbackCustomPrices(registry);
         registry.initialize(new TestAssetCatalog(weapons, armor));
         return registry;
     }
@@ -547,6 +602,7 @@ class MerchantPriceRegistryTest {
             List<AssetCatalog.ArmorBaseRow> armor
     ) {
         MerchantPriceRegistry registry = new MerchantPriceRegistry();
+        registerFallbackCustomPrices(registry);
         registry.setGearCurveRegistry(loadedGearCurves());
         registry.initialize(new TestAssetCatalog(weapons, armor));
         return registry;

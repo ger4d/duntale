@@ -278,16 +278,7 @@ public class MerchantService {
 
         // Item placed — player is selling
         String itemId = item.getItemId();
-        int dungeonLevel = getItemDungeonLevel(item);
-        // Apply the stack's rarity price multiplier (no-op for unstamped/non-gear items).
-        Rarity rarity = Rarity.fromId(GearLevelService.getRarity(item));
-        long basePrice = Math.round(priceRegistry.getSellPrice(itemId, dungeonLevel)
-                * priceRegistry.rarityPriceMult(rarity));
-        long sellPrice = basePrice;
-        if (priceRegistry.isCustomItem(itemId)) {
-            // Fixed-price custom items sell per unit, so credit the whole stack.
-            sellPrice = basePrice * item.getQuantity();
-        }
+        long sellPrice = computeSellPrice(priceRegistry, item);
         if (sellPrice <= 0) {
             return;
         }
@@ -311,6 +302,44 @@ public class MerchantService {
         if (session != null) {
             updateBuyItemBalances(container, session.catalog(), newBalance);
         }
+    }
+
+    /**
+     * Computes the total sell price for an item stack placed in the sell zone.
+     *
+     * @param priceRegistry the price registry for fallback sell-price lookups
+     * @param item          the item stack being sold
+     * @return the total sell price in gold, or {@code 0} when the item is not sellable
+     */
+    static long computeSellPrice(@Nonnull MerchantPriceRegistry priceRegistry, @Nonnull ItemStack item) {
+        long basePrice = resolveSellPrice(priceRegistry, item);
+        return basePrice * Math.max(1, item.getQuantity());
+    }
+
+    /**
+     * Resolves the per-unit sell price for an item placed in the sell zone.
+     *
+     * <p>Merchant-bought items carry a stamped {@link #META_SELL_PRICE} tag set at purchase
+     * time; honoring that tag guarantees the player receives exactly the resale value they
+     * were promised, even if the item's level/rarity metadata is later stripped or altered.
+     * Items without the tag (drops, chest loot, etc.) fall back to a live registry lookup
+     * using their current level and rarity metadata.
+     *
+     * @param priceRegistry the price registry for fallback sell-price lookups
+     * @param item          the item stack being sold
+     * @return the per-unit sell price in gold, or {@code 0} when the item is not sellable
+     */
+    static long resolveSellPrice(@Nonnull MerchantPriceRegistry priceRegistry, @Nonnull ItemStack item) {
+        Long taggedSellPrice = item.getFromMetadataOrNull(META_SELL_PRICE, Codec.LONG);
+        if (taggedSellPrice != null && taggedSellPrice > 0) {
+            return taggedSellPrice;
+        }
+
+        String itemId = item.getItemId();
+        int dungeonLevel = getItemDungeonLevel(item);
+        Rarity rarity = Rarity.fromId(GearLevelService.getRarity(item));
+        return Math.round(priceRegistry.getSellPrice(itemId, dungeonLevel)
+                * priceRegistry.rarityPriceMult(rarity));
     }
 
     /**
