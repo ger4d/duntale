@@ -76,6 +76,18 @@ class CombatScalingTest {
     }
 
     @Test
+    @DisplayName("Gear progression should preserve endpoints but be front-loaded in the early band")
+    void shouldFrontLoadGearProgression() {
+        // gearProgress is 0 at the floor, so the weapon multiplier collapses to 1.0 at level 1.
+        assertEquals(1.0f, CombatScaling.weaponMult(1), 1e-4f);
+        // Front-loaded: mid-level power sits well above the old flat sigmoid curve, which gave
+        // weaponMult(20) ~= 1.48 (WEAPON_K 6 x sigmoid). The blend lifts it past 1.8.
+        assertTrue(CombatScaling.weaponMult(20) > 1.8f);
+        // Still monotonic with level.
+        assertTrue(CombatScaling.weaponMult(40) > CombatScaling.weaponMult(20));
+    }
+
+    @Test
     @DisplayName("Configured variant tables should drive Elite/Boss HP and damage multipliers")
     void shouldDriveVariantMultipliersFromConfig() {
         CombatScaling.setPricingRegistry(PricingRegistry.forTest(new Snapshot(

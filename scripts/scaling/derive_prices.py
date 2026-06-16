@@ -22,8 +22,9 @@ What it solves (read-merge-write so ``derive_income.py``'s respawn schedule is p
      relative ordering.
 
 The HP cap was removed (NpcScalingApplicator no longer clamps), so this script no longer writes
-``MaxScaledHp``. The Elite/Boss multiplier tables are retained here and re-emitted verbatim; their
-re-derivation belongs to the Encounter Pacing workstream, where they are difficulty levers.
+``MaxScaledHp``. The Elite/Boss multiplier tables are owned by ``derive_difficulty.py`` (where they are
+the per-floor difficulty lever); this script does not touch them, so re-running it preserves whatever
+that script wrote.
 
 Run:  uv run derive_prices.py
 """
@@ -69,7 +70,7 @@ MIN_LEVEL, MAX_LEVEL = 1, 100
 MAX_ARMOR_DR = 0.65
 _MIDPOINT = MAX_LEVEL / 2.0
 _STEEPNESS = 7.2 / MAX_LEVEL
-_WEAPON_K = 6.0
+_WEAPON_K = 7.0
 
 
 def _raw_sigmoid(level: float) -> float:
@@ -87,15 +88,17 @@ def sigmoid(level: int) -> float:
     return max(0.0, min((raw - _SIG_MIN) / denom, 1.0)) if denom > 0 else 0.0
 
 
+def linear(level: int) -> float:
+    return (max(MIN_LEVEL, min(MAX_LEVEL, level)) - MIN_LEVEL) / (MAX_LEVEL - MIN_LEVEL)
+
+
+def gear_progress(level: int) -> float:
+    # Gear-only front-loaded progression (mirrors CombatScaling.gearProgress).
+    return 0.5 * linear(level) + 0.5 * sigmoid(level)
+
+
 def weapon_mult(level: int) -> float:
-    return 1.0 + _WEAPON_K * sigmoid(level)
-
-
-# ── Current variant tables (retained; re-derivation belongs to the Encounter Pacing workstream) ──
-ELITE_STEPS = [(0.75, 6.5, 2.25), (0.5, 5.5, 2.0), (0.3333, 4.5, 1.75),
-               (0.1667, 3.5, 1.5), (0.0, 2.5, 1.25)]
-BOSS_STEPS = [(0.75, 25.0, 5.2), (0.5, 22.5, 4.5), (0.3333, 17.5, 3.2),
-              (0.1667, 15.0, 2.5), (0.0, 10.0, 2.0)]
+    return 1.0 + _WEAPON_K * gear_progress(level)
 
 
 # ── Combat-value replication (mirrors MerchantPriceRegistry) ─────────────────
@@ -123,7 +126,7 @@ def weapon_cv(curves: dict, family: str, level: int) -> float:
 
 
 def armor_cv(curves: dict, slot: str, level: int, k_dr: float) -> float:
-    s = sigmoid(level)
+    s = gear_progress(level)
     hp_term = curves["hp_shares"].get(slot, 0.0) * (
         curves["hp_min"] + (curves["hp_max"] - curves["hp_min"]) * s)
     slot_dr = curves["dr_shares"].get(slot, 0.0) * (
@@ -234,10 +237,8 @@ def main() -> int:
     pricing["GoldMappingExponent"] = gold_exp
     pricing["ArmorEhpDrWeight"] = round(k_dr, 4)
     pricing["MinBuyPrice"] = MIN_BUY_PRICE
-    pricing["EliteVariantSteps"] = [
-        {"MinLevelRatio": r, "HpMult": hp, "DamageMult": dmg} for r, hp, dmg in ELITE_STEPS]
-    pricing["BossVariantSteps"] = [
-        {"MinLevelRatio": r, "HpMult": hp, "DamageMult": dmg} for r, hp, dmg in BOSS_STEPS]
+    # EliteVariantSteps / BossVariantSteps are owned by derive_difficulty.py (the per-floor difficulty
+    # lever); left untouched here so re-running price derivation preserves them.
     pricing["CustomItemPrices"] = custom_prices
     PRICING_PATH.write_text(json.dumps(pricing, indent=2) + "\n")
     conn.close()
@@ -278,8 +279,8 @@ def upsert_report(gold_scale, gold_exp, k_dr, asym_ratio, per_floor, ism, median
         f"Gold mapping price = round(combatValue^{gold_exp} x {gold_scale}), solved so the median "
         f"on-level price tracks {PRICE_MEDIAN_TO_INCOME:g} x I_smooth(F) (median gear ~ 2-3x a floor of "
         "income — the gear-swap-cadence pillar). The HP cap was removed, so MaxScaledHp is no longer "
-        "written; the Elite/Boss multiplier tables are retained (their re-derivation belongs to the "
-        "Encounter Pacing workstream).",
+        "written; the Elite/Boss multiplier tables are owned by derive_difficulty.py (the per-floor "
+        "difficulty lever) and are not touched here.",
         "",
         "| Floor | new median price | current price | I_smooth(F) | new/I_smooth |",
         "|---|---|---|---|---|",

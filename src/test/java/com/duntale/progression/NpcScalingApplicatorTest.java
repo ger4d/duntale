@@ -102,6 +102,67 @@ class NpcScalingApplicatorTest {
     }
 
     @Test
+    @DisplayName("Should carry the per-floor difficulty multiplier into the profile and fold it into damage")
+    void shouldApplyDifficultyMultiplierToDamageAndCarryItOnProfile() {
+        NpcScalingApplicator applicator = applicatorWith(Map.of(
+                "Werewolf", new ResolvedArchetype("Heavy", 200, 20.0f, 40.0f)));
+
+        // Same role/level/variant, one with no compensation and one at a 2x difficulty multiplier.
+        NpcScalingProfile baseline = applicator.createProfile(
+                "Werewolf", 30, CombatScaling.NpcVariant.NORMAL, 1.0f);
+        NpcScalingProfile harder = applicator.createProfile(
+                "Werewolf", 30, CombatScaling.NpcVariant.NORMAL, 2.0f);
+
+        assertEquals(1.0f, baseline.difficultyMult());
+        assertEquals(2.0f, harder.difficultyMult());
+        // Damage carries the 2x factor (within the +/-5% variance applied independently to each).
+        assertWithinVariance(baseline.damageMultiplier() * 2.0f, harder.damageMultiplier());
+    }
+
+    @Test
+    @DisplayName("Should default the difficulty multiplier to 1.0 on the three-arg createProfile")
+    void shouldDefaultDifficultyMultiplierToOne() {
+        NpcScalingProfile profile = applicator().createProfile("Skeleton", 5, CombatScaling.NpcVariant.NORMAL);
+
+        assertEquals(1.0f, profile.difficultyMult());
+    }
+
+    @Test
+    @DisplayName("Should roll NORMAL at elite rate 0 and ELITE at elite rate 1")
+    void shouldHonorEliteRateBounds() {
+        assertEquals(CombatScaling.NpcVariant.NORMAL,
+                BuiltInNpcSpawnScalingSystem.rollVariant(0.0, "instance-a", 7));
+        assertEquals(CombatScaling.NpcVariant.ELITE,
+                BuiltInNpcSpawnScalingSystem.rollVariant(1.0, "instance-a", 7));
+    }
+
+    @Test
+    @DisplayName("Should roll deterministically for the same instance and entity index")
+    void shouldRollDeterministically() {
+        CombatScaling.NpcVariant first = BuiltInNpcSpawnScalingSystem.rollVariant(0.35, "instance-b", 42);
+        CombatScaling.NpcVariant second = BuiltInNpcSpawnScalingSystem.rollVariant(0.35, "instance-b", 42);
+
+        assertEquals(first, second);
+    }
+
+    @Test
+    @DisplayName("Should promote roughly the configured fraction of spawns to ELITE across a population")
+    void shouldPromoteRoughlyEliteRateFractionAcrossPopulation() {
+        int population = 2000;
+        int elites = 0;
+        for (int index = 0; index < population; index++) {
+            if (BuiltInNpcSpawnScalingSystem.rollVariant(0.35, "instance-c", index)
+                    == CombatScaling.NpcVariant.ELITE) {
+                elites++;
+            }
+        }
+        double observed = (double) elites / population;
+        // A coarse band around the 0.35 target; the roll is seeded per entity, not a uniform stream.
+        assertTrue(observed > 0.25 && observed < 0.45,
+                "expected ~0.35 elite fraction, observed " + observed);
+    }
+
+    @Test
     @DisplayName("Should allow only built-in special spawn roles")
     void shouldAllowOnlyBuiltInSpecialSpawnRoles() {
         assertTrue(BuiltInNpcSpawnScalingSystem.isAllowlistedRole("Skeleton"));

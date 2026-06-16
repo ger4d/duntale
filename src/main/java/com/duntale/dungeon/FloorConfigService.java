@@ -130,6 +130,10 @@ public class FloorConfigService {
         // Pacing
         map.put("pacing.breatheRoomFrequency", FieldType.DOUBLE);
         map.put("pacing.difficultyRamp", FieldType.DOUBLE);
+        // Combat — per-floor difficulty compensation (inert by default; the offline pacing solver
+        // writes these so a sparse floor's fewer fights still land on the rising challenge budget)
+        map.put("combat.eliteRate", FieldType.DOUBLE);
+        map.put("combat.difficultyMult", FieldType.DOUBLE);
         FIELD_TYPES = Collections.unmodifiableMap(map);
     }
 
@@ -199,6 +203,25 @@ public class FloorConfigService {
         ThemeConfig themeConfig = applyThemeOverrides(ThemeConfig.defaults(), theme, overrides);
         PacingConfig pacing = applyPacingOverrides(PacingConfig.defaults(), overrides);
         return new DungeonConfig(null, null, "default", Vec3i.ZERO, layout, themeConfig, pacing, false, floorLevel);
+    }
+
+    /**
+     * Resolves the per-floor combat difficulty knobs that compensate for floor texture (a sparse floor
+     * with few fights gets a higher Elite rate and/or a flat HP/damage multiplier so its total threat
+     * still lands on the rising challenge budget).
+     *
+     * <p>Starts from {@link CombatConfig#defaults()} (Elite rate {@code 0.0}, difficulty multiplier
+     * {@code 1.0} &mdash; today's behavior) and applies the active floor-config asset snapshot from the
+     * highest configured floor {@code <= floorLevel}. With no {@code combat.*} overrides authored, the
+     * result is the inert default and no runtime scaling changes.
+     *
+     * @param floorLevel the floor level to resolve combat config for
+     * @return the resolved per-floor combat config
+     */
+    @Nonnull
+    public CombatConfig getCombatConfigForFloor(int floorLevel) {
+        Map<String, Object> overrides = resolveEffectiveOverrides(floorLevel);
+        return applyCombatOverrides(CombatConfig.defaults(), overrides);
     }
 
     /**
@@ -318,10 +341,11 @@ public class FloorConfigService {
         LayoutConfig defaultLayout = LayoutConfig.defaults();
         ThemeConfig defaultTheme = ThemeConfig.defaults();
         PacingConfig defaultPacing = PacingConfig.defaults();
+        CombatConfig defaultCombat = CombatConfig.defaults();
 
         Map<String, FieldStatus> fields = new LinkedHashMap<>();
         for (String path : FIELD_TYPES.keySet()) {
-            Object defaultValue = getDefaultValue(path, defaultLayout, defaultTheme, defaultPacing);
+            Object defaultValue = getDefaultValue(path, defaultLayout, defaultTheme, defaultPacing, defaultCombat);
             if (baseOverrides.containsKey(path)) {
                 Object overrideValue = convertToFieldType(path, baseOverrides.get(path));
                 boolean explicit = exactOverrides != null && exactOverrides.containsKey(path);
@@ -437,6 +461,34 @@ public class FloorConfigService {
             @Nonnull Object value,
             boolean explicit
     ) {}
+
+    /**
+     * Per-floor combat difficulty knobs that compensate for floor texture so a sparse floor's fewer
+     * fights still land on the rising challenge budget. {@code eliteRate} is the per-spawn chance a
+     * built-in NPC is promoted to the Elite variant; {@code difficultyMult} is a flat HP/damage
+     * multiplier applied on top. The {@link #defaults() default} of {@code (0.0, 1.0)} is inert &mdash;
+     * no promotion, no extra scaling &mdash; so the runtime ships at today's behavior until the offline
+     * pacing solver authors the {@code combat.*} overrides.
+     *
+     * @param eliteRate      the per-spawn Elite promotion chance in {@code [0.0, 1.0]}
+     * @param difficultyMult the flat HP/damage multiplier ({@code 1.0} = no change)
+     */
+    public record CombatConfig(
+            double eliteRate,
+            double difficultyMult
+    ) {
+
+        /**
+         * Returns the inert combat config: no Elite promotion and no extra HP/damage scaling. Resolving
+         * a floor with no {@code combat.*} overrides yields this, preserving today's behavior.
+         *
+         * @return the default combat config {@code (eliteRate 0.0, difficultyMult 1.0)}
+         */
+        @Nonnull
+        public static CombatConfig defaults() {
+            return new CombatConfig(0.0, 1.0);
+        }
+    }
 
     // ============================================
     // Private helpers
@@ -771,11 +823,23 @@ public class FloorConfigService {
     }
 
     @Nonnull
+    private static CombatConfig applyCombatOverrides(
+            @Nonnull CombatConfig d,
+            @Nonnull Map<String, Object> o
+    ) {
+        return new CombatConfig(
+                o.containsKey("combat.eliteRate") ? JsonParser.toDouble(o.get("combat.eliteRate")) : d.eliteRate(),
+                o.containsKey("combat.difficultyMult") ? JsonParser.toDouble(o.get("combat.difficultyMult")) : d.difficultyMult()
+        );
+    }
+
+    @Nonnull
     private static Object getDefaultValue(
             @Nonnull String path,
             @Nonnull LayoutConfig layout,
             @Nonnull ThemeConfig theme,
-            @Nonnull PacingConfig pacing
+            @Nonnull PacingConfig pacing,
+            @Nonnull CombatConfig combat
     ) {
         return switch (path) {
             case "dayTime" -> DEFAULT_DAY_TIME;
@@ -817,6 +881,8 @@ public class FloorConfigService {
             case "theme.floodingFactor" -> theme.floodingFactor();
             case "pacing.breatheRoomFrequency" -> pacing.breatheRoomFrequency();
             case "pacing.difficultyRamp" -> pacing.difficultyRamp();
+            case "combat.eliteRate" -> combat.eliteRate();
+            case "combat.difficultyMult" -> combat.difficultyMult();
             default -> throw new IllegalArgumentException("Unknown field: " + path);
         };
     }

@@ -45,6 +45,8 @@
       "mushroom",
       "temple_dark",
       "volcanic"
-    ]
+    ],
+    "combat.eliteRate": 0.2754,
+    "combat.difficultyMult": 1
   }
 }

@@ -38,7 +38,7 @@ public final class CombatScaling {
     private static final float COMPANION_DMG_K = 5.0f;
 
     // ── Gear scaling ─────────────────────────────────────────────────
-    private static final float WEAPON_K = 6.0f;
+    private static final float WEAPON_K = 7.0f;
     private static final float ARMOR_K = 4.0f;
 
     // ── Deployable scaling ───────────────────────────────────────────
@@ -94,6 +94,28 @@ public final class CombatScaling {
             return 0f;
         }
         return Math.max(0f, Math.min((raw - SIGMOID_AT_MIN_LEVEL) / denominator, 1f));
+    }
+
+    /** Linear progress from 0 at the level floor to 1 at the level ceiling. */
+    private static float linear(int level) {
+        return (clampLevel(level) - MIN_LEVEL) / (float) (MAX_LEVEL - MIN_LEVEL);
+    }
+
+    /**
+     * Gear-only power progression: a 50/50 blend of {@link #linear(int)} and {@link #sigmoid(int)}.
+     *
+     * <p>The shared sigmoid is deliberately flat at low levels, which makes early gear upgrades feel
+     * negligible. Blending in a linear term front-loads the curve so each level is a meaningful power
+     * step, while both terms are 0 at the floor and 1 at the ceiling, so the endpoints are preserved.
+     * Only the gear methods ({@link #weaponMult}, {@link #armorBudgetDR}, {@link #armorBudgetHp}) use
+     * this; NPC, companion, turret, and legacy armor scaling stay on the plain sigmoid, so enemy
+     * difficulty is untouched.
+     *
+     * @param level the gear level
+     * @return the blended progress in {@code [0, 1]}
+     */
+    private static float gearProgress(int level) {
+        return 0.5f * linear(level) + 0.5f * sigmoid(level);
     }
 
     /**
@@ -286,7 +308,7 @@ public final class CombatScaling {
      * @return the damage multiplier (always >= 1.0)
      */
     public static float weaponMult(int level) {
-        return 1.0f + WEAPON_K * sigmoid(level);
+        return 1.0f + WEAPON_K * gearProgress(level);
     }
 
     /**
@@ -321,7 +343,7 @@ public final class CombatScaling {
      * @return the uncapped DR contribution for this piece
      */
     public static float armorBudgetDR(float slotShare, int level, float minDr, float maxDr) {
-        float budget = minDr + (maxDr - minDr) * sigmoid(level);
+        float budget = minDr + (maxDr - minDr) * gearProgress(level);
         return slotShare * budget;
     }
 
@@ -340,7 +362,7 @@ public final class CombatScaling {
      * @return the authored HP contribution for this piece
      */
     public static float armorBudgetHp(float slotShare, int level, float minHp, float maxHp) {
-        float budget = minHp + (maxHp - minHp) * sigmoid(level);
+        float budget = minHp + (maxHp - minHp) * gearProgress(level);
         return slotShare * budget;
     }
 

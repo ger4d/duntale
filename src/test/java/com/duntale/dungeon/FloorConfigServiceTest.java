@@ -54,6 +54,58 @@ class FloorConfigServiceTest {
     }
 
     @Test
+    void getCombatConfigForFloorDefaultsToInertWhenNoOverrides() {
+        FloorConfigService service = new FloorConfigService(new TestRepository(), TreeMap::new);
+
+        FloorConfigService.CombatConfig combat = service.getCombatConfigForFloor(1);
+
+        assertEquals(0.0, combat.eliteRate());
+        assertEquals(1.0, combat.difficultyMult());
+    }
+
+    @Test
+    void getCombatConfigForFloorParsesOverridesAndInheritsByFloor() {
+        FloorConfigService service = new FloorConfigService(new TestRepository(), () -> assetDefaults(
+                Map.entry(3, Map.of(
+                        "theme.variants", List.of("crypt"),
+                        "combat.eliteRate", 0.25,
+                        "combat.difficultyMult", 1.5
+                )),
+                Map.entry(6, Map.of(
+                        "theme.variants", List.of("crypt"),
+                        "combat.eliteRate", 0.1,
+                        "combat.difficultyMult", 2.0
+                ))
+        ));
+
+        // Floor 5 inherits floor 3's combat overrides.
+        FloorConfigService.CombatConfig atFive = service.getCombatConfigForFloor(5);
+        assertEquals(0.25, atFive.eliteRate());
+        assertEquals(1.5, atFive.difficultyMult());
+
+        // Floor 7 inherits floor 6's combat overrides.
+        FloorConfigService.CombatConfig atSeven = service.getCombatConfigForFloor(7);
+        assertEquals(0.1, atSeven.eliteRate());
+        assertEquals(2.0, atSeven.difficultyMult());
+    }
+
+    @Test
+    void getCombatConfigForFloorFallsBackToDefaultForMissingKnob() {
+        // Only eliteRate authored; difficultyMult should fall back to the inert 1.0 default.
+        FloorConfigService service = new FloorConfigService(new TestRepository(), () -> assetDefaults(
+                Map.entry(2, Map.of(
+                        "theme.variants", List.of("crypt"),
+                        "combat.eliteRate", 0.3
+                ))
+        ));
+
+        FloorConfigService.CombatConfig combat = service.getCombatConfigForFloor(2);
+
+        assertEquals(0.3, combat.eliteRate());
+        assertEquals(1.0, combat.difficultyMult());
+    }
+
+    @Test
     void resolveConfigForFloorUsesHighestActiveAssetAtOrBelowFloor() {
     FloorConfigService service = new FloorConfigService(new TestRepository(), () -> assetDefaults(
                 Map.entry(3, Map.of(

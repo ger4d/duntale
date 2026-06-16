@@ -41,6 +41,8 @@
         "theme.variants": [
             "crypt",
             "volcanic"
-        ]
+        ],
+        "combat.eliteRate": 0,
+        "combat.difficultyMult": 1
     }
 }

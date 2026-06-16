@@ -678,7 +678,8 @@ public class DuntalePlugin extends JavaPlugin {
         this.getEntityStoreRegistry().registerSystem(new BuiltInNpcSpawnScalingSystem(
             combatScalingComponentType,
             dungeonInstanceService,
-            npcScalingApplicator
+            npcScalingApplicator,
+            this.floorConfigService
         ));
         this.getEntityStoreRegistry().registerSystem(new ClickToMoveKnockbackSystem(this.clickToMoveManager));
         this.getEntityStoreRegistry().registerSystem(new NpcLootSystem(lootRollService, rpgService, progressionService));

@@ -38,7 +38,7 @@ MIN_LEVEL = 1
 MAX_LEVEL = 100
 MIDPOINT = MAX_LEVEL / 2.0
 STEEPNESS = 7.2 / MAX_LEVEL
-WEAPON_K = 6.0
+WEAPON_K = 7.0
 ARMOR_K = 4.0
 MAX_ARMOR_DR = 0.65
 
@@ -57,8 +57,17 @@ def sigmoid(level: int) -> float:
     return max(0.0, min((raw - _S_MIN) / (_S_MAX - _S_MIN), 1.0))
 
 
+def linear(level: int) -> float:
+    return (max(MIN_LEVEL, min(level, MAX_LEVEL)) - MIN_LEVEL) / (MAX_LEVEL - MIN_LEVEL)
+
+
+def gear_progress(level: int) -> float:
+    # Gear-only front-loaded progression (mirrors CombatScaling.gearProgress); NPC scaling stays sigmoid.
+    return 0.5 * linear(level) + 0.5 * sigmoid(level)
+
+
 def weapon_mult(level: int) -> float:
-    return 1.0 + WEAPON_K * sigmoid(level)
+    return 1.0 + WEAPON_K * gear_progress(level)
 
 
 def armor_dr(base_resist: float, level: int) -> float:

@@ -49,7 +49,7 @@ DISCOVERY_DOC = SCRIPT_DIR.parent.parent / "docs/data-balancing/economy-discover
 MIN_LEVEL, MAX_LEVEL = 1, 100
 _MIDPOINT = MAX_LEVEL / 2.0
 _STEEPNESS = 7.2 / MAX_LEVEL
-_WEAPON_K = 6.0
+_WEAPON_K = 7.0
 _NPC_HP_K = 8.0
 MAX_ARMOR_DR = 0.65
 
@@ -71,8 +71,17 @@ def sigmoid(level: int) -> float:
     return max(0.0, min((raw - _SIG_MIN) / denom, 1.0))
 
 
+def linear(level: int) -> float:
+    return (max(MIN_LEVEL, min(MAX_LEVEL, level)) - MIN_LEVEL) / (MAX_LEVEL - MIN_LEVEL)
+
+
+def gear_progress(level: int) -> float:
+    # Gear-only front-loaded progression (mirrors CombatScaling.gearProgress); NPC scaling stays sigmoid.
+    return 0.5 * linear(level) + 0.5 * sigmoid(level)
+
+
 def weapon_mult(level: int) -> float:
-    return 1.0 + _WEAPON_K * sigmoid(level)
+    return 1.0 + _WEAPON_K * gear_progress(level)
 
 
 def npc_scaled_hp(base_hp: int, level: int) -> int:
@@ -86,14 +95,14 @@ TARGET_HITS = 5.0          # player hits to kill an on-level Standard
 RANGED_RATIO = 0.75        # ranged per-hit relative to melee (playtest seed)
 
 ARMOR_DR_BUDGET_MIN = 0.10  # total on-level DR at level 1
-ARMOR_DR_BUDGET_MAX = 0.55  # total on-level DR at the level ceiling (< MAX_ARMOR_DR)
+ARMOR_DR_BUDGET_MAX = 0.62  # total on-level DR at the level ceiling (< MAX_ARMOR_DR)
 
 # Authored armor flat-HP budget (W3 deferral, activated in W4). A full on-level set adds this
 # much max-HP via the slot shares below; it replaces the engine's per-piece asset armor HP, which
 # is suppressed in parallel (Duntale_ArmorHpSuppress). Draft magnitudes — retuned in W5/W6 against
 # the EHP target band alongside the DR budget.
 ARMOR_HP_BUDGET_MIN = 30.0   # total on-level authored armor HP at level 1
-ARMOR_HP_BUDGET_MAX = 250.0  # total on-level authored armor HP at the level ceiling
+ARMOR_HP_BUDGET_MAX = 320.0  # total on-level authored armor HP at the level ceiling
 
 # Ranged families fire from the Secondary slot on a charge/projectile cadence — not
 # gated by the melee Agility throttle, so they get a separate anchor.
@@ -182,12 +191,12 @@ def main() -> int:
     print(f"Armor DR budget: {ARMOR_DR_BUDGET_MIN:.0%} (L1) -> {ARMOR_DR_BUDGET_MAX:.0%} (L100), "
           f"combined cap {MAX_ARMOR_DR:.0%}")
     print("Full on-level set DR across breakpoints:")
-    budget = lambda lvl: ARMOR_DR_BUDGET_MIN + (ARMOR_DR_BUDGET_MAX - ARMOR_DR_BUDGET_MIN) * sigmoid(lvl)
+    budget = lambda lvl: ARMOR_DR_BUDGET_MIN + (ARMOR_DR_BUDGET_MAX - ARMOR_DR_BUDGET_MIN) * gear_progress(lvl)
     print("  " + "  ".join(f"L{lvl}:{budget(lvl):.0%}" for lvl in BREAKPOINT_LEVELS))
     print()
     print(f"Authored armor HP budget: +{ARMOR_HP_BUDGET_MIN:.0f} (L1) -> +{ARMOR_HP_BUDGET_MAX:.0f} (L100) "
           f"(replaces engine asset armor HP)")
-    hp_budget = lambda lvl: ARMOR_HP_BUDGET_MIN + (ARMOR_HP_BUDGET_MAX - ARMOR_HP_BUDGET_MIN) * sigmoid(lvl)
+    hp_budget = lambda lvl: ARMOR_HP_BUDGET_MIN + (ARMOR_HP_BUDGET_MAX - ARMOR_HP_BUDGET_MIN) * gear_progress(lvl)
     print("Full on-level set HP across breakpoints:")
     print("  " + "  ".join(f"L{lvl}:+{hp_budget(lvl):.0f}" for lvl in BREAKPOINT_LEVELS))
     if set(db_slots) - {s for s, _ in ARMOR_SLOTS}:

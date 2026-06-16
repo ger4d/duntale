@@ -126,26 +126,26 @@ Weapon damage resolution (offline parser): chain=49, inline=175, none=23. `inlin
 
 | Gear level | Weapon p50 | Weapon p90 | Weapon max | Armor p50 | Armor p90 | Armor max | Max ratio W/A |
 |---|---|---|---|---|---|---|---|
-| 10 | 1334 | 4630 | 23766 | 1252 | 2025 | 3691 | 6.4x |
-| 25 | 2119 | 7127 | 41422 | 1563 | 2527 | 4644 | 8.9x |
-| 50 | 4077 | 21247 | 134766 | 2996 | 4838 | 9058 | 14.9x |
-| 75 | 7471 | 39934 | 253291 | 4663 | 7526 | 14210 | 17.8x |
-| 100 | 7977 | 46610 | 295641 | 5242 | 8460 | 16002 | 18.5x |
+| 10 | 1749 | 5691 | 31353 | 1252 | 2025 | 3691 | 8.5x |
+| 25 | 2209 | 9623 | 61038 | 1563 | 2527 | 4644 | 13.1x |
+| 50 | 4787 | 24944 | 158215 | 2996 | 4838 | 9058 | 17.5x |
+| 75 | 7898 | 43739 | 277431 | 4663 | 7526 | 14210 | 19.5x |
+| 100 | 9307 | 56192 | 356412 | 5242 | 8460 | 16002 | 22.3x |
 
 Top stat-priced weapons at gear level 75:
 
 | Weapon | Source | Quality | ItemLevel | Buy |
 |---|---|---|---|---|
-| Weapon_Longsword_Praetorian | builtin | Common | 25 | 253291 |
-| Weapon_Longsword_Onyxium | builtin | Epic | 50 | 149473 |
-| Weapon_Battleaxe_Scythe_Void | builtin | Common | 30 | 144477 |
-| Weapon_Axe_Onyxium | builtin | Epic | 50 | 137310 |
-| Weapon_Club_Onyxium | builtin | Epic | 50 | 137310 |
-| Mystic_Dominus_Maul | zets | Abyssal | 48 | 111374 |
-| Weapon_Longsword_Mithril | builtin | Epic | 50 | 88239 |
-| Weapon_Axe_Mithril | builtin | Epic | 50 | 82413 |
-| Weapon_Club_Mithril | builtin | Epic | 50 | 82413 |
-| WanMine_Soulblight_Longsword | wans | Relic | 60 | 76702 |
+| Weapon_Longsword_Praetorian | builtin | Common | 25 | 277431 |
+| Weapon_Longsword_Onyxium | builtin | Epic | 50 | 163718 |
+| Weapon_Battleaxe_Scythe_Void | builtin | Common | 30 | 158246 |
+| Weapon_Axe_Onyxium | builtin | Epic | 50 | 150396 |
+| Weapon_Club_Onyxium | builtin | Epic | 50 | 150396 |
+| Mystic_Dominus_Maul | zets | Abyssal | 48 | 121988 |
+| Weapon_Longsword_Mithril | builtin | Epic | 50 | 96648 |
+| Weapon_Axe_Mithril | builtin | Epic | 50 | 90267 |
+| Weapon_Club_Mithril | builtin | Epic | 50 | 90267 |
+| WanMine_Soulblight_Longsword | wans | Relic | 60 | 84012 |
 
 Top stat-priced armor at gear level 75:
 
@@ -537,20 +537,20 @@ Estimated kills/floor = maxRooms × 0.6 × max(1, enemyDensity × maxEnemiesPerR
 
 | Floor | Themes | Est. kills | Gold/kill (Luck 0) | Gold/floor | Median weapon @F+3 | Median armor @F+3 | Floors per weapon |
 |---|---|---|---|---|---|---|---|
-| 1 | crypt | 12 | 0.0 | 0 | 406 | 833 | inf |
-| 3 | crypt | 24 | 0.0 | 0 | 433 | 869 | inf |
-| 5 | crypt,volcanic | 133 | 0.0 | 0 | 608 | 869 | inf |
-| 7 | crypt,hive,volcanic | 200 | 0.0 | 0 | 608 | 869 | inf |
-| 10 | crypt,hive,temple_dark,volcanic | 223 | 0.0 | 0 | 749 | 921 | inf |
-| 15 | arcane,volcanic,hive,crypt,temple_dark | 230 | 0.0 | 0 | 943 | 1062 | inf |
-| 20 | crypt,arcane,hive,mushroom,temple_dark,volcanic | 87 | 0.0 | 0 | 1253 | 1424 | inf |
+| 1 | crypt | 12 | 0.0 | 0 | 439 | 833 | inf |
+| 3 | crypt | 24 | 0.0 | 0 | 509 | 869 | inf |
+| 5 | crypt,volcanic | 133 | 0.0 | 0 | 750 | 869 | inf |
+| 7 | crypt,hive,volcanic | 200 | 0.0 | 0 | 750 | 869 | inf |
+| 10 | crypt,hive,temple_dark,volcanic | 223 | 0.0 | 0 | 880 | 921 | inf |
+| 15 | arcane,volcanic,hive,crypt,temple_dark | 230 | 0.0 | 0 | 1235 | 1062 | inf |
+| 20 | crypt,arcane,hive,mushroom,temple_dark,volcanic | 87 | 0.0 | 0 | 1724 | 1424 | inf |
 | 25 | crypt,arcane,hive,mushroom,temple_dark,volcanic | 48 | 0.0 | 0 | 2127 | 1746 | inf |
-| 30 | crypt,arcane,hive,mushroom,temple_dark,volcanic | 48 | 0.0 | 0 | 2701 | 2569 | inf |
-| 40 | crypt,arcane,hive,mushroom,temple_dark,volcanic | 48 | 0.0 | 0 | 5984 | 3388 | inf |
-| 45 | crypt,arcane,hive,mushroom,temple_dark,volcanic | 24 | 0.0 | 0 | 7564 | 3388 | inf |
-| 50 | crypt,arcane,hive,mushroom,temple_dark,volcanic | 48 | 0.0 | 0 | 9679 | 4269 | inf |
-| 55 | crypt,arcane,hive,mushroom,temple_dark,volcanic | 24 | 0.0 | 0 | 8511 | 4676 | inf |
-| 60 | crypt,arcane,hive,mushroom,temple_dark,volcanic | 48 | 0.0 | 0 | 26670 | 5277 | inf |
+| 30 | crypt,arcane,hive,mushroom,temple_dark,volcanic | 48 | 0.0 | 0 | 3351 | 2569 | inf |
+| 40 | crypt,arcane,hive,mushroom,temple_dark,volcanic | 48 | 0.0 | 0 | 7026 | 3388 | inf |
+| 45 | crypt,arcane,hive,mushroom,temple_dark,volcanic | 24 | 0.0 | 0 | 8486 | 3388 | inf |
+| 50 | crypt,arcane,hive,mushroom,temple_dark,volcanic | 48 | 0.0 | 0 | 10710 | 4269 | inf |
+| 55 | crypt,arcane,hive,mushroom,temple_dark,volcanic | 24 | 0.0 | 0 | 9194 | 4676 | inf |
+| 60 | crypt,arcane,hive,mushroom,temple_dark,volcanic | 48 | 0.0 | 0 | 29211 | 5277 | inf |
 
 ## 5b. Per-Theme Income Projection (Luck 0, current loot tables)
 
@@ -678,78 +678,125 @@ hits-to-kill axis and confirmed in playtest):
 
 | Level | 1 | 15 | 30 | 45 | 60 | 80 | 100 |
 |---|---|---|---|---|---|---|---|
-| Hits | 5.1 | 5.5 | 5.9 | 6.3 | 6.5 | 6.5 | 6.5 |
+| Hits | 5.1 | 4.3 | 4.6 | 5.4 | 6.0 | 6.1 | 5.7 |
 
-**Armor DR budget:** 10% (L1) -> 55% (L100); per-slot shares Chest .40 / Legs .25 / Head .20 / Hands .15 sum to 1.0, so a full on-level set lands on the budget curve. Combined total capped at 65%.
+**Armor DR budget:** 10% (L1) -> 62% (L100); per-slot shares Chest .40 / Legs .25 / Head .20 / Hands .15 sum to 1.0, so a full on-level set lands on the budget curve. Combined total capped at 65%.
 
 | Level | 1 | 15 | 30 | 45 | 60 | 80 | 100 |
 |---|---|---|---|---|---|---|---|
-| Full-set DR | 10% | 12% | 18% | 28% | 41% | 51% | 55% |
+| Full-set DR | 10% | 15% | 22% | 32% | 43% | 55% | 62% |
 
 Mapped families (23): Arrow, Axe, Battleaxe, Bomb, Bow, Club, Crossbow, Dagger, Gun, Kunai, Longsword, Mace, Magic, Scythe, Shield, Sickle, Soulblight, Spear, Spellbook, Staff, Stick, Sword, Wand.
 
 ## Income & gold-split derivation (derive_income.py)
 
-I(F) is the value-neutral net income per floor (direct gold + full sell-fodder at 0.5 resale). Per the smooth-budget decision a monotonic spine I_smooth(F) = 676.4·F^0.942 is fit on floors 1-30 and extended through F70, so the lumpy floor texture (the F5-15 density spike, etc.) does not distort the progression curve; respawn, gear price, and custom-item prices all drive off I_smooth, not raw kills.
+I(F) is the value-neutral net income per floor (direct gold + full sell-fodder at 0.5 resale). Per the smooth-budget decision a monotonic spine I_smooth(F) = 690.3·F^0.969 is fit on floors 1-30 and extended through F70, so the lumpy floor texture (the F5-15 density spike, etc.) does not distort the progression curve; respawn, gear price, and custom-item prices all drive off I_smooth, not raw kills.
 
-Smooth-fit mean relative error: floors 1-30 75.2% (small — tracks the well-tuned band), floors 31-100 90.7% (large by design — those floors sagged; extending the curve is the fix).
+Smooth-fit mean relative error: floors 1-30 75.1% (small — tracks the well-tuned band), floors 31-100 106.6% (large by design — those floors sagged; extending the curve is the fix).
 
-Gold faucet: solve scaled the W5 floors by 1.584 (applied 1.500, clamped >= 1 so lowering gold never breaches the Luck budget). Direct-gold vs the 50% target post-scale: floors 1-30 137%, floors 31-100 61%. Respawn = 1.25·I_smooth as a 14-band schedule, restart 0.6x.
+Gold faucet: solve scaled the W5 floors by 1.783 (applied 1.500, clamped >= 1 so lowering gold never breaches the Luck budget). Direct-gold vs the 50% target post-scale: floors 1-30 124%, floors 31-100 54%. Respawn = 1.25·I_smooth as a 14-band schedule, restart 0.6x.
 
 | Floor | est kills | raw I(F) | smooth I(F) | respawn (shipped) |
 |---|---|---|---|---|
-| 1 | 12 | 381 | 676 | 846 |
-| 3 | 24 | 906 | 1905 | 2381 |
-| 5 | 133 | 6051 | 3082 | 3853 |
-| 7 | 200 | 9740 | 4232 | 5291 |
-| 10 | 223 | 14340 | 5923 | 7404 |
-| 15 | 230 | 18559 | 8680 | 10850 |
-| 20 | 87 | 8936 | 11382 | 14228 |
-| 25 | 48 | 5975 | 14046 | 17558 |
-| 30 | 48 | 7976 | 16679 | 20849 |
-| 40 | 48 | 11809 | 21873 | 27341 |
-| 45 | 24 | 8922 | 24440 | 30550 |
-| 50 | 48 | 18552 | 26991 | 33739 |
-| 55 | 24 | 14161 | 29528 | 36910 |
-| 60 | 48 | 53950 | 32051 | 40064 |
+| 1 | 12 | 381 | 690 | 863 |
+| 3 | 24 | 960 | 2002 | 2502 |
+| 5 | 133 | 6664 | 3284 | 4105 |
+| 7 | 200 | 10905 | 4550 | 5688 |
+| 10 | 223 | 14434 | 6429 | 8037 |
+| 15 | 230 | 19974 | 9524 | 11905 |
+| 20 | 87 | 10517 | 12587 | 15733 |
+| 25 | 48 | 6762 | 15625 | 19532 |
+| 30 | 48 | 8515 | 18645 | 23306 |
+| 40 | 48 | 12773 | 24641 | 30801 |
+| 45 | 24 | 8953 | 27620 | 34525 |
+| 50 | 48 | 19514 | 30589 | 38237 |
+| 55 | 24 | 14161 | 33550 | 41937 |
+| 60 | 48 | 58800 | 36501 | 45627 |
 
 ## Pricing & variant derivation (derive_prices.py)
 
-Single combat-value price axis: weapon value = family anchor x weaponMult(level) (a DPS-equivalent), armor value = slot HP share + k_dr x DR share / (1 - totalDR) (an effective-HP equivalent). k_dr = 12.000; achieved weapon/armor median value ratio 1.46 at L50. Armor leans on the authored HP budget (a W3 asset), so the DR term has limited leverage and k_dr can saturate — the win is a BOUNDED band replacing the old weapon-unbounded / armor-capped 6x..18x gap, not perfect parity.
+Single combat-value price axis: weapon value = family anchor x weaponMult(level) (a DPS-equivalent), armor value = slot HP share + k_dr x DR share / (1 - totalDR) (an effective-HP equivalent). k_dr = 12.000; achieved weapon/armor median value ratio 1.32 at L50. Armor leans on the authored HP budget (a W3 asset), so the DR term has limited leverage and k_dr can saturate — the win is a BOUNDED band replacing the old weapon-unbounded / armor-capped 6x..18x gap, not perfect parity.
 
-Gold mapping price = round(combatValue^1.6 x 134.833), solved so the median on-level price tracks 2.5 x I_smooth(F) (median gear ~ 2-3x a floor of income — the gear-swap-cadence pillar). The HP cap was removed, so MaxScaledHp is no longer written; the Elite/Boss multiplier tables are retained (their re-derivation belongs to the Encounter Pacing workstream).
+Gold mapping price = round(combatValue^1.6 x 130.0967), solved so the median on-level price tracks 2.5 x I_smooth(F) (median gear ~ 2-3x a floor of income — the gear-swap-cadence pillar). The HP cap was removed, so MaxScaledHp is no longer written; the Elite/Boss multiplier tables are owned by derive_difficulty.py (the per-floor difficulty lever) and are not touched here.
 
 | Floor | new median price | current price | I_smooth(F) | new/I_smooth |
 |---|---|---|---|---|
-| 1 | 7186 | 585 | 676 | 10.62 |
-| 3 | 7501 | 601 | 1905 | 3.94 |
-| 5 | 7866 | 652 | 3082 | 2.55 |
-| 7 | 8293 | 738 | 4232 | 1.96 |
-| 10 | 9067 | 860 | 5923 | 1.53 |
-| 15 | 10823 | 921 | 8680 | 1.25 |
-| 20 | 13390 | 1062 | 11382 | 1.18 |
-| 25 | 17107 | 1253 | 14046 | 1.22 |
-| 30 | 22400 | 1746 | 16679 | 1.34 |
-| 40 | 39428 | 2646 | 21873 | 1.80 |
-| 45 | 51600 | 4813 | 24440 | 2.11 |
-| 50 | 65875 | 4838 | 26991 | 2.44 |
-| 55 | 81418 | 8088 | 29528 | 2.76 |
-| 60 | 97101 | 17872 | 32051 | 3.03 |
+| 1 | 6934 | 585 | 690 | 10.05 |
+| 3 | 7918 | 646 | 2002 | 3.96 |
+| 5 | 8979 | 744 | 3284 | 2.73 |
+| 7 | 10122 | 869 | 4550 | 2.22 |
+| 10 | 12006 | 869 | 6429 | 1.87 |
+| 15 | 15677 | 1051 | 9524 | 1.65 |
+| 20 | 20169 | 1441 | 12587 | 1.60 |
+| 25 | 25708 | 1594 | 15625 | 1.65 |
+| 30 | 32557 | 1972 | 18645 | 1.75 |
+| 40 | 51127 | 3041 | 24641 | 2.07 |
+| 45 | 63009 | 4838 | 27620 | 2.28 |
+| 50 | 76350 | 5233 | 30589 | 2.50 |
+| 55 | 90629 | 8088 | 33550 | 2.70 |
+| 60 | 105183 | 19776 | 36501 | 2.88 |
 
 Custom big-ticket prices solved against cumulative income (30-45k tier anchored to cumI(25); ordering preserved):
 
 | Item | Buy | reachable ~floor |
 |---|---|---|
-| Immunity_Trap_Ring | 164500 | 24 |
-| Speed_Boots_I | 141000 | 22 |
-| Speed_Boots_II | 211500 | 27 |
-| Speed_Boots_III | 328500 | 34 |
-| Healing_Necklace_I | 211500 | 27 |
-| Healing_Necklace_II | 587000 | 46 |
-| Vampire_Juice | 234500 | 29 |
-| Stat_Point_Token | 35000 | 11 |
-| Palporter | 11500 | 6 |
-| Village_Warp | 23500 | 9 |
+| Immunity_Trap_Ring | 180500 | 24 |
+| Speed_Boots_I | 154500 | 22 |
+| Speed_Boots_II | 232000 | 27 |
+| Speed_Boots_III | 361000 | 34 |
+| Healing_Necklace_I | 232000 | 27 |
+| Healing_Necklace_II | 644500 | 45 |
+| Vampire_Juice | 257500 | 29 |
+| Stat_Point_Token | 38500 | 11 |
+| Palporter | 13000 | 6 |
+| Village_Warp | 26000 | 9 |
+
+## Encounter pacing & difficulty derivation (derive_difficulty.py)
+
+Challenge(F) is the per-floor threat budget (weight-averaged on-level archetype HP x damage times est_kills). Per the smooth-budget decision a monotonic spine Challenge(F) = 8647.4*F^1.287 is fit on floors 1-30 and extended through F70, so the lumpy floor texture (the F5-15 density spike, etc.) stays hand-authored while the difficulty SPINE is well-behaved. The per-floor knobs close the gap: a sparse floor gets more Elites and/or a flat multiplier; a dense wave floor gets ~none.
+
+Smooth-fit mean relative error: floors 1-30 71.0%, floors 31-100 34.4% (the deep floors sagged in raw threat; extending the spine is the fix, mirroring the income derivation).
+
+Realization policy (resolved): raise the Elite rate first (visible variety) up to 0.35, then a flat difficultyMult in [1, 3] for the remainder. Elite/NORMAL threat ratio 3.51. Inert default (eliteRate 0.0, difficultyMult 1.0) leaves a floor unchanged until these overrides are authored.
+
+Variant tables (re-derived; the difficulty lever now the HP cap is removed): an Elite is ~2x a same-archetype NORMAL kill (HP-driven TTK), and the Boss HP ramps to a deliberate, uncapped ceiling (F60 boss ~49,122 HP).
+
+| Floor | est kills | raw Challenge | smooth Challenge | eliteRate | difficultyMult |
+|---|---|---|---|---|---|
+| 1 | 12 | 6168 | 8647 | 0.160 | 1.000 |
+| 3 | 24 | 13169 | 35560 | 0.350 | 1.437 |
+| 5 | 133 | 139163 | 68627 | 0.000 | 1.000 |
+| 7 | 200 | 223386 | 105820 | 0.000 | 1.000 |
+| 10 | 223 | 343706 | 167468 | 0.000 | 1.000 |
+| 15 | 230 | 582989 | 282208 | 0.000 | 1.000 |
+| 20 | 87 | 346507 | 408668 | 0.071 | 1.000 |
+| 25 | 48 | 247904 | 544626 | 0.350 | 1.169 |
+| 30 | 48 | 372181 | 688666 | 0.339 | 1.000 |
+| 40 | 48 | 919165 | 997264 | 0.034 | 1.000 |
+| 45 | 24 | 686175 | 1160502 | 0.275 | 1.000 |
+| 50 | 48 | 1957424 | 1329040 | 0.000 | 1.000 |
+| 55 | 24 | 1331046 | 1502492 | 0.051 | 1.000 |
+| 60 | 48 | 3323275 | 1680536 | 0.000 | 1.000 |
+
+Re-derived Elite variant steps (HpMult ~ TTK ratio vs a same-archetype NORMAL):
+
+| MinLevelRatio | HpMult | DamageMult |
+|---|---|---|
+| 0.75 | 2.5 | 2 |
+| 0.5 | 2.3 | 1.8 |
+| 0.3333 | 2.1 | 1.6 |
+| 0.1667 | 2 | 1.4 |
+| 0 | 1.8 | 1.25 |
+
+Re-derived Boss variant steps (HpMult solved from explicit boss-HP targets at each band's start level against the Boss anchor + level curve):
+
+| MinLevelRatio | start level | HpMult | DamageMult | boss HP @ start |
+|---|---|---|---|---|
+| 0.75 | 75 | 39.44 | 5.2 | 61,079 |
+| 0.5 | 50 | 39.44 | 4.5 | 37,997 |
+| 0.3333 | 33 | 17.38 | 3.2 | 8,998 |
+| 0.1667 | 17 | 8.76 | 2.5 | 2,499 |
+| 0 | 1 | 1.55 | 2 | 299 |
 
 ## Luck power-budget derivation (derive_luck_budget.py)
 
@@ -766,10 +813,10 @@ Total loot-value EV(50)/EV(0) per archetype (budget 6x, gear value grounded in o
 
 | archetype | L10 | L30 | L50 | worst | verdict |
 |---|---|---|---|---|---|
-| Standard | 5.18 | 4.48 | 4.61 | 5.18 | PASS |
-| Caster | 5.18 | 4.48 | 4.61 | 5.18 | PASS |
-| Tough | 4.78 | 4.22 | 4.32 | 4.78 | PASS |
-| Heavy | 4.32 | 3.74 | 3.84 | 4.32 | PASS |
-| Boss | 4.09 | 3.43 | 3.54 | 4.09 | PASS |
+| Standard | 5.51 | 4.55 | 4.61 | 5.51 | PASS |
+| Caster | 5.51 | 4.55 | 4.61 | 5.51 | PASS |
+| Tough | 5.04 | 4.27 | 4.32 | 5.04 | PASS |
+| Heavy | 4.60 | 3.79 | 3.84 | 4.60 | PASS |
+| Boss | 4.43 | 3.49 | 3.54 | 4.43 | PASS |
 
 The drop-chance curve alone is ~8x at the 0.10 base, so the budget holds only because the Luck-independent gold faucet dilutes the total; promotion is kept gentle so the rarity-mix uplift adds little. Gold quantities here are starting floors — the income pass refines them.

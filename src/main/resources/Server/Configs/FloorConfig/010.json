@@ -43,6 +43,8 @@
             "hive",
             "temple_dark",
             "volcanic"
-        ]
+        ],
+        "combat.eliteRate": 0,
+        "combat.difficultyMult": 1
     }
 }

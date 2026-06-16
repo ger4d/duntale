@@ -44,6 +44,8 @@
             "hive",
             "crypt",
             "temple_dark"
-        ]
+        ],
+        "combat.eliteRate": 0,
+        "combat.difficultyMult": 1
     }
 }

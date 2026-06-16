@@ -63,7 +63,8 @@ public class NpcScalingApplicator {
     }
 
     /**
-     * Creates a shared scaling profile for the requested NPC role and dungeon level.
+     * Creates a shared scaling profile for the requested NPC role and dungeon level with no per-floor
+     * difficulty compensation (multiplier {@code 1.0}).
      *
      * @param roleName the NPC role name
      * @param level the dungeon level
@@ -75,6 +76,30 @@ public class NpcScalingApplicator {
             @Nonnull String roleName,
             int level,
             @Nonnull CombatScaling.NpcVariant variant
+    ) {
+        return createProfile(roleName, level, variant, 1.0f);
+    }
+
+    /**
+     * Creates a shared scaling profile for the requested NPC role and dungeon level, applying a
+     * per-floor difficulty compensation factor to both damage and (at the health stage) HP.
+     *
+     * <p>The factor closes the gap between a floor's hand-authored enemy count and its target challenge:
+     * a sparse floor's fewer fights are made nastier so the total threat still tracks the rising
+     * challenge budget. A factor of {@code 1.0} is inert and reproduces the no-compensation behavior.
+     *
+     * @param roleName the NPC role name
+     * @param level the dungeon level
+     * @param variant the combat scaling variant
+     * @param difficultyMult the per-floor difficulty multiplier applied to damage and HP ({@code 1.0} = none)
+     * @return the shared scaling profile
+     */
+    @Nonnull
+    public NpcScalingProfile createProfile(
+            @Nonnull String roleName,
+            int level,
+            @Nonnull CombatScaling.NpcVariant variant,
+            float difficultyMult
     ) {
         Objects.requireNonNull(roleName, "roleName");
         Objects.requireNonNull(variant, "variant");
@@ -106,6 +131,10 @@ public class NpcScalingApplicator {
             }
         }
 
+        // Difficulty compensation multiplies damage now; HP is applied at the health stage, so the
+        // factor is carried on the profile and re-applied in computeTargetHp.
+        damageMultiplier *= difficultyMult;
+
         return new NpcScalingProfile(
                 roleName,
                 level,
@@ -113,7 +142,8 @@ public class NpcScalingApplicator {
                 formatDisplayName(roleName, level, variant),
                 damageMultiplier,
                 archetype,
-                anchorBaseHp
+                anchorBaseHp,
+                difficultyMult
         );
     }
 
@@ -162,7 +192,7 @@ public class NpcScalingApplicator {
         int initialMaxHealth = resolveInitialMaxHealth(npcEntity);
         // Mapped roles scale from the archetype anchor; unmapped roles scale from the asset base.
         int baseHp = profile.anchorBaseHp() > 0 ? profile.anchorBaseHp() : initialMaxHealth;
-        int targetHp = computeTargetHp(baseHp, profile.level(), profile.variant());
+        int targetHp = computeTargetHp(baseHp, profile.level(), profile.variant(), profile.difficultyMult());
 
         // Normalization needs negative deltas too (e.g. Werewolf asset base 283 vs Heavy anchor),
         // so apply the additive MAX modifier whenever the target differs from the engine's base.
@@ -249,9 +279,12 @@ public class NpcScalingApplicator {
         return role != null ? role.getInitialMaxHealth() : FALLBACK_BASE_HP;
     }
 
-    private static int computeTargetHp(int baseHp, int level, @Nonnull CombatScaling.NpcVariant variant) {
-        int targetHp = CombatScaling.npcScaledHp(baseHp, level, variant);
-        targetHp = Math.round(CombatScaling.applyVariance(targetHp));
+    private static int computeTargetHp(
+            int baseHp, int level, @Nonnull CombatScaling.NpcVariant variant, float difficultyMult) {
+        // Per-floor difficulty compensation scales the on-level HP so a sparse floor's fewer enemies
+        // still total the target challenge. Inert at the default multiplier of 1.0.
+        float scaled = CombatScaling.npcScaledHp(baseHp, level, variant) * difficultyMult;
+        int targetHp = Math.round(CombatScaling.applyVariance(scaled));
         // No upper clamp: the scaling curve saturates, so HP tops out at a designed maximum on its own.
         return Math.max(targetHp, MIN_SCALED_HP);
     }
