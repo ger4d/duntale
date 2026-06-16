@@ -122,7 +122,7 @@ public class LootTable {
         double effectiveChance = luckLevel > 0
                 ? RpgStatEffects.computeLuckDropChance(dropChance, luckLevel)
                 : dropChance;
-        return roll(entries, LootContext.forNpcLevel(npcLevel), new RollRequest(rolls, effectiveChance, true));
+        return roll(entries, LootContext.forNpcKill(npcLevel), new RollRequest(rolls, effectiveChance, true));
     }
 
     /**
@@ -136,7 +136,7 @@ public class LootTable {
         if (goldEntries.isEmpty()) {
             return Collections.emptyList();
         }
-        return roll(goldEntries, LootContext.forNpcLevel(npcLevel), new RollRequest(1, goldChance, true));
+        return roll(goldEntries, LootContext.forNpcKill(npcLevel), new RollRequest(1, goldChance, true));
     }
 
     /**
@@ -208,7 +208,7 @@ public class LootTable {
         if (request.withReplacement()) {
             for (int index = 0; index < rollCount; index++) {
                 LootEntry picked = pickWeighted(eligible, totalWeight, random);
-                result.add(picked.createItemStack(random));
+                result.add(picked.createItemStack(random, context));
             }
             return Collections.unmodifiableList(result);
         }
@@ -217,7 +217,7 @@ public class LootTable {
         double remainingWeight = totalWeight;
         for (int index = 0; index < rollCount && !remaining.isEmpty() && remainingWeight > 0.0; index++) {
             LootEntry picked = pickWeighted(remaining, remainingWeight, random);
-            result.add(picked.createItemStack(random));
+            result.add(picked.createItemStack(random, context));
             remaining.remove(picked);
             remainingWeight -= picked.weight();
         }

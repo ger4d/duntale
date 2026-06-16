@@ -26,8 +26,10 @@ public class LootEntryConfig {
     protected String type = "SIMPLE";
     protected String itemId = "";
     protected String gearType = GearType.WEAPON.name();
-    protected int gearLevelMin = 1;
-    protected int gearLevelMax = 1;
+    // 0 (the absent default) means "no explicit band" — the stamped gear level then defaults to the
+    // killed NPC's level (= the floor) at roll time. A positive value is an explicit author override.
+    protected int gearLevelMin = 0;
+    protected int gearLevelMax = 0;
     protected int quantityMin = 1;
     protected int quantityMax = 1;
     protected double weight = 1.0;
@@ -125,10 +127,12 @@ public class LootEntryConfig {
             modifiers.add(new LootModifier.Quantity(quantityMin, quantityMax));
         }
         if (shouldApplyGearModifier()) {
+            // Pass the band as nullable: absent (0) -> null -> the modifier defaults the stamped level
+            // to the killed NPC's level. A positive band is an explicit author override.
             modifiers.add(new LootModifier.GearLevel(
                     GearType.valueOf(normalizedGearType()),
-                    gearLevelMin,
-                    gearLevelMax
+                    normalizeLevelBound(gearLevelMin),
+                    normalizeLevelBound(gearLevelMax)
             ));
         }
 
@@ -183,10 +187,21 @@ public class LootEntryConfig {
             if (!"WEAPON".equals(normalizedGearType) && !"ARMOR".equals(normalizedGearType)) {
                 errors.add("GearType must be WEAPON or ARMOR for LEVELED entries: " + gearType);
             }
-            if (gearLevelMin < 1) {
-                errors.add("GearLevelMin must be at least 1");
+            // The explicit gear-level band is optional: absent (0) means "default to the killed NPC's
+            // level" at roll time. Only validate the band when it is present, and require both bounds
+            // together so a half-specified band fails loudly rather than silently defaulting.
+            if (gearLevelMin < 0) {
+                errors.add("GearLevelMin must be 0 or greater");
             }
-            if (gearLevelMax < gearLevelMin) {
+            if (gearLevelMax < 0) {
+                errors.add("GearLevelMax must be 0 or greater");
+            }
+            boolean hasMin = gearLevelMin > 0;
+            boolean hasMax = gearLevelMax > 0;
+            if (hasMin != hasMax) {
+                errors.add("GearLevelMin and GearLevelMax must both be set or both omitted");
+            }
+            if (hasMin && hasMax && gearLevelMax < gearLevelMin) {
                 errors.add("GearLevelMax must be greater than or equal to GearLevelMin");
             }
         }

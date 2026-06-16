@@ -6,25 +6,19 @@
       "Type": "LEVELED",
       "ItemId": "Weapon_Spear_Crude",
       "Weight": 2.4,
-      "GearType": "WEAPON",
-      "GearLevelMin": 5,
-      "GearLevelMax": 10
+      "GearType": "WEAPON"
     },
     {
       "Type": "LEVELED",
       "ItemId": "Weapon_Daggers_Crude",
       "Weight": 1.8,
-      "GearType": "WEAPON",
-      "GearLevelMin": 6,
-      "GearLevelMax": 10
+      "GearType": "WEAPON"
     },
     {
       "Type": "LEVELED",
       "ItemId": "Armor_Leather_Soft_Head",
       "Weight": 1.0,
-      "GearType": "ARMOR",
-      "GearLevelMin": 8,
-      "GearLevelMax": 12
+      "GearType": "ARMOR"
     }
   ],
   "GoldChance": 0.55,

@@ -6,33 +6,25 @@
       "Type": "LEVELED",
       "ItemId": "Weapon_Sword_Iron",
       "Weight": 1.2,
-      "GearType": "WEAPON",
-      "GearLevelMin": 18,
-      "GearLevelMax": 22
+      "GearType": "WEAPON"
     },
     {
       "Type": "LEVELED",
       "ItemId": "Weapon_Spear_Iron",
       "Weight": 1.6,
-      "GearType": "WEAPON",
-      "GearLevelMin": 16,
-      "GearLevelMax": 20
+      "GearType": "WEAPON"
     },
     {
       "Type": "LEVELED",
       "ItemId": "Armor_Cloth_Linen_Head",
       "Weight": 1.0,
-      "GearType": "ARMOR",
-      "GearLevelMin": 14,
-      "GearLevelMax": 20
+      "GearType": "ARMOR"
     },
     {
       "Type": "LEVELED",
       "ItemId": "Armor_Iron_Hands",
       "Weight": 0.8,
-      "GearType": "ARMOR",
-      "GearLevelMin": 18,
-      "GearLevelMax": 20
+      "GearType": "ARMOR"
     }
   ],
   "GoldChance": 0.55,

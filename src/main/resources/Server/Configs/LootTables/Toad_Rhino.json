@@ -6,33 +6,25 @@
       "Type": "LEVELED",
       "ItemId": "Mystic_Dominus_Maul",
       "Weight": 1.0,
-      "GearType": "WEAPON",
-      "GearLevelMin": 45,
-      "GearLevelMax": 51
+      "GearType": "WEAPON"
     },
     {
       "Type": "LEVELED",
       "ItemId": "Mystic_Dreadreap",
       "Weight": 1.0,
-      "GearType": "WEAPON",
-      "GearLevelMin": 45,
-      "GearLevelMax": 51
+      "GearType": "WEAPON"
     },
     {
       "Type": "LEVELED",
       "ItemId": "Armor_Mithril_Chest",
       "Weight": 0.8,
-      "GearType": "ARMOR",
-      "GearLevelMin": 45,
-      "GearLevelMax": 51
+      "GearType": "ARMOR"
     },
     {
       "Type": "LEVELED",
       "ItemId": "Armor_Mithril_Legs",
       "Weight": 0.8,
-      "GearType": "ARMOR",
-      "GearLevelMin": 45,
-      "GearLevelMax": 51
+      "GearType": "ARMOR"
     }
   ],
   "GoldChance": 0.58,

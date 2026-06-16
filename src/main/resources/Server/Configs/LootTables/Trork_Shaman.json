@@ -6,33 +6,25 @@
       "Type": "LEVELED",
       "ItemId": "Weapon_Spear_Leaf",
       "Weight": 2.4,
-      "GearType": "WEAPON",
-      "GearLevelMin": 14,
-      "GearLevelMax": 20
+      "GearType": "WEAPON"
     },
     {
       "Type": "LEVELED",
       "ItemId": "Weapon_Spear_Copper",
       "Weight": 1.4,
-      "GearType": "WEAPON",
-      "GearLevelMin": 12,
-      "GearLevelMax": 18
+      "GearType": "WEAPON"
     },
     {
       "Type": "LEVELED",
       "ItemId": "Armor_Cloth_Linen_Head",
       "Weight": 1.0,
-      "GearType": "ARMOR",
-      "GearLevelMin": 14,
-      "GearLevelMax": 20
+      "GearType": "ARMOR"
     },
     {
       "Type": "LEVELED",
       "ItemId": "Armor_Cloth_Wool_Head",
       "Weight": 0.9,
-      "GearType": "ARMOR",
-      "GearLevelMin": 10,
-      "GearLevelMax": 14
+      "GearType": "ARMOR"
     }
   ],
   "GoldChance": 0.55,

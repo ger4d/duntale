@@ -60,14 +60,15 @@ public record LootEntry(
     /**
      * Builds an item stack by applying this entry's modifiers in order.
      *
-     * @param random the current random source
+     * @param random  the current random source
+     * @param context the runtime loot context (carries the NPC/floor level for level-defaulting)
      * @return the generated item stack
      */
     @Nonnull
-    public ItemStack createItemStack(@Nonnull ThreadLocalRandom random) {
+    public ItemStack createItemStack(@Nonnull ThreadLocalRandom random, @Nonnull LootContext context) {
         LootModifier.BuildState state = new LootModifier.BuildState(itemId);
         for (LootModifier modifier : modifiers) {
-            modifier.apply(state, random);
+            modifier.apply(state, random, context);
         }
         return state.toItemStack();
     }

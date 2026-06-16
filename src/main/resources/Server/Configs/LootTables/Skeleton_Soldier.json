@@ -6,33 +6,25 @@
       "Type": "LEVELED",
       "ItemId": "Weapon_Sword_Iron",
       "Weight": 3.0,
-      "GearType": "WEAPON",
-      "GearLevelMin": 18,
-      "GearLevelMax": 22
+      "GearType": "WEAPON"
     },
     {
       "Type": "LEVELED",
       "ItemId": "Weapon_Longsword_Iron",
       "Weight": 2.0,
-      "GearType": "WEAPON",
-      "GearLevelMin": 18,
-      "GearLevelMax": 22
+      "GearType": "WEAPON"
     },
     {
       "Type": "LEVELED",
       "ItemId": "Armor_Iron_Chest",
       "Weight": 1.5,
-      "GearType": "ARMOR",
-      "GearLevelMin": 18,
-      "GearLevelMax": 22
+      "GearType": "ARMOR"
     },
     {
       "Type": "LEVELED",
       "ItemId": "Armor_Iron_Head",
       "Weight": 1.5,
-      "GearType": "ARMOR",
-      "GearLevelMin": 18,
-      "GearLevelMax": 22
+      "GearType": "ARMOR"
     }
   ],
   "GoldChance": 0.55,

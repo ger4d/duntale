@@ -6,33 +6,25 @@
       "Type": "LEVELED",
       "ItemId": "Weapon_Axe_Copper",
       "Weight": 2.2,
-      "GearType": "WEAPON",
-      "GearLevelMin": 8,
-      "GearLevelMax": 14
+      "GearType": "WEAPON"
     },
     {
       "Type": "LEVELED",
       "ItemId": "Weapon_Club_Copper",
       "Weight": 1.8,
-      "GearType": "WEAPON",
-      "GearLevelMin": 10,
-      "GearLevelMax": 14
+      "GearType": "WEAPON"
     },
     {
       "Type": "LEVELED",
       "ItemId": "Armor_Copper_Head",
       "Weight": 1.0,
-      "GearType": "ARMOR",
-      "GearLevelMin": 8,
-      "GearLevelMax": 14
+      "GearType": "ARMOR"
     },
     {
       "Type": "LEVELED",
       "ItemId": "Armor_Copper_Hands",
       "Weight": 0.8,
-      "GearType": "ARMOR",
-      "GearLevelMin": 10,
-      "GearLevelMax": 14
+      "GearType": "ARMOR"
     }
   ],
   "GoldChance": 0.58,

@@ -10,6 +10,7 @@ import java.lang.reflect.Field;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -132,8 +133,20 @@ class LootTableConfigTest {
     }
 
     @Test
-    @DisplayName("Should reject gear level minimum below one")
-    void shouldRejectGearLevelMinBelowOne() {
+    @DisplayName("Should build a gear modifier with a null band when no explicit band is set")
+    void shouldBuildGearModifierWithNullBandWhenAbsent() {
+        LootEntryConfig config = entry("LEVELED", "Weapon_Sword_Iron", "WEAPON", 0, 0, 1, 1, 2.5, 0, 0);
+
+        LootEntry entry = config.toLootEntry();
+        LootModifier.GearLevel leveled = assertInstanceOf(LootModifier.GearLevel.class, entry.modifiers().getFirst());
+
+        assertNull(leveled.minLevel());
+        assertNull(leveled.maxLevel());
+    }
+
+    @Test
+    @DisplayName("Should reject a half-specified gear level band")
+    void shouldRejectHalfSpecifiedGearLevelBand() {
         LootEntryConfig config = entry("LEVELED", "Weapon_Sword_Iron", "WEAPON", 0, 22, 1, 1, 2.5, 0, 0);
 
         assertThrows(IllegalArgumentException.class, config::toLootEntry);

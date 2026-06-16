@@ -6,33 +6,25 @@
       "Type": "LEVELED",
       "ItemId": "Weapon_Club_Crude",
       "Weight": 2.5,
-      "GearType": "WEAPON",
-      "GearLevelMin": 5,
-      "GearLevelMax": 10
+      "GearType": "WEAPON"
     },
     {
       "Type": "LEVELED",
       "ItemId": "Weapon_Axe_Crude",
       "Weight": 1.5,
-      "GearType": "WEAPON",
-      "GearLevelMin": 5,
-      "GearLevelMax": 8
+      "GearType": "WEAPON"
     },
     {
       "Type": "LEVELED",
       "ItemId": "Armor_Wood_Hands",
       "Weight": 1.0,
-      "GearType": "ARMOR",
-      "GearLevelMin": 5,
-      "GearLevelMax": 8
+      "GearType": "ARMOR"
     },
     {
       "Type": "LEVELED",
       "ItemId": "Armor_Wood_Head",
       "Weight": 0.8,
-      "GearType": "ARMOR",
-      "GearLevelMin": 5,
-      "GearLevelMax": 8
+      "GearType": "ARMOR"
     }
   ],
   "GoldChance": 0.55,

@@ -15,8 +15,11 @@ pools (gear + gold), matching the runtime ``LootTable``:
   ``scaling.db`` for level-banded weapons/armor in the archetype's preferred families/slots.
 - ``Swarm`` roles are gold-only (any gear is stripped) — they drop small gold, never gear.
 
-Role -> archetype comes from ``NpcArchetypes.json`` (the W2 mapping). Gear stamp level bands come from
-each role's spawn floor range (``spawn_roster``), or, for summons, their summoner's range.
+Role -> archetype comes from ``NpcArchetypes.json``. Gear entries no longer bake a fixed stamp-level
+band: at roll time the runtime stamps dropped gear at the killed NPC's level (= the dungeon floor), so
+a low-floor kill drops on-floor gear. Each role's spawn floor range (``spawn_roster``, or a summon's
+summoner range) still steers the *item pool* — ``pick_weapons``/``pick_armor`` choose items whose level
+suits the role's typical floors — but it is not written into the entry as a level band.
 
 A table carrying a top-level ``"Authored": true`` flag is left untouched (hand-authored override that
 survives regeneration). The flag is generator-only — the runtime asset codec ignores unknown keys.
@@ -51,16 +54,18 @@ def load_json(path: Path) -> dict:
 
 
 def role_archetypes() -> dict[str, str]:
-    """role name -> archetype name, from the W2 NpcArchetypes mapping."""
+    """role name -> archetype name, from the NpcArchetypes mapping."""
     data = load_json(ARCHETYPES_PATH)
     return {r["Role"]: r["Archetype"] for r in data.get("Roles", [])}
 
 
 def role_level_anchors(conn: sqlite3.Connection, roles: set[str]) -> dict[str, int]:
-    """Gear-level anchor per role = midpoint of its spawn floor range (union across themes).
+    """Item-pool anchor per role = midpoint of its spawn floor range (union across themes).
 
-    Summons (not in spawn_roster) inherit their summoner's anchor; anything still unresolved
-    falls back to DEFAULT_ANCHOR.
+    Steers item selection only (``pick_weapons``/``pick_armor`` pick items whose item_level is closest
+    to this anchor); it is no longer written into entries as a stamped-level band. Summons (not in
+    spawn_roster) inherit their summoner's anchor; anything still unresolved falls back to
+    DEFAULT_ANCHOR.
     """
     anchors: dict[str, int] = {}
     for role, lo, hi in conn.execute(
@@ -75,10 +80,6 @@ def role_level_anchors(conn: sqlite3.Connection, roles: set[str]) -> dict[str, i
         summoner = summoner_of.get(role)
         anchors[role] = anchors.get(summoner, DEFAULT_ANCHOR) if summoner else DEFAULT_ANCHOR
     return anchors
-
-
-def band(anchor: int, half_width: int) -> tuple[int, int]:
-    return max(LEVEL_MIN, anchor - half_width), min(LEVEL_MAX, anchor + half_width)
 
 
 def pick_weapons(conn: sqlite3.Connection, families: list[str], anchor: int,
@@ -117,9 +118,32 @@ def pick_armor(conn: sqlite3.Connection, slots: list[str], anchor: int, count: i
     return picks
 
 
-def leveled_entry(item_id: str, gear_type: str, lo: int, hi: int, weight: float) -> dict:
-    return {"Type": "LEVELED", "ItemId": item_id, "Weight": weight,
-            "GearType": gear_type, "GearLevelMin": lo, "GearLevelMax": hi}
+def leveled_entry(item_id: str, gear_type: str, weight: float,
+                  band: tuple[int, int] | None = None) -> dict:
+    """A LEVELED gear entry.
+
+    Common case (``band is None``): emit no ``GearLevelMin/Max`` — at roll time the runtime stamps the
+    gear at the killed NPC's level (= the floor), so a low-floor kill drops on-floor gear instead of a
+    fixed per-role band. Pass an explicit ``band`` only for bespoke gear that must always stamp within
+    a fixed range (also pairs with ``MinFloorLevel``/``MaxFloorLevel`` floor gates).
+    """
+    entry = {"Type": "LEVELED", "ItemId": item_id, "Weight": weight, "GearType": gear_type}
+    if band is not None:
+        entry["GearLevelMin"], entry["GearLevelMax"] = band
+    return entry
+
+
+def strip_gear_band(entry: dict) -> dict:
+    """Drop any stale baked ``GearLevelMin/Max`` from a carried-over gear entry on transform.
+
+    Legacy tables baked a fixed per-role band into every gear entry. Regeneration removes it so the
+    runtime defaults the stamped level to the killed NPC's level. An entry that intentionally pins a
+    band is preserved only when it also declares a floor gate (``MinFloorLevel``/``MaxFloorLevel``),
+    i.e. an author-curated late-floor drop rather than the old union-midpoint default.
+    """
+    if "MinFloorLevel" in entry or "MaxFloorLevel" in entry:
+        return entry
+    return {k: v for k, v in entry.items() if k not in ("GearLevelMin", "GearLevelMax")}
 
 
 def gold_entry(qty_min: int, qty_max: int) -> dict:
@@ -139,21 +163,24 @@ def build_table(role: str, archetype: str, template: dict, templates_meta: dict,
                 existing: dict | None) -> tuple[dict, str]:
     """Returns (table_json, mode) where mode is 'transform' or 'create'."""
     is_swarm = archetype == "Swarm"
+    # The anchor still steers the item *pool* (pick_weapons/pick_armor choose items whose item_level is
+    # closest to the role's typical floor) so a role's drops suit its floors. It no longer bakes a
+    # stamped level band — the runtime defaults the stamped level to the killed NPC's level.
     anchor = anchors.get(role, DEFAULT_ANCHOR)
-    lo, hi = band(anchor, templates_meta["levelBandHalfWidth"])
 
     # ── Gear pool ──
     if is_swarm:
         gear_entries: list[dict] = []  # gold-only
     elif existing is not None:
-        gear_entries, _ = split_gold(existing.get("Entries", []))
+        carried, _ = split_gold(existing.get("Entries", []))
+        gear_entries = [strip_gear_band(e) for e in carried]
     else:
         weapons = pick_weapons(conn, template["weaponFamilies"], anchor,
                                templates_meta["weaponSources"], 2)
         armor = pick_armor(conn, template["armorSlots"], anchor,
                            max(0, templates_meta["gearItemsPerTable"] - len(weapons)))
-        gear_entries = [leveled_entry(w, "WEAPON", lo, hi, 1.0) for w in weapons]
-        gear_entries += [leveled_entry(a, "ARMOR", lo, hi, 0.8) for a in armor]
+        gear_entries = [leveled_entry(w, "WEAPON", 1.0) for w in weapons]
+        gear_entries += [leveled_entry(a, "ARMOR", 0.8) for a in armor]
 
     # ── Gold pool: always archetype-driven (template), for both created and transformed tables.
     #    Gold quantity is an economic value tuned per archetype (and refined in the income pass), so

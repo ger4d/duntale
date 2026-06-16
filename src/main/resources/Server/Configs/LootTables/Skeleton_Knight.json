@@ -6,33 +6,25 @@
       "Type": "LEVELED",
       "ItemId": "Weapon_Sword_Bronze",
       "Weight": 1.5,
-      "GearType": "WEAPON",
-      "GearLevelMin": 24,
-      "GearLevelMax": 28
+      "GearType": "WEAPON"
     },
     {
       "Type": "LEVELED",
       "ItemId": "Armor_Bronze_Chest",
       "Weight": 0.8,
-      "GearType": "ARMOR",
-      "GearLevelMin": 24,
-      "GearLevelMax": 28
+      "GearType": "ARMOR"
     },
     {
       "Type": "LEVELED",
       "ItemId": "Armor_Bronze_Head",
       "Weight": 1.0,
-      "GearType": "ARMOR",
-      "GearLevelMin": 24,
-      "GearLevelMax": 28
+      "GearType": "ARMOR"
     },
     {
       "Type": "LEVELED",
       "ItemId": "Armor_Bronze_Hands",
       "Weight": 0.8,
-      "GearType": "ARMOR",
-      "GearLevelMin": 24,
-      "GearLevelMax": 28
+      "GearType": "ARMOR"
     }
   ],
   "GoldChance": 0.55,

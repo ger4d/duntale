@@ -6,33 +6,25 @@
       "Type": "LEVELED",
       "ItemId": "Weapon_Club_Scrap",
       "Weight": 2.1,
-      "GearType": "WEAPON",
-      "GearLevelMin": 13,
-      "GearLevelMax": 16
+      "GearType": "WEAPON"
     },
     {
       "Type": "LEVELED",
       "ItemId": "Weapon_Sword_Scrap",
       "Weight": 1.1,
-      "GearType": "WEAPON",
-      "GearLevelMin": 13,
-      "GearLevelMax": 16
+      "GearType": "WEAPON"
     },
     {
       "Type": "LEVELED",
       "ItemId": "Armor_Copper_Head",
       "Weight": 0.9,
-      "GearType": "ARMOR",
-      "GearLevelMin": 10,
-      "GearLevelMax": 15
+      "GearType": "ARMOR"
     },
     {
       "Type": "LEVELED",
       "ItemId": "Armor_Copper_Legs",
       "Weight": 0.4,
-      "GearType": "ARMOR",
-      "GearLevelMin": 10,
-      "GearLevelMax": 15
+      "GearType": "ARMOR"
     }
   ],
   "GoldChance": 0.55,

@@ -1,6 +1,7 @@
 package com.duntale.loot;
 
 import com.duntale.items.UnbreakableItems;
+import com.duntale.progression.CombatScaling;
 import com.duntale.progression.GearLevelService;
 import com.hypixel.hytale.server.core.inventory.ItemStack;
 
@@ -32,10 +33,11 @@ public sealed interface LootModifier permits LootModifier.Quantity, LootModifier
     /**
      * Applies this modifier to the in-flight drop build state.
      *
-     * @param state  the mutable drop build state
-     * @param random the current random source
+     * @param state   the mutable drop build state
+     * @param random  the current random source
+     * @param context the runtime loot context (carries the NPC/floor level for level-defaulting)
      */
-    void apply(@Nonnull BuildState state, @Nonnull ThreadLocalRandom random);
+    void apply(@Nonnull BuildState state, @Nonnull ThreadLocalRandom random, @Nonnull LootContext context);
 
     /**
      * Quantity modifier that sets the resulting stack size.
@@ -49,7 +51,7 @@ public sealed interface LootModifier permits LootModifier.Quantity, LootModifier
         }
 
         @Override
-        public void apply(@Nonnull BuildState state, @Nonnull ThreadLocalRandom random) {
+        public void apply(@Nonnull BuildState state, @Nonnull ThreadLocalRandom random, @Nonnull LootContext context) {
             int quantity = minQuantity == maxQuantity
                     ? minQuantity
                     : random.nextInt(minQuantity, maxQuantity + 1);
@@ -59,8 +61,22 @@ public sealed interface LootModifier permits LootModifier.Quantity, LootModifier
 
     /**
      * Gear-level modifier that stamps weapon or armor metadata onto the resulting stack.
+     *
+     * <p>The level band is optional. When {@code minLevel}/{@code maxLevel} are both supplied it is an
+     * explicit author override (bespoke gear that always stamps within that band). When either is
+     * {@code null} the stamped level defaults to the killed NPC's level (= the dungeon floor) carried
+     * by the {@link LootContext}, so a low-floor kill drops on-floor gear instead of a fixed per-role
+     * band.
      */
-    record GearLevel(@Nonnull LootEntry.GearType gearType, int minLevel, int maxLevel) implements LootModifier {
+    record GearLevel(@Nonnull LootEntry.GearType gearType, @Nullable Integer minLevel, @Nullable Integer maxLevel)
+            implements LootModifier {
+
+        /**
+         * Fallback level used only when neither the entry nor the context supplies one (e.g. a
+         * programmatic roll with an empty context). Keeps the modifier from ever producing an invalid
+         * level.
+         */
+        private static final int FALLBACK_LEVEL = CombatScaling.MIN_LEVEL;
 
         @Override
         @Nonnull
@@ -69,11 +85,24 @@ public sealed interface LootModifier permits LootModifier.Quantity, LootModifier
         }
 
         @Override
-        public void apply(@Nonnull BuildState state, @Nonnull ThreadLocalRandom random) {
-            int rolledLevel = minLevel == maxLevel
-                    ? minLevel
-                    : random.nextInt(minLevel, maxLevel + 1);
+        public void apply(@Nonnull BuildState state, @Nonnull ThreadLocalRandom random, @Nonnull LootContext context) {
+            int rolledLevel = resolveLevel(random, context);
             state.setGear(gearType, rolledLevel, GearLevelService.rollVariance());
+        }
+
+        /**
+         * Resolves the level to stamp: an explicit author band when present, otherwise the context's
+         * level (NPC level, falling back to floor level, then a safe constant).
+         */
+        private int resolveLevel(@Nonnull ThreadLocalRandom random, @Nonnull LootContext context) {
+            if (minLevel != null && maxLevel != null) {
+                return minLevel.equals(maxLevel)
+                        ? minLevel
+                        : random.nextInt(minLevel, maxLevel + 1);
+            }
+            Integer contextLevel = context.npcLevel() != null ? context.npcLevel() : context.floorLevel();
+            int base = contextLevel != null ? contextLevel : FALLBACK_LEVEL;
+            return CombatScaling.clampLevel(base);
         }
     }
 

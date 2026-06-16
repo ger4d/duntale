@@ -6,33 +6,25 @@
       "Type": "LEVELED",
       "ItemId": "Weapon_Staff_Iron",
       "Weight": 1.0,
-      "GearType": "WEAPON",
-      "GearLevelMin": 19,
-      "GearLevelMax": 25
+      "GearType": "WEAPON"
     },
     {
       "Type": "LEVELED",
       "ItemId": "Weapon_Staff_Wood_Kweebec",
       "Weight": 1.0,
-      "GearType": "WEAPON",
-      "GearLevelMin": 19,
-      "GearLevelMax": 25
+      "GearType": "WEAPON"
     },
     {
       "Type": "LEVELED",
       "ItemId": "Armor_Iron_Chest",
       "Weight": 0.8,
-      "GearType": "ARMOR",
-      "GearLevelMin": 19,
-      "GearLevelMax": 25
+      "GearType": "ARMOR"
     },
     {
       "Type": "LEVELED",
       "ItemId": "Armor_Iron_Legs",
       "Weight": 0.8,
-      "GearType": "ARMOR",
-      "GearLevelMin": 19,
-      "GearLevelMax": 25
+      "GearType": "ARMOR"
     }
   ],
   "GoldChance": 0.55,

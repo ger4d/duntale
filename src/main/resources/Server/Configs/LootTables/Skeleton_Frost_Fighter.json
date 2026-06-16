@@ -6,33 +6,25 @@
       "Type": "LEVELED",
       "ItemId": "Mystic_Noctivagus",
       "Weight": 1.0,
-      "GearType": "WEAPON",
-      "GearLevelMin": 37,
-      "GearLevelMax": 43
+      "GearType": "WEAPON"
     },
     {
       "Type": "LEVELED",
       "ItemId": "Mystic_Whirlwinds",
       "Weight": 1.0,
-      "GearType": "WEAPON",
-      "GearLevelMin": 37,
-      "GearLevelMax": 43
+      "GearType": "WEAPON"
     },
     {
       "Type": "LEVELED",
       "ItemId": "Armor_Adamantite_Chest",
       "Weight": 0.8,
-      "GearType": "ARMOR",
-      "GearLevelMin": 37,
-      "GearLevelMax": 43
+      "GearType": "ARMOR"
     },
     {
       "Type": "LEVELED",
       "ItemId": "Armor_Adamantite_Legs",
       "Weight": 0.8,
-      "GearType": "ARMOR",
-      "GearLevelMin": 37,
-      "GearLevelMax": 43
+      "GearType": "ARMOR"
     }
   ],
   "GoldChance": 0.55,

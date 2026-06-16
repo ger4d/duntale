@@ -6,33 +6,25 @@
       "Type": "LEVELED",
       "ItemId": "Mystic_Aetherflux_Blade",
       "Weight": 1.0,
-      "GearType": "WEAPON",
-      "GearLevelMin": 42,
-      "GearLevelMax": 48
+      "GearType": "WEAPON"
     },
     {
       "Type": "LEVELED",
       "ItemId": "Weapon_Sword_Silversteel",
       "Weight": 1.0,
-      "GearType": "WEAPON",
-      "GearLevelMin": 42,
-      "GearLevelMax": 48
+      "GearType": "WEAPON"
     },
     {
       "Type": "LEVELED",
       "ItemId": "Armor_Cloth_Cindercloth_Chest",
       "Weight": 0.8,
-      "GearType": "ARMOR",
-      "GearLevelMin": 42,
-      "GearLevelMax": 48
+      "GearType": "ARMOR"
     },
     {
       "Type": "LEVELED",
       "ItemId": "Armor_Cloth_Cindercloth_Legs",
       "Weight": 0.8,
-      "GearType": "ARMOR",
-      "GearLevelMin": 42,
-      "GearLevelMax": 48
+      "GearType": "ARMOR"
     }
   ],
   "GoldChance": 0.58,

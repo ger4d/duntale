@@ -6,33 +6,25 @@
       "Type": "LEVELED",
       "ItemId": "Weapon_Axe_Bone",
       "Weight": 1.0,
-      "GearType": "WEAPON",
-      "GearLevelMin": 22,
-      "GearLevelMax": 28
+      "GearType": "WEAPON"
     },
     {
       "Type": "LEVELED",
       "ItemId": "Weapon_Axe_Stone_Trork",
       "Weight": 1.0,
-      "GearType": "WEAPON",
-      "GearLevelMin": 22,
-      "GearLevelMax": 28
+      "GearType": "WEAPON"
     },
     {
       "Type": "LEVELED",
       "ItemId": "Armor_Bronze_Chest",
       "Weight": 0.8,
-      "GearType": "ARMOR",
-      "GearLevelMin": 22,
-      "GearLevelMax": 28
+      "GearType": "ARMOR"
     },
     {
       "Type": "LEVELED",
       "ItemId": "Armor_Bronze_Legs",
       "Weight": 0.8,
-      "GearType": "ARMOR",
-      "GearLevelMin": 22,
-      "GearLevelMax": 28
+      "GearType": "ARMOR"
     }
   ],
   "GoldChance": 0.55,

@@ -6,34 +6,26 @@
       "Type": "LEVELED",
       "ItemId": "Weapon_Axe_Copper",
       "Weight": 2.0,
-      "GearType": "WEAPON",
-      "GearLevelMin": 10,
-      "GearLevelMax": 16
+      "GearType": "WEAPON"
     },
     {
       "Type": "LEVELED",
       "ItemId": "Weapon_Spear_Copper",
       "Weight": 1.8,
-      "GearType": "WEAPON",
-      "GearLevelMin": 10,
-      "GearLevelMax": 16
+      "GearType": "WEAPON"
     },
     {
       "Type": "LEVELED",
       "ItemId": "Armor_Copper_Head",
       "Weight": 0.9,
       "GearType": "ARMOR",
-      "GearLevelMin": 10,
-      "GearLevelMax": 16,
       "MinNpcLevel": 10
     },
     {
       "Type": "LEVELED",
       "ItemId": "Armor_Copper_Chest",
       "Weight": 0.4,
-      "GearType": "ARMOR",
-      "GearLevelMin": 10,
-      "GearLevelMax": 16
+      "GearType": "ARMOR"
     }
   ],
   "GoldChance": 0.55,

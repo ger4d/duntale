@@ -6,34 +6,26 @@
       "Type": "LEVELED",
       "ItemId": "Weapon_Daggers_Crude",
       "Weight": 2.0,
-      "GearType": "WEAPON",
-      "GearLevelMin": 6,
-      "GearLevelMax": 12
+      "GearType": "WEAPON"
     },
     {
       "Type": "LEVELED",
       "ItemId": "Weapon_Spear_Crude",
       "Weight": 1.8,
-      "GearType": "WEAPON",
-      "GearLevelMin": 6,
-      "GearLevelMax": 12
+      "GearType": "WEAPON"
     },
     {
       "Type": "LEVELED",
       "ItemId": "Armor_Leather_Light_Head",
       "Weight": 1.0,
       "GearType": "ARMOR",
-      "GearLevelMin": 14,
-      "GearLevelMax": 18,
       "MinNpcLevel": 14
     },
     {
       "Type": "LEVELED",
       "ItemId": "Armor_Iron_Hands",
       "Weight": 0.6,
-      "GearType": "ARMOR",
-      "GearLevelMin": 18,
-      "GearLevelMax": 20
+      "GearType": "ARMOR"
     }
   ],
   "GoldChance": 0.55,

@@ -6,33 +6,25 @@
       "Type": "LEVELED",
       "ItemId": "WanMine_Gaias_Wrath_Sword",
       "Weight": 1.0,
-      "GearType": "WEAPON",
-      "GearLevelMin": 55,
-      "GearLevelMax": 61
+      "GearType": "WEAPON"
     },
     {
       "Type": "LEVELED",
       "ItemId": "Weapon_Claws_Tribal",
       "Weight": 1.0,
-      "GearType": "WEAPON",
-      "GearLevelMin": 55,
-      "GearLevelMax": 61
+      "GearType": "WEAPON"
     },
     {
       "Type": "LEVELED",
       "ItemId": "Armor_Mithril_Chest",
       "Weight": 0.8,
-      "GearType": "ARMOR",
-      "GearLevelMin": 55,
-      "GearLevelMax": 61
+      "GearType": "ARMOR"
     },
     {
       "Type": "LEVELED",
       "ItemId": "Armor_Mithril_Legs",
       "Weight": 0.8,
-      "GearType": "ARMOR",
-      "GearLevelMin": 55,
-      "GearLevelMax": 61
+      "GearType": "ARMOR"
     }
   ],
   "GoldChance": 0.55,
