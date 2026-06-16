@@ -72,7 +72,7 @@ def clamp_level(level: int) -> int:
 
 # ── Price model replication (MerchantPriceRegistry.java) ──────────────
 
-SELL_RATIO = 0.80
+SELL_RATIO = 0.50
 MIN_BUY_PRICE = 25
 SCORE_TO_GOLD_SCALE = 10.0
 SCORE_TO_GOLD_EXPONENT = 1.4

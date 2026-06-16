@@ -1,13 +1,25 @@
 package com.duntale.progression;
 
+import com.duntale.progression.PricingRegistry.Snapshot;
+import com.duntale.progression.PricingRegistry.VariantStep;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+
+import java.util.List;
+import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 @DisplayName("CombatScaling")
 class CombatScalingTest {
+
+    @AfterEach
+    void clearVariantHook() {
+        // The variant-table hook is static; clear it so a configured test never leaks into others.
+        CombatScaling.setPricingRegistry(null);
+    }
 
     @Test
     @DisplayName("Should continue increasing weapon scaling above level 60 up to level 100")
@@ -61,5 +73,34 @@ class CombatScalingTest {
     void shouldComputeAuthoredPerHit() {
         float expected = 12.0f * CombatScaling.weaponMult(30) * 1.075f;
         assertEquals(expected, CombatScaling.weaponAuthoredPerHit(12.0f, 30, 1.075f), 1e-4f);
+    }
+
+    @Test
+    @DisplayName("Configured variant tables should drive Elite/Boss HP and damage multipliers")
+    void shouldDriveVariantMultipliersFromConfig() {
+        CombatScaling.setPricingRegistry(PricingRegistry.forTest(new Snapshot(
+                10.0, 1.4, 1.0, 25L, 0.6, List.of(),
+                List.of(new VariantStep(0.0f, 3.0f, 1.5f)),
+                List.of(new VariantStep(0.0f, 12.0f, 2.5f)),
+                Map.of(), true)));
+
+        int normalHp = CombatScaling.npcScaledHp(100, 10, CombatScaling.NpcVariant.NORMAL);
+        int eliteHp = CombatScaling.npcScaledHp(100, 10, CombatScaling.NpcVariant.ELITE);
+        int bossHp = CombatScaling.npcScaledHp(100, 10, CombatScaling.NpcVariant.BOSS);
+        assertEquals(3.0, (double) eliteHp / normalHp, 0.02);
+        assertEquals(12.0, (double) bossHp / normalHp, 0.05);
+
+        float normalDmg = CombatScaling.npcDamageMult(10, CombatScaling.NpcVariant.NORMAL);
+        assertEquals(1.5, CombatScaling.npcDamageMult(10, CombatScaling.NpcVariant.ELITE) / normalDmg, 1e-4);
+        assertEquals(2.5, CombatScaling.npcDamageMult(10, CombatScaling.NpcVariant.BOSS) / normalDmg, 1e-4);
+    }
+
+    @Test
+    @DisplayName("Should fall back to the hard-coded base variant multipliers when no table is configured")
+    void shouldUseHardCodedVariantsWhenUnconfigured() {
+        int normalHp = CombatScaling.npcScaledHp(100, 10, CombatScaling.NpcVariant.NORMAL);
+        int eliteHp = CombatScaling.npcScaledHp(100, 10, CombatScaling.NpcVariant.ELITE);
+        // Hard-coded Elite base band (level below the lowest threshold) is x2.5 HP.
+        assertEquals(2.5, (double) eliteHp / normalHp, 0.02);
     }
 }

@@ -49,8 +49,8 @@
       "Type": "SIMPLE",
       "ItemId": "Gold_Coin",
       "Weight": 1.0,
-      "QuantityMin": 5,
-      "QuantityMax": 9
+      "QuantityMin": 8,
+      "QuantityMax": 14
     }
   ]
 }

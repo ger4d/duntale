@@ -1,7 +1,7 @@
 # Economy Discovery Report
 
 Status: Discovery snapshot
-Generated: 2026-06-12 by `scripts/scaling/discover_economy.py`
+Generated: 2026-06-16 by `scripts/scaling/discover_economy.py`
 Inputs: refreshed `scaling.db` (multi-source: builtin, duntale, wans, zets), dungeon-gen theme SpawnPools, LootTables assets, RpgConfig.json, FloorConfig assets.
 Formula replication sources: `CombatScaling.java`, `MerchantPriceRegistry.java`, `LootTable.java`, `LootRollService.java`, `RpgStatEffects.java`, `CatalogGenerator.java`.
 
@@ -168,66 +168,35 @@ Structural cause of the weapon/armor asymmetry: weapon score = baseDamage × wea
 
 | Item | Buy | Sell (80%) |
 |---|---|---|
-| Healing_Necklace_II | 125,000 | 100,000 |
-| Speed_Boots_III | 70,000 | 56,000 |
-| Vampire_Juice | 50,000 | 40,000 |
-| Speed_Boots_II | 45,000 | 36,000 |
-| Healing_Necklace_I | 45,000 | 36,000 |
-| Immunity_Trap_Ring | 35,000 | 28,000 |
-| Speed_Boots_I | 30,000 | 24,000 |
-| Stat_Point_Token | 7,500 | 6,000 |
-| Village_Warp | 5,000 | 4,000 |
-| Palporter | 2,500 | 2,000 |
+| Healing_Necklace_II | 125,000 | 62,500 |
+| Speed_Boots_III | 70,000 | 35,000 |
+| Vampire_Juice | 50,000 | 25,000 |
+| Speed_Boots_II | 45,000 | 22,500 |
+| Healing_Necklace_I | 45,000 | 22,500 |
+| Immunity_Trap_Ring | 35,000 | 17,500 |
+| Speed_Boots_I | 30,000 | 15,000 |
+| Stat_Point_Token | 7,500 | 3,750 |
+| Village_Warp | 5,000 | 2,500 |
+| Palporter | 2,500 | 1,250 |
 
 Merchants also reserve catalog slots for enchant scrolls (`CatalogGenerator.RESERVED_SCROLL_ITEM_IDS`, SimpleEnchantments) — an additional gold sink that is out of scope for this pass per the rebalance brief.
 
 ## 3. NPC Roster & Loot Coverage
 
 - SpawnPool roles across 7 themes: **63**
-- Loot tables shipped: **63** (41 base, 18 variant overlays, 4 chest)
-- Roster roles with NO loot table: **24** — scaled NPCs drop NOTHING because `NpcLootSystem` suppresses engine drops for all scaled NPCs
-- Summoned roles with NO loot table: **7**
+- Loot tables shipped: **76** (72 base, 0 variant overlays, 4 chest)
+- Roster roles with NO loot table: **0** — scaled NPCs drop NOTHING because `NpcLootSystem` suppresses engine drops for all scaled NPCs
+- Summoned roles with NO loot table: **0**
 
 ### Roster roles missing a loot table
 
 | Role | Themes (floor range) | Base HP |
 |---|---|---|
-| Emberwulf | Volcanic F15-45 | 193 |
-| Fen_Stalker | Temple_Dark F15-40 | 74 |
-| Feran_Windwalker | Volcanic F25-70 | 61 |
-| Goblin_Hermit | Crypt F5-30 | 38 |
-| Golem_Crystal_Earth | Crypt F20-70 | 160 |
-| Larva_Silk | Hive F15-50 | 25 |
-| Leopard_Snow | Arcane F20-70 | 103 |
-| Outlander_Hunter | Arcane F1-40 | 61 |
-| Outlander_Peon | Arcane F5-30 | 81 |
-| Outlander_Priest | Arcane F10-35 | 103 |
-| Scorpion | Hive F20-70 | 124 |
-| Skeleton_Burnt_Alchemist | Temple_Dark F10-70 | 103 |
-| Skeleton_Frost_Fighter | Temple_Dark F10-70 | 74 |
-| Slug_Magma | Volcanic F30-70 | 103 |
-| Spawn_Void | Crypt F30-70 | 193 |
-| Spectre_Void | Temple_Dark F30-70 | 41 |
-| Spider | Hive F25-70 | 61 |
-| Spider_Cave | Hive F45-70 | 74 |
-| Toad_Rhino | Mushroom F25-70 | 124 |
-| Toad_Rhino_Magma | Volcanic F25-70 | 124 |
-| Trork_Doctor_Witch | Mushroom F25-70 | 74 |
-| Trork_Sentry | Mushroom F5-45 | 61 |
-| Werewolf | Temple_Dark F5-70 | 283 |
-| Yeti | Arcane F15-70 | 226 |
 
 ### Summon-based roles missing a loot table
 
 | Role |
 |---|
-| Skeleton |
-| Wolf_Black |
-| Wolf_Outlander_Priest |
-| Wolf_Outlander_Sorcerer |
-| Wolf_Trork_Hunter |
-| Wolf_Trork_Shaman |
-| Wolf_Wife |
 
 ### Summon edges discovered in role data
 
@@ -249,23 +218,23 @@ Runtime summon allowlist (BuiltInNpcSpawnScalingSystem): Skeleton, Scarak_Louse,
 
 ### Variant overlay gaps
 
-- Roster roles spawning ELITE without `_Elite` overlay (falls back to base table): Feran_Longtooth, Goblin_Duke, Goblin_Lobber, Goblin_Ogre, Goblin_Scavenger, Golem_Crystal_Flame, Outlander_Berserker, Scarak_Defender, Scarak_Fighter_Royal_Guard, Shadow_Knight, Skeleton_Mage, Spirit_Ember, Trork_Mauler, Trork_Warrior, Wraith
-- Roster roles spawning BOSS without `_Boss` overlay: —
+- Roster roles spawning ELITE without `_Elite` overlay (falls back to base table): Feran_Longtooth, Feran_Windwalker, Goblin_Duke, Goblin_Lobber, Goblin_Ogre, Goblin_Scavenger, Golem_Crystal_Flame, Leopard_Snow, Outlander_Berserker, Outlander_Marauder, Scarak_Defender, Scarak_Fighter_Royal_Guard, Shadow_Knight, Skeleton_Burnt_Alchemist, Skeleton_Frost_Fighter, Skeleton_Knight, Skeleton_Mage, Spirit_Ember, Toad_Rhino, Toad_Rhino_Magma, Trork_Mauler, Trork_Sentry, Trork_Warrior, Wraith
+- Roster roles spawning BOSS without `_Boss` overlay: Ghoul, Goblin_Duke, Golem_Crystal_Earth, Golem_Firesteel, Outlander_Brute, Scarak_Broodmother, Scorpion, Shadow_Knight, Spawn_Void, Toad_Rhino, Toad_Rhino_Magma, Trork_Chieftain, Werewolf, Yeti, Zombie_Aberrant
 
 ## 4. Drop Economics
 
-- Base `DropChance` across 59 NPC tables: min 0.32, median 0.52, max 1.00
+- Base `DropChance` across 72 NPC tables: min 0.00, median 0.10, max 0.52
 - Luck config (RpgConfig.json): LuckMaxDropBonus=0.3, LuckHalfPoint=20.0, LuckLevelsPerBonusRoll=15
 
 ### Current Luck curve vs target
 
 | Luck | Drop bonus | Bonus rolls | Eff. chance (base 0.32) | Eff. chance (median base) |
 |---|---|---|---|---|
-| 0 | +0.0pp | 0 | 32% | 52% |
-| 10 | +10.0pp | 0 | 42% | 62% |
-| 20 | +15.0pp | 1 | 47% | 67% |
-| 30 | +18.0pp | 2 | 50% | 70% |
-| 50 | +21.4pp | 3 | 53% | 73% |
+| 0 | +0.0pp | 0 | 32% | 10% |
+| 10 | +10.0pp | 0 | 42% | 20% |
+| 20 | +15.0pp | 1 | 47% | 25% |
+| 30 | +18.0pp | 2 | 50% | 28% |
+| 50 | +21.4pp | 3 | 53% | 31% |
 
 Target curve from rebalance brief: ~10% base, ~40% at Luck 30, ~80% at Luck 50. That curve is ACCELERATING; the current bonus is a saturating hyperbolic (`RpgStatEffects.hyperbolic`), which mathematically cannot produce it — the balancing phase needs a formula change, not just config tuning.
 
@@ -273,242 +242,294 @@ Target curve from rebalance brief: ~10% base, ~40% at Luck 30, ~80% at Luck 50. 
 
 | Table | Lvl | Chance L0 | Gold L0 | Items L0 | Gold L20 | Items L20 | Gold L50 | Items L50 |
 |---|---|---|---|---|---|---|---|---|
-| Feran_Longtooth | 5 | 40% | 4.1 | 0.16 | 11.3 | 0.45 | 25.3 | 1.01 |
-| Feran_Longtooth | 15 | 40% | 11.4 | 0.18 | 31.2 | 0.51 | 69.7 | 1.13 |
-| Feran_Longtooth | 30 | 40% | 22.7 | 0.18 | 62.4 | 0.51 | 139.5 | 1.13 |
-| Feran_Longtooth | 50 | 40% | 37.8 | 0.18 | 104.1 | 0.51 | 232.4 | 1.13 |
-| Feran_Sharptooth | 5 | 35% | 1.8 | 0.17 | 5.1 | 0.49 | 11.6 | 1.10 |
-| Feran_Sharptooth | 15 | 35% | 5.4 | 0.17 | 15.4 | 0.49 | 34.7 | 1.10 |
-| Feran_Sharptooth | 30 | 35% | 10.8 | 0.17 | 30.7 | 0.49 | 69.4 | 1.10 |
-| Feran_Sharptooth | 50 | 35% | 17.9 | 0.17 | 51.2 | 0.49 | 115.7 | 1.10 |
-| Ghoul | 5 | 82% | 38.4 | 0.34 | 90.9 | 0.80 | 187.4 | 1.66 |
-| Ghoul | 15 | 82% | 115.2 | 0.34 | 272.6 | 0.80 | 562.2 | 1.66 |
-| Ghoul | 30 | 82% | 230.5 | 0.34 | 545.3 | 0.80 | 1124.3 | 1.66 |
-| Ghoul | 50 | 82% | 384.1 | 0.34 | 908.8 | 0.80 | 1873.9 | 1.66 |
-| Ghoul_Boss | 5 | 100% | 7.1 | 0.90 | 14.3 | 1.81 | 28.6 | 3.62 |
-| Ghoul_Boss | 15 | 100% | 21.4 | 0.90 | 42.9 | 1.81 | 85.7 | 3.62 |
-| Ghoul_Boss | 30 | 100% | 39.1 | 0.91 | 78.3 | 1.83 | 156.5 | 3.65 |
-| Ghoul_Boss | 50 | 100% | 65.2 | 0.91 | 130.4 | 1.83 | 260.9 | 3.65 |
-| Goblin_Duke | 5 | 90% | 49.1 | 0.35 | 109.1 | 0.79 | 218.2 | 1.58 |
-| Goblin_Duke | 15 | 90% | 147.3 | 0.35 | 327.3 | 0.79 | 654.5 | 1.58 |
-| Goblin_Duke | 30 | 90% | 294.5 | 0.35 | 654.5 | 0.79 | 1309.1 | 1.58 |
-| Goblin_Duke | 50 | 90% | 490.9 | 0.35 | 1090.9 | 0.79 | 2181.8 | 1.58 |
-| Goblin_Duke_Boss | 5 | 100% | 7.1 | 0.90 | 14.3 | 1.81 | 28.6 | 3.62 |
-| Goblin_Duke_Boss | 15 | 100% | 21.4 | 0.90 | 42.9 | 1.81 | 85.7 | 3.62 |
-| Goblin_Duke_Boss | 30 | 100% | 39.1 | 0.91 | 78.3 | 1.83 | 156.5 | 3.65 |
-| Goblin_Duke_Boss | 50 | 100% | 65.2 | 0.91 | 130.4 | 1.83 | 260.9 | 3.65 |
-| Goblin_Lobber | 5 | 42% | 4.0 | 0.19 | 10.9 | 0.52 | 24.2 | 1.15 |
-| Goblin_Lobber | 15 | 42% | 12.0 | 0.19 | 32.6 | 0.52 | 72.7 | 1.15 |
-| Goblin_Lobber | 30 | 42% | 22.6 | 0.20 | 61.4 | 0.56 | 136.6 | 1.24 |
-| Goblin_Lobber | 50 | 42% | 37.7 | 0.20 | 102.3 | 0.56 | 227.7 | 1.24 |
-| Goblin_Miner | 5 | 40% | 2.0 | 0.20 | 5.6 | 0.54 | 12.6 | 1.20 |
-| Goblin_Miner | 15 | 40% | 6.1 | 0.20 | 16.9 | 0.54 | 37.7 | 1.20 |
-| Goblin_Miner | 30 | 40% | 12.3 | 0.20 | 33.8 | 0.54 | 75.5 | 1.20 |
-| Goblin_Miner | 50 | 40% | 20.5 | 0.20 | 56.3 | 0.54 | 125.8 | 1.20 |
-| Goblin_Ogre | 5 | 46% | 11.0 | 0.18 | 29.3 | 0.49 | 64.7 | 1.08 |
-| Goblin_Ogre | 15 | 46% | 33.1 | 0.18 | 87.8 | 0.49 | 194.2 | 1.08 |
-| Goblin_Ogre | 30 | 46% | 66.2 | 0.18 | 175.7 | 0.49 | 388.4 | 1.08 |
-| Goblin_Ogre | 50 | 46% | 110.4 | 0.18 | 292.8 | 0.49 | 647.3 | 1.08 |
-| Goblin_Scavenger | 5 | 42% | 4.3 | 0.18 | 11.6 | 0.48 | 25.7 | 1.07 |
-| Goblin_Scavenger | 15 | 42% | 12.8 | 0.18 | 34.7 | 0.48 | 77.2 | 1.07 |
-| Goblin_Scavenger | 30 | 42% | 25.6 | 0.18 | 69.4 | 0.48 | 154.4 | 1.07 |
-| Goblin_Scavenger | 50 | 42% | 42.6 | 0.18 | 115.6 | 0.48 | 257.3 | 1.07 |
-| Goblin_Scrapper | 5 | 40% | 3.8 | 0.19 | 10.3 | 0.51 | 23.0 | 1.14 |
-| Goblin_Scrapper | 15 | 40% | 11.2 | 0.19 | 30.9 | 0.51 | 69.1 | 1.14 |
-| Goblin_Scrapper | 30 | 40% | 22.5 | 0.19 | 61.9 | 0.51 | 138.2 | 1.14 |
-| Goblin_Scrapper | 50 | 40% | 37.5 | 0.19 | 103.1 | 0.51 | 230.4 | 1.14 |
-| Golem_Crystal_Earth_Boss | 5 | 100% | 6.5 | 0.91 | 13.0 | 1.83 | 26.1 | 3.65 |
-| Golem_Crystal_Earth_Boss | 15 | 100% | 19.6 | 0.91 | 39.1 | 1.83 | 78.3 | 3.65 |
-| Golem_Crystal_Earth_Boss | 30 | 100% | 39.1 | 0.91 | 78.3 | 1.83 | 156.5 | 3.65 |
-| Golem_Crystal_Earth_Boss | 50 | 100% | 65.2 | 0.91 | 130.4 | 1.83 | 260.9 | 3.65 |
-| Golem_Crystal_Flame | 5 | 78% | 30.4 | 0.31 | 72.5 | 0.74 | 155.1 | 1.59 |
-| Golem_Crystal_Flame | 15 | 78% | 91.3 | 0.31 | 217.6 | 0.74 | 465.3 | 1.59 |
-| Golem_Crystal_Flame | 30 | 78% | 182.5 | 0.31 | 435.2 | 0.74 | 930.7 | 1.59 |
-| Golem_Crystal_Flame | 50 | 78% | 304.2 | 0.31 | 725.4 | 0.74 | 1551.1 | 1.59 |
-| Golem_Firesteel | 5 | 82% | 50.0 | 0.26 | 118.2 | 0.63 | 243.8 | 1.29 |
-| Golem_Firesteel | 15 | 82% | 149.9 | 0.26 | 354.7 | 0.63 | 731.2 | 1.29 |
-| Golem_Firesteel | 30 | 82% | 299.8 | 0.26 | 709.3 | 0.63 | 1462.5 | 1.29 |
-| Golem_Firesteel | 50 | 82% | 499.7 | 0.26 | 1182.2 | 0.63 | 2437.5 | 1.29 |
-| Golem_Firesteel_Boss | 5 | 100% | 7.1 | 0.90 | 14.3 | 1.81 | 28.6 | 3.62 |
-| Golem_Firesteel_Boss | 15 | 100% | 21.4 | 0.90 | 42.9 | 1.81 | 85.7 | 3.62 |
-| Golem_Firesteel_Boss | 30 | 100% | 39.1 | 0.91 | 78.3 | 1.83 | 156.5 | 3.65 |
-| Golem_Firesteel_Boss | 50 | 100% | 65.2 | 0.91 | 130.4 | 1.83 | 260.9 | 3.65 |
-| Outlander_Berserker | 5 | 38% | 3.4 | 0.19 | 9.4 | 0.52 | 21.2 | 1.17 |
-| Outlander_Berserker | 15 | 38% | 10.1 | 0.19 | 28.3 | 0.52 | 63.5 | 1.17 |
-| Outlander_Berserker | 30 | 38% | 20.3 | 0.19 | 56.6 | 0.52 | 126.9 | 1.17 |
-| Outlander_Berserker | 50 | 38% | 33.8 | 0.19 | 94.3 | 0.52 | 211.5 | 1.17 |
-| Outlander_Brute | 5 | 72% | 36.2 | 0.24 | 87.4 | 0.57 | 187.8 | 1.23 |
-| Outlander_Brute | 15 | 72% | 108.6 | 0.24 | 262.3 | 0.57 | 563.5 | 1.23 |
-| Outlander_Brute | 30 | 72% | 217.1 | 0.24 | 524.7 | 0.57 | 1126.9 | 1.23 |
-| Outlander_Brute | 50 | 72% | 361.9 | 0.24 | 874.5 | 0.57 | 1878.2 | 1.23 |
-| Outlander_Brute_Boss | 5 | 100% | 7.1 | 0.90 | 14.3 | 1.81 | 28.6 | 3.62 |
-| Outlander_Brute_Boss | 15 | 100% | 21.4 | 0.90 | 42.9 | 1.81 | 85.7 | 3.62 |
-| Outlander_Brute_Boss | 30 | 100% | 39.1 | 0.91 | 78.3 | 1.83 | 156.5 | 3.65 |
-| Outlander_Brute_Boss | 50 | 100% | 65.2 | 0.91 | 130.4 | 1.83 | 260.9 | 3.65 |
-| Outlander_Marauder | 5 | 52% | 12.9 | 0.22 | 33.2 | 0.56 | 72.7 | 1.23 |
-| Outlander_Marauder | 15 | 52% | 38.6 | 0.22 | 99.5 | 0.56 | 218.1 | 1.23 |
-| Outlander_Marauder | 30 | 52% | 77.2 | 0.22 | 199.0 | 0.56 | 436.3 | 1.23 |
-| Outlander_Marauder | 50 | 52% | 128.7 | 0.22 | 331.7 | 0.56 | 727.2 | 1.23 |
-| Outlander_Marauder_Elite | 5 | 72% | 29.8 | 0.28 | 71.9 | 0.67 | 154.4 | 1.45 |
-| Outlander_Marauder_Elite | 15 | 72% | 89.3 | 0.28 | 215.7 | 0.67 | 463.3 | 1.45 |
-| Outlander_Marauder_Elite | 30 | 72% | 178.5 | 0.28 | 431.4 | 0.67 | 926.7 | 1.45 |
-| Outlander_Marauder_Elite | 50 | 72% | 297.6 | 0.28 | 719.1 | 0.67 | 1544.4 | 1.45 |
-| Outlander_Sorcerer | 5 | 42% | 7.7 | 0.18 | 21.0 | 0.49 | 46.7 | 1.10 |
-| Outlander_Sorcerer | 15 | 42% | 23.2 | 0.18 | 62.9 | 0.49 | 140.0 | 1.10 |
-| Outlander_Sorcerer | 30 | 42% | 46.4 | 0.18 | 125.8 | 0.49 | 280.0 | 1.10 |
-| Outlander_Sorcerer | 50 | 42% | 77.3 | 0.18 | 209.7 | 0.49 | 466.7 | 1.10 |
-| Outlander_Stalker | 5 | 36% | 2.3 | 0.17 | 6.6 | 0.49 | 15.0 | 1.10 |
-| Outlander_Stalker | 15 | 36% | 7.0 | 0.17 | 19.9 | 0.49 | 44.9 | 1.10 |
-| Outlander_Stalker | 30 | 36% | 14.1 | 0.17 | 39.9 | 0.49 | 89.8 | 1.10 |
-| Outlander_Stalker | 50 | 36% | 23.4 | 0.17 | 66.4 | 0.49 | 149.6 | 1.10 |
+| Emberwulf | 5 | 12% | 0.0 | 0.12 | 0.0 | 0.54 | 0.0 | 1.34 |
+| Emberwulf | 15 | 12% | 0.0 | 0.12 | 0.0 | 0.54 | 0.0 | 1.34 |
+| Emberwulf | 30 | 12% | 0.0 | 0.12 | 0.0 | 0.54 | 0.0 | 1.34 |
+| Emberwulf | 50 | 12% | 0.0 | 0.12 | 0.0 | 0.54 | 0.0 | 1.34 |
+| Fen_Stalker | 5 | 10% | 0.0 | 0.10 | 0.0 | 0.50 | 0.0 | 1.26 |
+| Fen_Stalker | 15 | 10% | 0.0 | 0.10 | 0.0 | 0.50 | 0.0 | 1.26 |
+| Fen_Stalker | 30 | 10% | 0.0 | 0.10 | 0.0 | 0.50 | 0.0 | 1.26 |
+| Fen_Stalker | 50 | 10% | 0.0 | 0.10 | 0.0 | 0.50 | 0.0 | 1.26 |
+| Feran_Longtooth | 5 | 10% | 0.0 | 0.10 | 0.0 | 0.50 | 0.0 | 1.26 |
+| Feran_Longtooth | 15 | 10% | 0.0 | 0.10 | 0.0 | 0.50 | 0.0 | 1.26 |
+| Feran_Longtooth | 30 | 10% | 0.0 | 0.10 | 0.0 | 0.50 | 0.0 | 1.26 |
+| Feran_Longtooth | 50 | 10% | 0.0 | 0.10 | 0.0 | 0.50 | 0.0 | 1.26 |
+| Feran_Sharptooth | 5 | 10% | 0.0 | 0.10 | 0.0 | 0.50 | 0.0 | 1.26 |
+| Feran_Sharptooth | 15 | 10% | 0.0 | 0.10 | 0.0 | 0.50 | 0.0 | 1.26 |
+| Feran_Sharptooth | 30 | 10% | 0.0 | 0.10 | 0.0 | 0.50 | 0.0 | 1.26 |
+| Feran_Sharptooth | 50 | 10% | 0.0 | 0.10 | 0.0 | 0.50 | 0.0 | 1.26 |
+| Feran_Windwalker | 5 | 10% | 0.0 | 0.10 | 0.0 | 0.50 | 0.0 | 1.26 |
+| Feran_Windwalker | 15 | 10% | 0.0 | 0.10 | 0.0 | 0.50 | 0.0 | 1.26 |
+| Feran_Windwalker | 30 | 10% | 0.0 | 0.10 | 0.0 | 0.50 | 0.0 | 1.26 |
+| Feran_Windwalker | 50 | 10% | 0.0 | 0.10 | 0.0 | 0.50 | 0.0 | 1.26 |
+| Ghoul | 5 | 10% | 0.0 | 0.10 | 0.0 | 0.50 | 0.0 | 1.26 |
+| Ghoul | 15 | 10% | 0.0 | 0.10 | 0.0 | 0.50 | 0.0 | 1.26 |
+| Ghoul | 30 | 10% | 0.0 | 0.10 | 0.0 | 0.50 | 0.0 | 1.26 |
+| Ghoul | 50 | 10% | 0.0 | 0.10 | 0.0 | 0.50 | 0.0 | 1.26 |
+| Goblin_Duke | 5 | 12% | 0.0 | 0.12 | 0.0 | 0.54 | 0.0 | 1.34 |
+| Goblin_Duke | 15 | 12% | 0.0 | 0.12 | 0.0 | 0.54 | 0.0 | 1.34 |
+| Goblin_Duke | 30 | 12% | 0.0 | 0.12 | 0.0 | 0.54 | 0.0 | 1.34 |
+| Goblin_Duke | 50 | 12% | 0.0 | 0.12 | 0.0 | 0.54 | 0.0 | 1.34 |
+| Goblin_Hermit | 5 | 10% | 0.0 | 0.10 | 0.0 | 0.50 | 0.0 | 1.26 |
+| Goblin_Hermit | 15 | 10% | 0.0 | 0.10 | 0.0 | 0.50 | 0.0 | 1.26 |
+| Goblin_Hermit | 30 | 10% | 0.0 | 0.10 | 0.0 | 0.50 | 0.0 | 1.26 |
+| Goblin_Hermit | 50 | 10% | 0.0 | 0.10 | 0.0 | 0.50 | 0.0 | 1.26 |
+| Goblin_Lobber | 5 | 10% | 0.0 | 0.10 | 0.0 | 0.50 | 0.0 | 1.26 |
+| Goblin_Lobber | 15 | 10% | 0.0 | 0.10 | 0.0 | 0.50 | 0.0 | 1.26 |
+| Goblin_Lobber | 30 | 10% | 0.0 | 0.10 | 0.0 | 0.50 | 0.0 | 1.26 |
+| Goblin_Lobber | 50 | 10% | 0.0 | 0.10 | 0.0 | 0.50 | 0.0 | 1.26 |
+| Goblin_Miner | 5 | 10% | 0.0 | 0.10 | 0.0 | 0.50 | 0.0 | 1.26 |
+| Goblin_Miner | 15 | 10% | 0.0 | 0.10 | 0.0 | 0.50 | 0.0 | 1.26 |
+| Goblin_Miner | 30 | 10% | 0.0 | 0.10 | 0.0 | 0.50 | 0.0 | 1.26 |
+| Goblin_Miner | 50 | 10% | 0.0 | 0.10 | 0.0 | 0.50 | 0.0 | 1.26 |
+| Goblin_Ogre | 5 | 12% | 0.0 | 0.12 | 0.0 | 0.54 | 0.0 | 1.34 |
+| Goblin_Ogre | 15 | 12% | 0.0 | 0.12 | 0.0 | 0.54 | 0.0 | 1.34 |
+| Goblin_Ogre | 30 | 12% | 0.0 | 0.12 | 0.0 | 0.54 | 0.0 | 1.34 |
+| Goblin_Ogre | 50 | 12% | 0.0 | 0.12 | 0.0 | 0.54 | 0.0 | 1.34 |
+| Goblin_Scavenger | 5 | 10% | 0.0 | 0.10 | 0.0 | 0.50 | 0.0 | 1.26 |
+| Goblin_Scavenger | 15 | 10% | 0.0 | 0.10 | 0.0 | 0.50 | 0.0 | 1.26 |
+| Goblin_Scavenger | 30 | 10% | 0.0 | 0.10 | 0.0 | 0.50 | 0.0 | 1.26 |
+| Goblin_Scavenger | 50 | 10% | 0.0 | 0.10 | 0.0 | 0.50 | 0.0 | 1.26 |
+| Goblin_Scrapper | 5 | 10% | 0.0 | 0.10 | 0.0 | 0.50 | 0.0 | 1.26 |
+| Goblin_Scrapper | 15 | 10% | 0.0 | 0.10 | 0.0 | 0.50 | 0.0 | 1.26 |
+| Goblin_Scrapper | 30 | 10% | 0.0 | 0.10 | 0.0 | 0.50 | 0.0 | 1.26 |
+| Goblin_Scrapper | 50 | 10% | 0.0 | 0.10 | 0.0 | 0.50 | 0.0 | 1.26 |
+| Golem_Crystal_Earth | 5 | 10% | 0.0 | 0.10 | 0.0 | 0.50 | 0.0 | 1.26 |
+| Golem_Crystal_Earth | 15 | 10% | 0.0 | 0.10 | 0.0 | 0.50 | 0.0 | 1.26 |
+| Golem_Crystal_Earth | 30 | 10% | 0.0 | 0.10 | 0.0 | 0.50 | 0.0 | 1.26 |
+| Golem_Crystal_Earth | 50 | 10% | 0.0 | 0.10 | 0.0 | 0.50 | 0.0 | 1.26 |
+| Golem_Crystal_Flame | 5 | 12% | 0.0 | 0.12 | 0.0 | 0.54 | 0.0 | 1.34 |
+| Golem_Crystal_Flame | 15 | 12% | 0.0 | 0.12 | 0.0 | 0.54 | 0.0 | 1.34 |
+| Golem_Crystal_Flame | 30 | 12% | 0.0 | 0.12 | 0.0 | 0.54 | 0.0 | 1.34 |
+| Golem_Crystal_Flame | 50 | 12% | 0.0 | 0.12 | 0.0 | 0.54 | 0.0 | 1.34 |
+| Golem_Firesteel | 5 | 10% | 0.0 | 0.10 | 0.0 | 0.50 | 0.0 | 1.26 |
+| Golem_Firesteel | 15 | 10% | 0.0 | 0.10 | 0.0 | 0.50 | 0.0 | 1.26 |
+| Golem_Firesteel | 30 | 10% | 0.0 | 0.10 | 0.0 | 0.50 | 0.0 | 1.26 |
+| Golem_Firesteel | 50 | 10% | 0.0 | 0.10 | 0.0 | 0.50 | 0.0 | 1.26 |
+| Larva_Silk | 5 | 0% | 0.0 | 0.00 | 0.0 | 0.00 | 0.0 | 0.00 |
+| Larva_Silk | 15 | 0% | 0.0 | 0.00 | 0.0 | 0.00 | 0.0 | 0.00 |
+| Larva_Silk | 30 | 0% | 0.0 | 0.00 | 0.0 | 0.00 | 0.0 | 0.00 |
+| Larva_Silk | 50 | 0% | 0.0 | 0.00 | 0.0 | 0.00 | 0.0 | 0.00 |
+| Leopard_Snow | 5 | 12% | 0.0 | 0.12 | 0.0 | 0.54 | 0.0 | 1.34 |
+| Leopard_Snow | 15 | 12% | 0.0 | 0.12 | 0.0 | 0.54 | 0.0 | 1.34 |
+| Leopard_Snow | 30 | 12% | 0.0 | 0.12 | 0.0 | 0.54 | 0.0 | 1.34 |
+| Leopard_Snow | 50 | 12% | 0.0 | 0.12 | 0.0 | 0.54 | 0.0 | 1.34 |
+| Outlander_Berserker | 5 | 12% | 0.0 | 0.12 | 0.0 | 0.54 | 0.0 | 1.34 |
+| Outlander_Berserker | 15 | 12% | 0.0 | 0.12 | 0.0 | 0.54 | 0.0 | 1.34 |
+| Outlander_Berserker | 30 | 12% | 0.0 | 0.12 | 0.0 | 0.54 | 0.0 | 1.34 |
+| Outlander_Berserker | 50 | 12% | 0.0 | 0.12 | 0.0 | 0.54 | 0.0 | 1.34 |
+| Outlander_Brute | 5 | 10% | 0.0 | 0.10 | 0.0 | 0.50 | 0.0 | 1.26 |
+| Outlander_Brute | 15 | 10% | 0.0 | 0.10 | 0.0 | 0.50 | 0.0 | 1.26 |
+| Outlander_Brute | 30 | 10% | 0.0 | 0.10 | 0.0 | 0.50 | 0.0 | 1.26 |
+| Outlander_Brute | 50 | 10% | 0.0 | 0.10 | 0.0 | 0.50 | 0.0 | 1.26 |
+| Outlander_Hunter | 5 | 10% | 0.0 | 0.10 | 0.0 | 0.50 | 0.0 | 1.26 |
+| Outlander_Hunter | 15 | 10% | 0.0 | 0.10 | 0.0 | 0.50 | 0.0 | 1.26 |
+| Outlander_Hunter | 30 | 10% | 0.0 | 0.10 | 0.0 | 0.50 | 0.0 | 1.26 |
+| Outlander_Hunter | 50 | 10% | 0.0 | 0.10 | 0.0 | 0.50 | 0.0 | 1.26 |
+| Outlander_Marauder | 5 | 12% | 0.0 | 0.12 | 0.0 | 0.54 | 0.0 | 1.34 |
+| Outlander_Marauder | 15 | 12% | 0.0 | 0.12 | 0.0 | 0.54 | 0.0 | 1.34 |
+| Outlander_Marauder | 30 | 12% | 0.0 | 0.12 | 0.0 | 0.54 | 0.0 | 1.34 |
+| Outlander_Marauder | 50 | 12% | 0.0 | 0.12 | 0.0 | 0.54 | 0.0 | 1.34 |
+| Outlander_Peon | 5 | 12% | 0.0 | 0.12 | 0.0 | 0.54 | 0.0 | 1.34 |
+| Outlander_Peon | 15 | 12% | 0.0 | 0.12 | 0.0 | 0.54 | 0.0 | 1.34 |
+| Outlander_Peon | 30 | 12% | 0.0 | 0.12 | 0.0 | 0.54 | 0.0 | 1.34 |
+| Outlander_Peon | 50 | 12% | 0.0 | 0.12 | 0.0 | 0.54 | 0.0 | 1.34 |
+| Outlander_Priest | 5 | 10% | 0.0 | 0.10 | 0.0 | 0.50 | 0.0 | 1.26 |
+| Outlander_Priest | 15 | 10% | 0.0 | 0.10 | 0.0 | 0.50 | 0.0 | 1.26 |
+| Outlander_Priest | 30 | 10% | 0.0 | 0.10 | 0.0 | 0.50 | 0.0 | 1.26 |
+| Outlander_Priest | 50 | 10% | 0.0 | 0.10 | 0.0 | 0.50 | 0.0 | 1.26 |
+| Outlander_Sorcerer | 5 | 10% | 0.0 | 0.10 | 0.0 | 0.50 | 0.0 | 1.26 |
+| Outlander_Sorcerer | 15 | 10% | 0.0 | 0.10 | 0.0 | 0.50 | 0.0 | 1.26 |
+| Outlander_Sorcerer | 30 | 10% | 0.0 | 0.10 | 0.0 | 0.50 | 0.0 | 1.26 |
+| Outlander_Sorcerer | 50 | 10% | 0.0 | 0.10 | 0.0 | 0.50 | 0.0 | 1.26 |
+| Outlander_Stalker | 5 | 10% | 0.0 | 0.10 | 0.0 | 0.50 | 0.0 | 1.26 |
+| Outlander_Stalker | 15 | 10% | 0.0 | 0.10 | 0.0 | 0.50 | 0.0 | 1.26 |
+| Outlander_Stalker | 30 | 10% | 0.0 | 0.10 | 0.0 | 0.50 | 0.0 | 1.26 |
+| Outlander_Stalker | 50 | 10% | 0.0 | 0.10 | 0.0 | 0.50 | 0.0 | 1.26 |
 | Risen_Knight | 5 | 52% | 13.0 | 0.21 | 33.5 | 0.55 | 73.4 | 1.21 |
 | Risen_Knight | 15 | 52% | 39.0 | 0.21 | 100.5 | 0.55 | 220.3 | 1.21 |
 | Risen_Knight | 30 | 52% | 78.0 | 0.21 | 201.0 | 0.55 | 440.6 | 1.21 |
 | Risen_Knight | 50 | 52% | 130.0 | 0.21 | 335.0 | 0.55 | 734.3 | 1.21 |
-| Risen_Knight_Elite | 5 | 74% | 30.9 | 0.28 | 74.3 | 0.68 | 159.4 | 1.46 |
-| Risen_Knight_Elite | 15 | 74% | 92.7 | 0.28 | 223.0 | 0.68 | 478.1 | 1.46 |
-| Risen_Knight_Elite | 30 | 74% | 185.4 | 0.28 | 445.9 | 0.68 | 956.3 | 1.46 |
-| Risen_Knight_Elite | 50 | 74% | 309.0 | 0.28 | 743.2 | 0.68 | 1593.8 | 1.46 |
-| Scarak_Broodmother | 5 | 76% | 39.1 | 0.27 | 93.7 | 0.65 | 200.6 | 1.39 |
-| Scarak_Broodmother | 15 | 76% | 117.4 | 0.27 | 281.1 | 0.65 | 601.9 | 1.39 |
-| Scarak_Broodmother | 30 | 76% | 234.8 | 0.27 | 562.2 | 0.65 | 1203.9 | 1.39 |
-| Scarak_Broodmother | 50 | 76% | 391.3 | 0.27 | 937.0 | 0.65 | 2006.4 | 1.39 |
-| Scarak_Broodmother_Boss | 5 | 100% | 7.1 | 0.90 | 14.3 | 1.81 | 28.6 | 3.62 |
-| Scarak_Broodmother_Boss | 15 | 100% | 21.4 | 0.90 | 42.9 | 1.81 | 85.7 | 3.62 |
-| Scarak_Broodmother_Boss | 30 | 100% | 39.1 | 0.91 | 78.3 | 1.83 | 156.5 | 3.65 |
-| Scarak_Broodmother_Boss | 50 | 100% | 65.2 | 0.91 | 130.4 | 1.83 | 260.9 | 3.65 |
-| Scarak_Defender | 5 | 42% | 4.5 | 0.19 | 12.3 | 0.52 | 27.4 | 1.17 |
-| Scarak_Defender | 15 | 42% | 13.6 | 0.19 | 37.0 | 0.52 | 82.3 | 1.17 |
-| Scarak_Defender | 30 | 42% | 27.2 | 0.19 | 73.9 | 0.52 | 164.6 | 1.17 |
-| Scarak_Defender | 50 | 42% | 45.4 | 0.19 | 123.2 | 0.52 | 274.3 | 1.17 |
-| Scarak_Fighter | 5 | 40% | 2.0 | 0.20 | 5.4 | 0.56 | 12.1 | 1.25 |
-| Scarak_Fighter | 15 | 40% | 5.9 | 0.20 | 16.2 | 0.56 | 36.3 | 1.25 |
-| Scarak_Fighter | 30 | 40% | 11.8 | 0.20 | 32.5 | 0.56 | 72.5 | 1.25 |
-| Scarak_Fighter | 50 | 40% | 19.7 | 0.20 | 54.1 | 0.56 | 120.8 | 1.25 |
-| Scarak_Fighter_Royal_Guard | 5 | 42% | 6.3 | 0.19 | 17.1 | 0.52 | 38.1 | 1.15 |
-| Scarak_Fighter_Royal_Guard | 15 | 42% | 18.9 | 0.19 | 51.3 | 0.52 | 114.2 | 1.15 |
-| Scarak_Fighter_Royal_Guard | 30 | 42% | 37.8 | 0.19 | 102.6 | 0.52 | 228.3 | 1.15 |
-| Scarak_Fighter_Royal_Guard | 50 | 42% | 63.0 | 0.19 | 171.0 | 0.52 | 380.6 | 1.15 |
-| Scarak_Louse | 5 | 32% | 1.9 | 0.07 | 5.5 | 0.21 | 12.5 | 0.47 |
-| Scarak_Louse | 15 | 32% | 5.6 | 0.07 | 16.4 | 0.21 | 37.4 | 0.47 |
-| Scarak_Louse | 30 | 32% | 11.2 | 0.07 | 32.9 | 0.21 | 74.8 | 0.47 |
-| Scarak_Louse | 50 | 32% | 18.7 | 0.07 | 54.8 | 0.21 | 124.7 | 0.47 |
-| Scarak_Seeker | 5 | 42% | 4.2 | 0.18 | 11.5 | 0.48 | 25.6 | 1.07 |
-| Scarak_Seeker | 15 | 42% | 11.6 | 0.20 | 31.5 | 0.54 | 70.1 | 1.20 |
-| Scarak_Seeker | 30 | 42% | 23.2 | 0.20 | 63.0 | 0.54 | 140.2 | 1.20 |
-| Scarak_Seeker | 50 | 42% | 38.7 | 0.20 | 105.0 | 0.54 | 233.7 | 1.20 |
-| Scorpion_Boss | 5 | 100% | 6.5 | 0.91 | 13.0 | 1.83 | 26.1 | 3.65 |
-| Scorpion_Boss | 15 | 100% | 19.6 | 0.91 | 39.1 | 1.83 | 78.3 | 3.65 |
-| Scorpion_Boss | 30 | 100% | 39.1 | 0.91 | 78.3 | 1.83 | 156.5 | 3.65 |
-| Scorpion_Boss | 50 | 100% | 65.2 | 0.91 | 130.4 | 1.83 | 260.9 | 3.65 |
-| Shadow_Knight | 5 | 90% | 47.3 | 0.34 | 105.2 | 0.76 | 210.3 | 1.53 |
-| Shadow_Knight | 15 | 90% | 142.0 | 0.34 | 315.5 | 0.76 | 630.9 | 1.53 |
-| Shadow_Knight | 30 | 90% | 283.9 | 0.34 | 630.9 | 0.76 | 1261.9 | 1.53 |
-| Shadow_Knight | 50 | 90% | 473.2 | 0.34 | 1051.5 | 0.76 | 2103.1 | 1.53 |
-| Shadow_Knight_Boss | 5 | 100% | 6.5 | 0.91 | 13.0 | 1.83 | 26.1 | 3.65 |
-| Shadow_Knight_Boss | 15 | 100% | 19.6 | 0.91 | 39.1 | 1.83 | 78.3 | 3.65 |
-| Shadow_Knight_Boss | 30 | 100% | 39.1 | 0.91 | 78.3 | 1.83 | 156.5 | 3.65 |
-| Shadow_Knight_Boss | 50 | 100% | 65.2 | 0.91 | 130.4 | 1.83 | 260.9 | 3.65 |
-| Skeleton_Archer | 5 | 45% | 6.2 | 0.20 | 16.7 | 0.53 | 36.9 | 1.18 |
-| Skeleton_Archer | 15 | 45% | 18.7 | 0.20 | 50.0 | 0.53 | 110.7 | 1.18 |
-| Skeleton_Archer | 30 | 45% | 37.5 | 0.20 | 100.0 | 0.53 | 221.4 | 1.18 |
-| Skeleton_Archer | 50 | 45% | 62.5 | 0.20 | 166.7 | 0.53 | 369.0 | 1.18 |
-| Skeleton_Fighter | 5 | 45% | 7.1 | 0.19 | 18.9 | 0.51 | 41.8 | 1.14 |
-| Skeleton_Fighter | 15 | 45% | 21.2 | 0.19 | 56.6 | 0.51 | 125.3 | 1.14 |
-| Skeleton_Fighter | 30 | 45% | 42.4 | 0.19 | 113.1 | 0.51 | 250.5 | 1.14 |
-| Skeleton_Fighter | 50 | 45% | 70.7 | 0.19 | 188.6 | 0.51 | 417.6 | 1.14 |
-| Skeleton_Knight | 5 | 50% | 11.9 | 0.20 | 30.9 | 0.53 | 67.9 | 1.16 |
-| Skeleton_Knight | 15 | 50% | 35.6 | 0.20 | 92.7 | 0.53 | 203.7 | 1.16 |
-| Skeleton_Knight | 30 | 50% | 71.3 | 0.20 | 185.3 | 0.53 | 407.4 | 1.16 |
-| Skeleton_Knight | 50 | 50% | 118.8 | 0.20 | 308.9 | 0.53 | 678.9 | 1.16 |
-| Skeleton_Knight_Elite | 5 | 70% | 26.2 | 0.26 | 63.8 | 0.64 | 137.1 | 1.37 |
-| Skeleton_Knight_Elite | 15 | 70% | 78.8 | 0.26 | 191.2 | 0.64 | 411.4 | 1.37 |
-| Skeleton_Knight_Elite | 30 | 70% | 157.5 | 0.26 | 382.5 | 0.64 | 822.9 | 1.37 |
-| Skeleton_Knight_Elite | 50 | 70% | 262.5 | 0.26 | 637.5 | 0.64 | 1371.4 | 1.37 |
-| Skeleton_Mage | 5 | 43% | 8.1 | 0.18 | 21.7 | 0.49 | 48.3 | 1.09 |
-| Skeleton_Mage | 15 | 43% | 24.2 | 0.18 | 65.2 | 0.49 | 145.0 | 1.09 |
-| Skeleton_Mage | 30 | 43% | 48.4 | 0.18 | 130.5 | 0.49 | 289.9 | 1.09 |
-| Skeleton_Mage | 50 | 43% | 80.6 | 0.18 | 217.5 | 0.49 | 483.2 | 1.09 |
-| Skeleton_Soldier | 5 | 40% | 4.2 | 0.25 | 11.6 | 0.68 | 26.0 | 1.51 |
-| Skeleton_Soldier | 15 | 40% | 12.7 | 0.25 | 34.9 | 0.68 | 78.0 | 1.51 |
-| Skeleton_Soldier | 30 | 40% | 25.4 | 0.25 | 69.8 | 0.68 | 155.9 | 1.51 |
-| Skeleton_Soldier | 50 | 40% | 42.3 | 0.25 | 116.3 | 0.68 | 259.9 | 1.51 |
-| Spawn_Void_Boss | 5 | 100% | 6.5 | 0.91 | 13.0 | 1.83 | 26.1 | 3.65 |
-| Spawn_Void_Boss | 15 | 100% | 19.6 | 0.91 | 39.1 | 1.83 | 78.3 | 3.65 |
-| Spawn_Void_Boss | 30 | 100% | 39.1 | 0.91 | 78.3 | 1.83 | 156.5 | 3.65 |
-| Spawn_Void_Boss | 50 | 100% | 65.2 | 0.91 | 130.4 | 1.83 | 260.9 | 3.65 |
-| Spirit_Ember | 5 | 45% | 8.9 | 0.20 | 23.8 | 0.52 | 52.6 | 1.15 |
-| Spirit_Ember | 15 | 45% | 26.7 | 0.20 | 71.3 | 0.52 | 157.9 | 1.15 |
-| Spirit_Ember | 30 | 45% | 53.5 | 0.20 | 142.6 | 0.52 | 315.8 | 1.15 |
-| Spirit_Ember | 50 | 45% | 89.2 | 0.20 | 237.7 | 0.52 | 526.4 | 1.15 |
-| Toad_Rhino_Boss | 5 | 100% | 6.5 | 0.91 | 13.0 | 1.83 | 26.1 | 3.65 |
-| Toad_Rhino_Boss | 15 | 100% | 19.6 | 0.91 | 39.1 | 1.83 | 78.3 | 3.65 |
-| Toad_Rhino_Boss | 30 | 100% | 39.1 | 0.91 | 78.3 | 1.83 | 156.5 | 3.65 |
-| Toad_Rhino_Boss | 50 | 100% | 65.2 | 0.91 | 130.4 | 1.83 | 260.9 | 3.65 |
-| Toad_Rhino_Magma_Boss | 5 | 100% | 6.5 | 0.91 | 13.0 | 1.83 | 26.1 | 3.65 |
-| Toad_Rhino_Magma_Boss | 15 | 100% | 19.6 | 0.91 | 39.1 | 1.83 | 78.3 | 3.65 |
-| Toad_Rhino_Magma_Boss | 30 | 100% | 39.1 | 0.91 | 78.3 | 1.83 | 156.5 | 3.65 |
-| Toad_Rhino_Magma_Boss | 50 | 100% | 65.2 | 0.91 | 130.4 | 1.83 | 260.9 | 3.65 |
-| Trork_Brawler | 5 | 37% | 1.9 | 0.18 | 5.4 | 0.50 | 12.1 | 1.13 |
-| Trork_Brawler | 15 | 37% | 5.7 | 0.18 | 16.1 | 0.50 | 36.2 | 1.13 |
-| Trork_Brawler | 30 | 37% | 11.5 | 0.18 | 32.2 | 0.50 | 72.5 | 1.13 |
-| Trork_Brawler | 50 | 37% | 19.1 | 0.18 | 53.7 | 0.50 | 120.8 | 1.13 |
-| Trork_Chieftain | 5 | 86% | 37.0 | 0.40 | 86.0 | 0.93 | 171.9 | 1.85 |
-| Trork_Chieftain | 15 | 86% | 110.9 | 0.40 | 257.9 | 0.93 | 515.7 | 1.85 |
-| Trork_Chieftain | 30 | 86% | 221.8 | 0.40 | 515.7 | 0.93 | 1031.4 | 1.85 |
-| Trork_Chieftain | 50 | 86% | 369.6 | 0.40 | 859.5 | 0.93 | 1719.0 | 1.85 |
-| Trork_Chieftain_Boss | 5 | 100% | 7.1 | 0.90 | 14.3 | 1.81 | 28.6 | 3.62 |
-| Trork_Chieftain_Boss | 15 | 100% | 21.4 | 0.90 | 42.9 | 1.81 | 85.7 | 3.62 |
-| Trork_Chieftain_Boss | 30 | 100% | 39.1 | 0.91 | 78.3 | 1.83 | 156.5 | 3.65 |
-| Trork_Chieftain_Boss | 50 | 100% | 65.2 | 0.91 | 130.4 | 1.83 | 260.9 | 3.65 |
+| Scarak_Broodmother | 5 | 10% | 0.0 | 0.10 | 0.0 | 0.50 | 0.0 | 1.26 |
+| Scarak_Broodmother | 15 | 10% | 0.0 | 0.10 | 0.0 | 0.50 | 0.0 | 1.26 |
+| Scarak_Broodmother | 30 | 10% | 0.0 | 0.10 | 0.0 | 0.50 | 0.0 | 1.26 |
+| Scarak_Broodmother | 50 | 10% | 0.0 | 0.10 | 0.0 | 0.50 | 0.0 | 1.26 |
+| Scarak_Defender | 5 | 12% | 0.0 | 0.12 | 0.0 | 0.54 | 0.0 | 1.34 |
+| Scarak_Defender | 15 | 12% | 0.0 | 0.12 | 0.0 | 0.54 | 0.0 | 1.34 |
+| Scarak_Defender | 30 | 12% | 0.0 | 0.12 | 0.0 | 0.54 | 0.0 | 1.34 |
+| Scarak_Defender | 50 | 12% | 0.0 | 0.12 | 0.0 | 0.54 | 0.0 | 1.34 |
+| Scarak_Fighter | 5 | 12% | 0.0 | 0.12 | 0.0 | 0.54 | 0.0 | 1.34 |
+| Scarak_Fighter | 15 | 12% | 0.0 | 0.12 | 0.0 | 0.54 | 0.0 | 1.34 |
+| Scarak_Fighter | 30 | 12% | 0.0 | 0.12 | 0.0 | 0.54 | 0.0 | 1.34 |
+| Scarak_Fighter | 50 | 12% | 0.0 | 0.12 | 0.0 | 0.54 | 0.0 | 1.34 |
+| Scarak_Fighter_Royal_Guard | 5 | 12% | 0.0 | 0.12 | 0.0 | 0.54 | 0.0 | 1.34 |
+| Scarak_Fighter_Royal_Guard | 15 | 12% | 0.0 | 0.12 | 0.0 | 0.54 | 0.0 | 1.34 |
+| Scarak_Fighter_Royal_Guard | 30 | 12% | 0.0 | 0.12 | 0.0 | 0.54 | 0.0 | 1.34 |
+| Scarak_Fighter_Royal_Guard | 50 | 12% | 0.0 | 0.12 | 0.0 | 0.54 | 0.0 | 1.34 |
+| Scarak_Louse | 5 | 0% | 0.0 | 0.00 | 0.0 | 0.00 | 0.0 | 0.00 |
+| Scarak_Louse | 15 | 0% | 0.0 | 0.00 | 0.0 | 0.00 | 0.0 | 0.00 |
+| Scarak_Louse | 30 | 0% | 0.0 | 0.00 | 0.0 | 0.00 | 0.0 | 0.00 |
+| Scarak_Louse | 50 | 0% | 0.0 | 0.00 | 0.0 | 0.00 | 0.0 | 0.00 |
+| Scarak_Seeker | 5 | 10% | 0.0 | 0.10 | 0.0 | 0.50 | 0.0 | 1.26 |
+| Scarak_Seeker | 15 | 10% | 0.0 | 0.10 | 0.0 | 0.50 | 0.0 | 1.26 |
+| Scarak_Seeker | 30 | 10% | 0.0 | 0.10 | 0.0 | 0.50 | 0.0 | 1.26 |
+| Scarak_Seeker | 50 | 10% | 0.0 | 0.10 | 0.0 | 0.50 | 0.0 | 1.26 |
+| Scorpion | 5 | 10% | 0.0 | 0.10 | 0.0 | 0.50 | 0.0 | 1.26 |
+| Scorpion | 15 | 10% | 0.0 | 0.10 | 0.0 | 0.50 | 0.0 | 1.26 |
+| Scorpion | 30 | 10% | 0.0 | 0.10 | 0.0 | 0.50 | 0.0 | 1.26 |
+| Scorpion | 50 | 10% | 0.0 | 0.10 | 0.0 | 0.50 | 0.0 | 1.26 |
+| Shadow_Knight | 5 | 10% | 0.0 | 0.10 | 0.0 | 0.50 | 0.0 | 1.26 |
+| Shadow_Knight | 15 | 10% | 0.0 | 0.10 | 0.0 | 0.50 | 0.0 | 1.26 |
+| Shadow_Knight | 30 | 10% | 0.0 | 0.10 | 0.0 | 0.50 | 0.0 | 1.26 |
+| Shadow_Knight | 50 | 10% | 0.0 | 0.10 | 0.0 | 0.50 | 0.0 | 1.26 |
+| Skeleton | 5 | 12% | 0.0 | 0.12 | 0.0 | 0.54 | 0.0 | 1.34 |
+| Skeleton | 15 | 12% | 0.0 | 0.12 | 0.0 | 0.54 | 0.0 | 1.34 |
+| Skeleton | 30 | 12% | 0.0 | 0.12 | 0.0 | 0.54 | 0.0 | 1.34 |
+| Skeleton | 50 | 12% | 0.0 | 0.12 | 0.0 | 0.54 | 0.0 | 1.34 |
+| Skeleton_Archer | 5 | 10% | 0.0 | 0.10 | 0.0 | 0.50 | 0.0 | 1.26 |
+| Skeleton_Archer | 15 | 10% | 0.0 | 0.10 | 0.0 | 0.50 | 0.0 | 1.26 |
+| Skeleton_Archer | 30 | 10% | 0.0 | 0.10 | 0.0 | 0.50 | 0.0 | 1.26 |
+| Skeleton_Archer | 50 | 10% | 0.0 | 0.10 | 0.0 | 0.50 | 0.0 | 1.26 |
+| Skeleton_Burnt_Alchemist | 5 | 10% | 0.0 | 0.10 | 0.0 | 0.50 | 0.0 | 1.26 |
+| Skeleton_Burnt_Alchemist | 15 | 10% | 0.0 | 0.10 | 0.0 | 0.50 | 0.0 | 1.26 |
+| Skeleton_Burnt_Alchemist | 30 | 10% | 0.0 | 0.10 | 0.0 | 0.50 | 0.0 | 1.26 |
+| Skeleton_Burnt_Alchemist | 50 | 10% | 0.0 | 0.10 | 0.0 | 0.50 | 0.0 | 1.26 |
+| Skeleton_Fighter | 5 | 10% | 0.0 | 0.10 | 0.0 | 0.50 | 0.0 | 1.26 |
+| Skeleton_Fighter | 15 | 10% | 0.0 | 0.10 | 0.0 | 0.50 | 0.0 | 1.26 |
+| Skeleton_Fighter | 30 | 10% | 0.0 | 0.10 | 0.0 | 0.50 | 0.0 | 1.26 |
+| Skeleton_Fighter | 50 | 10% | 0.0 | 0.10 | 0.0 | 0.50 | 0.0 | 1.26 |
+| Skeleton_Frost_Fighter | 5 | 10% | 0.0 | 0.10 | 0.0 | 0.50 | 0.0 | 1.26 |
+| Skeleton_Frost_Fighter | 15 | 10% | 0.0 | 0.10 | 0.0 | 0.50 | 0.0 | 1.26 |
+| Skeleton_Frost_Fighter | 30 | 10% | 0.0 | 0.10 | 0.0 | 0.50 | 0.0 | 1.26 |
+| Skeleton_Frost_Fighter | 50 | 10% | 0.0 | 0.10 | 0.0 | 0.50 | 0.0 | 1.26 |
+| Skeleton_Knight | 5 | 10% | 0.0 | 0.10 | 0.0 | 0.50 | 0.0 | 1.26 |
+| Skeleton_Knight | 15 | 10% | 0.0 | 0.10 | 0.0 | 0.50 | 0.0 | 1.26 |
+| Skeleton_Knight | 30 | 10% | 0.0 | 0.10 | 0.0 | 0.50 | 0.0 | 1.26 |
+| Skeleton_Knight | 50 | 10% | 0.0 | 0.10 | 0.0 | 0.50 | 0.0 | 1.26 |
+| Skeleton_Mage | 5 | 10% | 0.0 | 0.10 | 0.0 | 0.50 | 0.0 | 1.26 |
+| Skeleton_Mage | 15 | 10% | 0.0 | 0.10 | 0.0 | 0.50 | 0.0 | 1.26 |
+| Skeleton_Mage | 30 | 10% | 0.0 | 0.10 | 0.0 | 0.50 | 0.0 | 1.26 |
+| Skeleton_Mage | 50 | 10% | 0.0 | 0.10 | 0.0 | 0.50 | 0.0 | 1.26 |
+| Skeleton_Soldier | 5 | 10% | 0.0 | 0.10 | 0.0 | 0.50 | 0.0 | 1.26 |
+| Skeleton_Soldier | 15 | 10% | 0.0 | 0.10 | 0.0 | 0.50 | 0.0 | 1.26 |
+| Skeleton_Soldier | 30 | 10% | 0.0 | 0.10 | 0.0 | 0.50 | 0.0 | 1.26 |
+| Skeleton_Soldier | 50 | 10% | 0.0 | 0.10 | 0.0 | 0.50 | 0.0 | 1.26 |
+| Slug_Magma | 5 | 12% | 0.0 | 0.12 | 0.0 | 0.54 | 0.0 | 1.34 |
+| Slug_Magma | 15 | 12% | 0.0 | 0.12 | 0.0 | 0.54 | 0.0 | 1.34 |
+| Slug_Magma | 30 | 12% | 0.0 | 0.12 | 0.0 | 0.54 | 0.0 | 1.34 |
+| Slug_Magma | 50 | 12% | 0.0 | 0.12 | 0.0 | 0.54 | 0.0 | 1.34 |
+| Spawn_Void | 5 | 10% | 0.0 | 0.10 | 0.0 | 0.50 | 0.0 | 1.26 |
+| Spawn_Void | 15 | 10% | 0.0 | 0.10 | 0.0 | 0.50 | 0.0 | 1.26 |
+| Spawn_Void | 30 | 10% | 0.0 | 0.10 | 0.0 | 0.50 | 0.0 | 1.26 |
+| Spawn_Void | 50 | 10% | 0.0 | 0.10 | 0.0 | 0.50 | 0.0 | 1.26 |
+| Spectre_Void | 5 | 10% | 0.0 | 0.10 | 0.0 | 0.50 | 0.0 | 1.26 |
+| Spectre_Void | 15 | 10% | 0.0 | 0.10 | 0.0 | 0.50 | 0.0 | 1.26 |
+| Spectre_Void | 30 | 10% | 0.0 | 0.10 | 0.0 | 0.50 | 0.0 | 1.26 |
+| Spectre_Void | 50 | 10% | 0.0 | 0.10 | 0.0 | 0.50 | 0.0 | 1.26 |
+| Spider | 5 | 10% | 0.0 | 0.10 | 0.0 | 0.50 | 0.0 | 1.26 |
+| Spider | 15 | 10% | 0.0 | 0.10 | 0.0 | 0.50 | 0.0 | 1.26 |
+| Spider | 30 | 10% | 0.0 | 0.10 | 0.0 | 0.50 | 0.0 | 1.26 |
+| Spider | 50 | 10% | 0.0 | 0.10 | 0.0 | 0.50 | 0.0 | 1.26 |
+| Spider_Cave | 5 | 10% | 0.0 | 0.10 | 0.0 | 0.50 | 0.0 | 1.26 |
+| Spider_Cave | 15 | 10% | 0.0 | 0.10 | 0.0 | 0.50 | 0.0 | 1.26 |
+| Spider_Cave | 30 | 10% | 0.0 | 0.10 | 0.0 | 0.50 | 0.0 | 1.26 |
+| Spider_Cave | 50 | 10% | 0.0 | 0.10 | 0.0 | 0.50 | 0.0 | 1.26 |
+| Spirit_Ember | 5 | 10% | 0.0 | 0.10 | 0.0 | 0.50 | 0.0 | 1.26 |
+| Spirit_Ember | 15 | 10% | 0.0 | 0.10 | 0.0 | 0.50 | 0.0 | 1.26 |
+| Spirit_Ember | 30 | 10% | 0.0 | 0.10 | 0.0 | 0.50 | 0.0 | 1.26 |
+| Spirit_Ember | 50 | 10% | 0.0 | 0.10 | 0.0 | 0.50 | 0.0 | 1.26 |
+| Toad_Rhino | 5 | 12% | 0.0 | 0.12 | 0.0 | 0.54 | 0.0 | 1.34 |
+| Toad_Rhino | 15 | 12% | 0.0 | 0.12 | 0.0 | 0.54 | 0.0 | 1.34 |
+| Toad_Rhino | 30 | 12% | 0.0 | 0.12 | 0.0 | 0.54 | 0.0 | 1.34 |
+| Toad_Rhino | 50 | 12% | 0.0 | 0.12 | 0.0 | 0.54 | 0.0 | 1.34 |
+| Toad_Rhino_Magma | 5 | 10% | 0.0 | 0.10 | 0.0 | 0.50 | 0.0 | 1.26 |
+| Toad_Rhino_Magma | 15 | 10% | 0.0 | 0.10 | 0.0 | 0.50 | 0.0 | 1.26 |
+| Toad_Rhino_Magma | 30 | 10% | 0.0 | 0.10 | 0.0 | 0.50 | 0.0 | 1.26 |
+| Toad_Rhino_Magma | 50 | 10% | 0.0 | 0.10 | 0.0 | 0.50 | 0.0 | 1.26 |
+| Trork_Brawler | 5 | 10% | 0.0 | 0.10 | 0.0 | 0.50 | 0.0 | 1.26 |
+| Trork_Brawler | 15 | 10% | 0.0 | 0.10 | 0.0 | 0.50 | 0.0 | 1.26 |
+| Trork_Brawler | 30 | 10% | 0.0 | 0.10 | 0.0 | 0.50 | 0.0 | 1.26 |
+| Trork_Brawler | 50 | 10% | 0.0 | 0.10 | 0.0 | 0.50 | 0.0 | 1.26 |
+| Trork_Chieftain | 5 | 10% | 0.0 | 0.10 | 0.0 | 0.50 | 0.0 | 1.26 |
+| Trork_Chieftain | 15 | 10% | 0.0 | 0.10 | 0.0 | 0.50 | 0.0 | 1.26 |
+| Trork_Chieftain | 30 | 10% | 0.0 | 0.10 | 0.0 | 0.50 | 0.0 | 1.26 |
+| Trork_Chieftain | 50 | 10% | 0.0 | 0.10 | 0.0 | 0.50 | 0.0 | 1.26 |
+| Trork_Doctor_Witch | 5 | 10% | 0.0 | 0.10 | 0.0 | 0.50 | 0.0 | 1.26 |
+| Trork_Doctor_Witch | 15 | 10% | 0.0 | 0.10 | 0.0 | 0.50 | 0.0 | 1.26 |
+| Trork_Doctor_Witch | 30 | 10% | 0.0 | 0.10 | 0.0 | 0.50 | 0.0 | 1.26 |
+| Trork_Doctor_Witch | 50 | 10% | 0.0 | 0.10 | 0.0 | 0.50 | 0.0 | 1.26 |
 | Trork_Guard | 5 | 38% | 4.4 | 0.09 | 12.2 | 0.24 | 27.4 | 0.55 |
 | Trork_Guard | 15 | 38% | 9.3 | 0.17 | 26.0 | 0.48 | 58.3 | 1.08 |
 | Trork_Guard | 30 | 38% | 18.7 | 0.17 | 52.0 | 0.48 | 116.7 | 1.08 |
 | Trork_Guard | 50 | 38% | 31.1 | 0.17 | 86.7 | 0.48 | 194.5 | 1.08 |
-| Trork_Hunter | 5 | 36% | 2.0 | 0.16 | 5.7 | 0.45 | 12.8 | 1.02 |
-| Trork_Hunter | 15 | 36% | 6.0 | 0.16 | 17.0 | 0.45 | 38.3 | 1.02 |
-| Trork_Hunter | 30 | 36% | 12.0 | 0.16 | 34.0 | 0.45 | 76.6 | 1.02 |
-| Trork_Hunter | 50 | 36% | 20.0 | 0.16 | 56.7 | 0.45 | 127.6 | 1.02 |
-| Trork_Mauler | 5 | 44% | 9.1 | 0.18 | 24.5 | 0.48 | 54.4 | 1.06 |
-| Trork_Mauler | 15 | 44% | 27.4 | 0.18 | 73.6 | 0.48 | 163.2 | 1.06 |
-| Trork_Mauler | 30 | 44% | 54.9 | 0.18 | 147.2 | 0.48 | 326.5 | 1.06 |
-| Trork_Mauler | 50 | 44% | 91.5 | 0.18 | 245.3 | 0.48 | 544.2 | 1.06 |
-| Trork_Shaman | 5 | 44% | 5.6 | 0.21 | 15.1 | 0.57 | 33.6 | 1.28 |
-| Trork_Shaman | 15 | 44% | 16.9 | 0.21 | 45.4 | 0.57 | 100.7 | 1.28 |
-| Trork_Shaman | 30 | 44% | 33.8 | 0.21 | 90.8 | 0.57 | 201.3 | 1.28 |
-| Trork_Shaman | 50 | 44% | 56.4 | 0.21 | 151.3 | 0.57 | 335.5 | 1.28 |
-| Trork_Warrior | 5 | 36% | 1.7 | 0.19 | 4.9 | 0.53 | 11.1 | 1.19 |
-| Trork_Warrior | 15 | 36% | 5.2 | 0.19 | 14.8 | 0.53 | 33.3 | 1.19 |
-| Trork_Warrior | 30 | 36% | 10.5 | 0.19 | 29.6 | 0.53 | 66.7 | 1.19 |
-| Trork_Warrior | 50 | 36% | 17.4 | 0.19 | 49.4 | 0.53 | 111.2 | 1.19 |
-| Werewolf_Boss | 5 | 100% | 7.1 | 0.90 | 14.3 | 1.81 | 28.6 | 3.62 |
-| Werewolf_Boss | 15 | 100% | 21.4 | 0.90 | 42.9 | 1.81 | 85.7 | 3.62 |
-| Werewolf_Boss | 30 | 100% | 39.1 | 0.91 | 78.3 | 1.83 | 156.5 | 3.65 |
-| Werewolf_Boss | 50 | 100% | 65.2 | 0.91 | 130.4 | 1.83 | 260.9 | 3.65 |
-| Wraith | 5 | 75% | 37.9 | 0.28 | 90.9 | 0.66 | 194.7 | 1.42 |
-| Wraith | 15 | 75% | 113.6 | 0.28 | 272.6 | 0.66 | 584.2 | 1.42 |
-| Wraith | 30 | 75% | 227.2 | 0.28 | 545.2 | 0.66 | 1168.4 | 1.42 |
-| Wraith | 50 | 75% | 378.6 | 0.28 | 908.7 | 0.66 | 1947.3 | 1.42 |
-| Wraith_Lantern | 5 | 33% | 2.0 | 0.13 | 5.7 | 0.39 | 13.0 | 0.88 |
-| Wraith_Lantern | 15 | 33% | 5.9 | 0.13 | 17.2 | 0.39 | 38.9 | 0.88 |
-| Wraith_Lantern | 30 | 33% | 11.8 | 0.13 | 34.3 | 0.39 | 77.9 | 0.88 |
-| Wraith_Lantern | 50 | 33% | 19.7 | 0.13 | 57.2 | 0.39 | 129.8 | 0.88 |
-| Yeti_Boss | 5 | 100% | 7.1 | 0.90 | 14.3 | 1.81 | 28.6 | 3.62 |
-| Yeti_Boss | 15 | 100% | 21.4 | 0.90 | 42.9 | 1.81 | 85.7 | 3.62 |
-| Yeti_Boss | 30 | 100% | 39.1 | 0.91 | 78.3 | 1.83 | 156.5 | 3.65 |
-| Yeti_Boss | 50 | 100% | 65.2 | 0.91 | 130.4 | 1.83 | 260.9 | 3.65 |
-| Zombie | 5 | 50% | 10.9 | 0.21 | 28.3 | 0.55 | 62.2 | 1.20 |
-| Zombie | 15 | 50% | 32.6 | 0.21 | 84.9 | 0.55 | 186.5 | 1.20 |
-| Zombie | 30 | 50% | 65.3 | 0.21 | 169.8 | 0.55 | 373.1 | 1.20 |
-| Zombie | 50 | 50% | 108.8 | 0.21 | 282.9 | 0.55 | 621.8 | 1.20 |
-| Zombie_Aberrant | 5 | 95% | 60.4 | 0.41 | 127.2 | 0.87 | 254.3 | 1.74 |
-| Zombie_Aberrant | 15 | 95% | 181.2 | 0.41 | 381.5 | 0.87 | 763.0 | 1.74 |
-| Zombie_Aberrant | 30 | 95% | 362.4 | 0.41 | 763.0 | 0.87 | 1526.1 | 1.74 |
-| Zombie_Aberrant | 50 | 95% | 604.1 | 0.41 | 1271.7 | 0.87 | 2543.5 | 1.74 |
-| Zombie_Aberrant_Boss | 5 | 100% | 7.1 | 0.90 | 14.3 | 1.81 | 28.6 | 3.62 |
-| Zombie_Aberrant_Boss | 15 | 100% | 21.4 | 0.90 | 42.9 | 1.81 | 85.7 | 3.62 |
-| Zombie_Aberrant_Boss | 30 | 100% | 39.1 | 0.91 | 78.3 | 1.83 | 156.5 | 3.65 |
-| Zombie_Aberrant_Boss | 50 | 100% | 65.2 | 0.91 | 130.4 | 1.83 | 260.9 | 3.65 |
+| Trork_Hunter | 5 | 10% | 0.0 | 0.10 | 0.0 | 0.50 | 0.0 | 1.26 |
+| Trork_Hunter | 15 | 10% | 0.0 | 0.10 | 0.0 | 0.50 | 0.0 | 1.26 |
+| Trork_Hunter | 30 | 10% | 0.0 | 0.10 | 0.0 | 0.50 | 0.0 | 1.26 |
+| Trork_Hunter | 50 | 10% | 0.0 | 0.10 | 0.0 | 0.50 | 0.0 | 1.26 |
+| Trork_Mauler | 5 | 10% | 0.0 | 0.10 | 0.0 | 0.50 | 0.0 | 1.26 |
+| Trork_Mauler | 15 | 10% | 0.0 | 0.10 | 0.0 | 0.50 | 0.0 | 1.26 |
+| Trork_Mauler | 30 | 10% | 0.0 | 0.10 | 0.0 | 0.50 | 0.0 | 1.26 |
+| Trork_Mauler | 50 | 10% | 0.0 | 0.10 | 0.0 | 0.50 | 0.0 | 1.26 |
+| Trork_Sentry | 5 | 10% | 0.0 | 0.10 | 0.0 | 0.50 | 0.0 | 1.26 |
+| Trork_Sentry | 15 | 10% | 0.0 | 0.10 | 0.0 | 0.50 | 0.0 | 1.26 |
+| Trork_Sentry | 30 | 10% | 0.0 | 0.10 | 0.0 | 0.50 | 0.0 | 1.26 |
+| Trork_Sentry | 50 | 10% | 0.0 | 0.10 | 0.0 | 0.50 | 0.0 | 1.26 |
+| Trork_Shaman | 5 | 10% | 0.0 | 0.10 | 0.0 | 0.50 | 0.0 | 1.26 |
+| Trork_Shaman | 15 | 10% | 0.0 | 0.10 | 0.0 | 0.50 | 0.0 | 1.26 |
+| Trork_Shaman | 30 | 10% | 0.0 | 0.10 | 0.0 | 0.50 | 0.0 | 1.26 |
+| Trork_Shaman | 50 | 10% | 0.0 | 0.10 | 0.0 | 0.50 | 0.0 | 1.26 |
+| Trork_Warrior | 5 | 10% | 0.0 | 0.10 | 0.0 | 0.50 | 0.0 | 1.26 |
+| Trork_Warrior | 15 | 10% | 0.0 | 0.10 | 0.0 | 0.50 | 0.0 | 1.26 |
+| Trork_Warrior | 30 | 10% | 0.0 | 0.10 | 0.0 | 0.50 | 0.0 | 1.26 |
+| Trork_Warrior | 50 | 10% | 0.0 | 0.10 | 0.0 | 0.50 | 0.0 | 1.26 |
+| Werewolf | 5 | 10% | 0.0 | 0.10 | 0.0 | 0.50 | 0.0 | 1.26 |
+| Werewolf | 15 | 10% | 0.0 | 0.10 | 0.0 | 0.50 | 0.0 | 1.26 |
+| Werewolf | 30 | 10% | 0.0 | 0.10 | 0.0 | 0.50 | 0.0 | 1.26 |
+| Werewolf | 50 | 10% | 0.0 | 0.10 | 0.0 | 0.50 | 0.0 | 1.26 |
+| Wolf_Black | 5 | 12% | 0.0 | 0.12 | 0.0 | 0.54 | 0.0 | 1.34 |
+| Wolf_Black | 15 | 12% | 0.0 | 0.12 | 0.0 | 0.54 | 0.0 | 1.34 |
+| Wolf_Black | 30 | 12% | 0.0 | 0.12 | 0.0 | 0.54 | 0.0 | 1.34 |
+| Wolf_Black | 50 | 12% | 0.0 | 0.12 | 0.0 | 0.54 | 0.0 | 1.34 |
+| Wolf_Outlander_Priest | 5 | 10% | 0.0 | 0.10 | 0.0 | 0.50 | 0.0 | 1.26 |
+| Wolf_Outlander_Priest | 15 | 10% | 0.0 | 0.10 | 0.0 | 0.50 | 0.0 | 1.26 |
+| Wolf_Outlander_Priest | 30 | 10% | 0.0 | 0.10 | 0.0 | 0.50 | 0.0 | 1.26 |
+| Wolf_Outlander_Priest | 50 | 10% | 0.0 | 0.10 | 0.0 | 0.50 | 0.0 | 1.26 |
+| Wolf_Outlander_Sorcerer | 5 | 10% | 0.0 | 0.10 | 0.0 | 0.50 | 0.0 | 1.26 |
+| Wolf_Outlander_Sorcerer | 15 | 10% | 0.0 | 0.10 | 0.0 | 0.50 | 0.0 | 1.26 |
+| Wolf_Outlander_Sorcerer | 30 | 10% | 0.0 | 0.10 | 0.0 | 0.50 | 0.0 | 1.26 |
+| Wolf_Outlander_Sorcerer | 50 | 10% | 0.0 | 0.10 | 0.0 | 0.50 | 0.0 | 1.26 |
+| Wolf_Trork_Hunter | 5 | 10% | 0.0 | 0.10 | 0.0 | 0.50 | 0.0 | 1.26 |
+| Wolf_Trork_Hunter | 15 | 10% | 0.0 | 0.10 | 0.0 | 0.50 | 0.0 | 1.26 |
+| Wolf_Trork_Hunter | 30 | 10% | 0.0 | 0.10 | 0.0 | 0.50 | 0.0 | 1.26 |
+| Wolf_Trork_Hunter | 50 | 10% | 0.0 | 0.10 | 0.0 | 0.50 | 0.0 | 1.26 |
+| Wolf_Trork_Shaman | 5 | 10% | 0.0 | 0.10 | 0.0 | 0.50 | 0.0 | 1.26 |
+| Wolf_Trork_Shaman | 15 | 10% | 0.0 | 0.10 | 0.0 | 0.50 | 0.0 | 1.26 |
+| Wolf_Trork_Shaman | 30 | 10% | 0.0 | 0.10 | 0.0 | 0.50 | 0.0 | 1.26 |
+| Wolf_Trork_Shaman | 50 | 10% | 0.0 | 0.10 | 0.0 | 0.50 | 0.0 | 1.26 |
+| Wolf_Wife | 5 | 12% | 0.0 | 0.12 | 0.0 | 0.54 | 0.0 | 1.34 |
+| Wolf_Wife | 15 | 12% | 0.0 | 0.12 | 0.0 | 0.54 | 0.0 | 1.34 |
+| Wolf_Wife | 30 | 12% | 0.0 | 0.12 | 0.0 | 0.54 | 0.0 | 1.34 |
+| Wolf_Wife | 50 | 12% | 0.0 | 0.12 | 0.0 | 0.54 | 0.0 | 1.34 |
+| Wraith | 5 | 12% | 0.0 | 0.12 | 0.0 | 0.54 | 0.0 | 1.34 |
+| Wraith | 15 | 12% | 0.0 | 0.12 | 0.0 | 0.54 | 0.0 | 1.34 |
+| Wraith | 30 | 12% | 0.0 | 0.12 | 0.0 | 0.54 | 0.0 | 1.34 |
+| Wraith | 50 | 12% | 0.0 | 0.12 | 0.0 | 0.54 | 0.0 | 1.34 |
+| Wraith_Lantern | 5 | 0% | 0.0 | 0.00 | 0.0 | 0.00 | 0.0 | 0.00 |
+| Wraith_Lantern | 15 | 0% | 0.0 | 0.00 | 0.0 | 0.00 | 0.0 | 0.00 |
+| Wraith_Lantern | 30 | 0% | 0.0 | 0.00 | 0.0 | 0.00 | 0.0 | 0.00 |
+| Wraith_Lantern | 50 | 0% | 0.0 | 0.00 | 0.0 | 0.00 | 0.0 | 0.00 |
+| Yeti | 5 | 10% | 0.0 | 0.10 | 0.0 | 0.50 | 0.0 | 1.26 |
+| Yeti | 15 | 10% | 0.0 | 0.10 | 0.0 | 0.50 | 0.0 | 1.26 |
+| Yeti | 30 | 10% | 0.0 | 0.10 | 0.0 | 0.50 | 0.0 | 1.26 |
+| Yeti | 50 | 10% | 0.0 | 0.10 | 0.0 | 0.50 | 0.0 | 1.26 |
+| Zombie | 5 | 10% | 0.0 | 0.10 | 0.0 | 0.50 | 0.0 | 1.26 |
+| Zombie | 15 | 10% | 0.0 | 0.10 | 0.0 | 0.50 | 0.0 | 1.26 |
+| Zombie | 30 | 10% | 0.0 | 0.10 | 0.0 | 0.50 | 0.0 | 1.26 |
+| Zombie | 50 | 10% | 0.0 | 0.10 | 0.0 | 0.50 | 0.0 | 1.26 |
+| Zombie_Aberrant | 5 | 10% | 0.0 | 0.10 | 0.0 | 0.50 | 0.0 | 1.26 |
+| Zombie_Aberrant | 15 | 10% | 0.0 | 0.10 | 0.0 | 0.50 | 0.0 | 1.26 |
+| Zombie_Aberrant | 30 | 10% | 0.0 | 0.10 | 0.0 | 0.50 | 0.0 | 1.26 |
+| Zombie_Aberrant | 50 | 10% | 0.0 | 0.10 | 0.0 | 0.50 | 0.0 | 1.26 |
 
 ## 5. Income vs Prices Model (crude)
 
@@ -516,20 +537,20 @@ Estimated kills/floor = maxRooms × 0.6 × max(1, enemyDensity × maxEnemiesPerR
 
 | Floor | Themes | Est. kills | Gold/kill (Luck 0) | Gold/floor | Median weapon @F+3 | Median armor @F+3 | Floors per weapon |
 |---|---|---|---|---|---|---|---|
-| 1 | crypt | 12 | 0.7 | 9 | 406 | 833 | 45.9 |
-| 3 | crypt | 24 | 2.2 | 54 | 433 | 869 | 8.1 |
-| 5 | crypt,volcanic | 133 | 6.6 | 885 | 608 | 869 | 0.7 |
-| 7 | crypt,hive,volcanic | 200 | 9.3 | 1858 | 608 | 869 | 0.3 |
-| 10 | crypt,hive,temple_dark,volcanic | 223 | 20.7 | 4629 | 749 | 921 | 0.2 |
-| 15 | arcane,volcanic,hive,crypt,temple_dark | 230 | 42.6 | 9826 | 943 | 1062 | 0.1 |
-| 20 | crypt,arcane,hive,mushroom,temple_dark,volcanic | 87 | 67.4 | 5888 | 1253 | 1424 | 0.2 |
-| 25 | crypt,arcane,hive,mushroom,temple_dark,volcanic | 48 | 83.0 | 3982 | 2127 | 1746 | 0.5 |
-| 30 | crypt,arcane,hive,mushroom,temple_dark,volcanic | 48 | 102.2 | 4907 | 2701 | 2569 | 0.6 |
-| 40 | crypt,arcane,hive,mushroom,temple_dark,volcanic | 48 | 174.5 | 8378 | 5984 | 3388 | 0.7 |
-| 45 | crypt,arcane,hive,mushroom,temple_dark,volcanic | 24 | 204.0 | 4895 | 7564 | 3388 | 1.5 |
-| 50 | crypt,arcane,hive,mushroom,temple_dark,volcanic | 48 | 236.1 | 11335 | 9679 | 4269 | 0.9 |
-| 55 | crypt,arcane,hive,mushroom,temple_dark,volcanic | 24 | 259.8 | 6234 | 8511 | 4676 | 1.4 |
-| 60 | crypt,arcane,hive,mushroom,temple_dark,volcanic | 48 | 283.4 | 13602 | 26670 | 5277 | 2.0 |
+| 1 | crypt | 12 | 0.0 | 0 | 406 | 833 | inf |
+| 3 | crypt | 24 | 0.0 | 0 | 433 | 869 | inf |
+| 5 | crypt,volcanic | 133 | 0.0 | 0 | 608 | 869 | inf |
+| 7 | crypt,hive,volcanic | 200 | 0.0 | 0 | 608 | 869 | inf |
+| 10 | crypt,hive,temple_dark,volcanic | 223 | 0.0 | 0 | 749 | 921 | inf |
+| 15 | arcane,volcanic,hive,crypt,temple_dark | 230 | 0.0 | 0 | 943 | 1062 | inf |
+| 20 | crypt,arcane,hive,mushroom,temple_dark,volcanic | 87 | 0.0 | 0 | 1253 | 1424 | inf |
+| 25 | crypt,arcane,hive,mushroom,temple_dark,volcanic | 48 | 0.0 | 0 | 2127 | 1746 | inf |
+| 30 | crypt,arcane,hive,mushroom,temple_dark,volcanic | 48 | 0.0 | 0 | 2701 | 2569 | inf |
+| 40 | crypt,arcane,hive,mushroom,temple_dark,volcanic | 48 | 0.0 | 0 | 5984 | 3388 | inf |
+| 45 | crypt,arcane,hive,mushroom,temple_dark,volcanic | 24 | 0.0 | 0 | 7564 | 3388 | inf |
+| 50 | crypt,arcane,hive,mushroom,temple_dark,volcanic | 48 | 0.0 | 0 | 9679 | 4269 | inf |
+| 55 | crypt,arcane,hive,mushroom,temple_dark,volcanic | 24 | 0.0 | 0 | 8511 | 4676 | inf |
+| 60 | crypt,arcane,hive,mushroom,temple_dark,volcanic | 48 | 0.0 | 0 | 26670 | 5277 | inf |
 
 ## 5b. Per-Theme Income Projection (Luck 0, current loot tables)
 
@@ -537,50 +558,50 @@ Gold per floor by theme. `—` = theme not in that floor's `theme.variants`. Hiv
 
 | Floor | Est. kills | Arcane | Crypt | Hive | Mine | Mushroom | Temple_Dark | Volcanic |
 |---|---|---|---|---|---|---|---|---|
-| 1 | 12 | — | 16 | — | — | — | — | — |
-| 3 | 24 | — | 98 | — | — | — | — | — |
-| 5 | 133 | — | 1,186 | — | — | — | — | 552 |
-| 7 | 200 | — | 2,490 | 746 | — | — | — | 1,160 |
-| 10 | 223 | — | 5,659 | 1,771 | — | — | 3,686 | 4,612 |
-| 15 | 230 | 3,974 | 9,699 | 3,674 | — | — | 4,868 | 8,016 |
-| 20 | 87 | 1,691 | 4,761 | 1,862 | — | 2,047 | 3,458 | 4,905 |
-| 25 | 48 | 1,213 | 3,272 | 1,223 | — | 1,223 | 2,377 | 2,890 |
-| 30 | 48 | 1,455 | 3,534 | 1,586 | — | 1,468 | 2,450 | 3,034 |
-| 40 | 48 | 2,474 | 7,046 | 2,119 | — | 2,448 | 3,561 | 4,803 |
-| 45 | 24 | 1,964 | 3,964 | 1,132 | — | 1,377 | 2,410 | 2,702 |
-| 50 | 48 | 4,365 | 8,808 | 2,517 | — | 4,513 | 5,356 | 7,268 |
-| 55 | 24 | 2,401 | 4,844 | 1,633 | — | 2,482 | 2,946 | 3,997 |
-| 60 | 48 | 5,238 | 10,569 | 3,563 | — | 5,416 | 6,427 | 8,722 |
+| 1 | 12 | — | 0 | — | — | — | — | — |
+| 3 | 24 | — | 0 | — | — | — | — | — |
+| 5 | 133 | — | 0 | — | — | — | — | 0 |
+| 7 | 200 | — | 0 | 0 | — | — | — | 0 |
+| 10 | 223 | — | 0 | 0 | — | — | 0 | 0 |
+| 15 | 230 | 0 | 0 | 0 | — | — | 0 | 0 |
+| 20 | 87 | 0 | 0 | 0 | — | 0 | 0 | 0 |
+| 25 | 48 | 0 | 0 | 0 | — | 0 | 0 | 0 |
+| 30 | 48 | 0 | 0 | 0 | — | 0 | 0 | 0 |
+| 40 | 48 | 0 | 0 | 0 | — | 0 | 0 | 0 |
+| 45 | 24 | 0 | 0 | 0 | — | 0 | 0 | 0 |
+| 50 | 48 | 0 | 0 | 0 | — | 0 | 0 | 0 |
+| 55 | 24 | 0 | 0 | 0 | — | 0 | 0 | 0 |
+| 60 | 48 | 0 | 0 | 0 | — | 0 | 0 | 0 |
 
 Item drops per floor by theme (inventory pressure at Luck 0):
 
 | Floor | Est. kills | Arcane | Crypt | Hive | Mine | Mushroom | Temple_Dark | Volcanic |
 |---|---|---|---|---|---|---|---|---|
-| 1 | 12 | — | 2.3 | — | — | — | — | — |
-| 3 | 24 | — | 4.7 | — | — | — | — | — |
-| 5 | 133 | — | 23.6 | — | — | — | — | 23.1 |
-| 7 | 200 | — | 35.5 | 29.1 | — | — | — | 34.6 |
-| 10 | 223 | — | 43.9 | 37.2 | — | — | 26.0 | 47.0 |
-| 15 | 230 | 28.3 | 47.1 | 34.3 | — | — | 22.9 | 42.9 |
-| 20 | 87 | 9.0 | 16.0 | 11.8 | — | 15.4 | 10.2 | 16.6 |
-| 25 | 48 | 5.2 | 8.8 | 6.5 | — | 7.4 | 5.6 | 7.8 |
-| 30 | 48 | 5.2 | 7.9 | 6.8 | — | 7.4 | 4.8 | 6.8 |
-| 40 | 48 | 5.6 | 8.7 | 6.4 | — | 7.1 | 3.2 | 6.0 |
-| 45 | 24 | 2.9 | 4.3 | 3.1 | — | 3.6 | 2.0 | 3.0 |
-| 50 | 48 | 5.9 | 8.7 | 6.1 | — | 7.8 | 3.9 | 7.3 |
-| 55 | 24 | 2.9 | 4.3 | 3.6 | — | 3.9 | 2.0 | 3.6 |
-| 60 | 48 | 5.9 | 8.7 | 7.1 | — | 7.8 | 3.9 | 7.3 |
+| 1 | 12 | — | 1.2 | — | — | — | — | — |
+| 3 | 24 | — | 2.4 | — | — | — | — | — |
+| 5 | 133 | — | 13.3 | — | — | — | — | 13.3 |
+| 7 | 200 | — | 20.0 | 12.9 | — | — | — | 20.0 |
+| 10 | 223 | — | 22.7 | 19.8 | — | — | 18.3 | 23.3 |
+| 15 | 230 | 25.2 | 23.4 | 17.4 | — | — | 19.5 | 24.4 |
+| 20 | 87 | 9.7 | 8.9 | 6.4 | — | 8.7 | 7.5 | 9.4 |
+| 25 | 48 | 5.3 | 4.9 | 3.7 | — | 4.9 | 4.1 | 5.1 |
+| 30 | 48 | 5.3 | 4.9 | 4.3 | — | 4.9 | 4.2 | 5.2 |
+| 40 | 48 | 5.2 | 4.9 | 4.2 | — | 4.9 | 4.9 | 5.3 |
+| 45 | 24 | 2.7 | 2.5 | 2.1 | — | 2.4 | 2.5 | 2.7 |
+| 50 | 48 | 5.4 | 4.9 | 4.2 | — | 4.9 | 5.0 | 5.3 |
+| 55 | 24 | 2.7 | 2.5 | 2.6 | — | 2.5 | 2.5 | 2.6 |
+| 60 | 48 | 5.4 | 4.9 | 5.1 | — | 4.9 | 5.0 | 5.3 |
 
 Loot-table coverage by theme (worst floor; % of spawn weight that has a table):
 
 | Theme | Coverage | Roles contributing zero |
 |---|---|---|
-| Arcane | 53% | Leopard_Snow, Outlander_Hunter, Outlander_Peon, Outlander_Priest, Yeti |
-| Crypt | 65% | Goblin_Hermit, Golem_Crystal_Earth, Spawn_Void |
-| Hive | 47% | Larva_Silk, Scorpion, Spider, Spider_Cave |
-| Mushroom | 69% | Toad_Rhino, Trork_Doctor_Witch, Trork_Sentry |
-| Temple_Dark | 22% | Fen_Stalker, Skeleton_Burnt_Alchemist, Skeleton_Frost_Fighter, Spectre_Void, Werewolf |
-| Volcanic | 48% | Emberwulf, Feran_Windwalker, Slug_Magma, Toad_Rhino_Magma |
+| Arcane | 100% | — |
+| Crypt | 100% | — |
+| Hive | 100% | — |
+| Mushroom | 100% | — |
+| Temple_Dark | 100% | — |
+| Volcanic | 100% | — |
 
 ## 6. Caveats & Runtime Follow-ups
 
@@ -614,49 +635,32 @@ Role membership (for manual review):
 - **Heavy**: Emberwulf, Goblin_Duke, Golem_Crystal_Flame, Wraith
 - **Boss**: Ghoul, Golem_Crystal_Earth, Golem_Firesteel, Outlander_Brute, Scarak_Broodmother, Scorpion, Shadow_Knight, Spawn_Void, Trork_Chieftain, Werewolf, Yeti, Zombie_Aberrant
 
-## Authored Gear Curves (derived)
-
-Generated by `scripts/scaling/derive_gear_curves.py`. Weapon per-hit and armor DR
-are driven by gear level instead of each item's asset stats (a corrective ratio at
-damage time divides out the asset number and substitutes the family anchor).
-
-- **Melee anchor:** 12.0 per-hit @ L1, solved as `npcScaledHp(61, 1) / (5 hits * weaponMult(1))`. All melee families share it (cadence is a single Agility throttle -> equal per-hit, equal DPS).
-- **Ranged anchor:** 9.0 (x0.75 of melee). Bows/crossbows/guns fire from the Secondary slot on a charge/projectile cadence, not throttle-gated — **playtest** before locking.
-
-Melee hits-to-kill an on-level Standard (TTK in seconds depends on the live attack
-cadence; the throttle floor is 400 ms @ Agility 0, so balance is tracked on the
-hits-to-kill axis and confirmed in playtest):
-
-| Level | 1 | 15 | 30 | 45 | 60 | 80 | 100 |
-|---|---|---|---|---|---|---|---|
-| Hits | 5.1 | 5.5 | 5.9 | 6.3 | 6.5 | 6.5 | 6.5 |
-
-**Armor DR budget:** 10% (L1) -> 55% (L100); per-slot shares Chest .40 / Legs .25 / Head .20 / Hands .15 sum to 1.0, so a full on-level set lands on the budget curve. Combined total capped at 65%.
-
-| Level | 1 | 15 | 30 | 45 | 60 | 80 | 100 |
-|---|---|---|---|---|---|---|---|
-| Full-set DR | 10% | 12% | 18% | 28% | 41% | 51% | 55% |
-
-Mapped families (23): Arrow, Axe, Battleaxe, Bomb, Bow, Club, Crossbow, Dagger, Gun, Kunai, Longsword, Mace, Magic, Scythe, Shield, Sickle, Soulblight, Spear, Spellbook, Staff, Stick, Sword, Wand.
-
 ## Rarity derivation (derive_rarity.py)
 
 Base rarity distribution per source (pre-promotion):
 
 - `MOB`: Common 70%, Uncommon 25%, Rare 5%
 - `ELITE`: Uncommon 45%, Rare 40%, Epic 15%
-- `BOSS`: Rare 40%, Epic 40%, Legendary 20%
+- `BOSS`: Rare 20%, Epic 45%, Legendary 25%, Relic 7%, Abyssal 3%
 - `CHEST_REGULAR`: Common 35%, Uncommon 40%, Rare 25%
 - `CHEST_GOLDEN`: Uncommon 35%, Rare 45%, Epic 20%
 - `CHEST_EPIC`: Rare 30%, Epic 45%, Legendary 25%
-- `CHEST_LEGENDARY`: Rare 35%, Epic 40%, Legendary 25%
-- `MERCHANT`: Common 20%, Uncommon 45%, Rare 25%, Epic 8%, Legendary 2%
+- `CHEST_LEGENDARY`: Rare 35%, Epic 40%, Legendary 24%, Relic 0%, Abyssal 0%
+- `MERCHANT`: Common 20%, Uncommon 44%, Rare 25%, Epic 8%, Legendary 2%, Relic 1%, Abyssal 0%
 
 Promotion gate chance: L0 5%, L10 6%, L25 9%, L50 15%, L100 15%
 
-Attribute value by level: L1 +1, L10 +3, L25 +6, L50 +10, L75 +14, L100 +19
+Attribute spec (count @ per-attribute value range, rolled independently):
 
-Price multipliers: Common x1, Uncommon x1.15, Rare x1.4, Epic x1.9, Legendary x3
+- `Common` ×0-1: L1 1-2, L15 2-3, L30 3-4, L45 4-5, L60 5-6, L80 6-7
+- `Uncommon` ×1: L1 1-3, L15 2-4, L30 3-5, L45 4-6, L60 5-7, L80 6-8
+- `Rare` ×2: L1 1-3, L15 2-4, L30 3-5, L45 4-6, L60 5-7, L80 6-8
+- `Epic` ×3: L1 1-4, L15 2-5, L30 3-6, L45 4-7, L60 5-8, L80 6-9
+- `Legendary` ×4-5: L1 1-4, L15 2-5, L30 3-6, L45 4-7, L60 5-8, L80 6-9
+- `Relic` ×5-6: L1 2-5, L15 3-6, L30 4-7, L45 5-8, L60 6-9, L80 7-10
+- `Abyssal` ×6-7: L1 2-6, L15 3-7, L30 4-8, L45 5-9, L60 6-10, L80 7-11
+
+Price multipliers: Common x1, Uncommon x1.15, Rare x1.4, Epic x1.9, Legendary x3, Relic x4.5, Abyssal x7
 
 
 ## Authored Gear Curves (derived)
@@ -683,6 +687,69 @@ hits-to-kill axis and confirmed in playtest):
 | Full-set DR | 10% | 12% | 18% | 28% | 41% | 51% | 55% |
 
 Mapped families (23): Arrow, Axe, Battleaxe, Bomb, Bow, Club, Crossbow, Dagger, Gun, Kunai, Longsword, Mace, Magic, Scythe, Shield, Sickle, Soulblight, Spear, Spellbook, Staff, Stick, Sword, Wand.
+
+## Income & gold-split derivation (derive_income.py)
+
+I(F) is the value-neutral net income per floor (direct gold + full sell-fodder at 0.5 resale). Per the smooth-budget decision a monotonic spine I_smooth(F) = 676.4·F^0.942 is fit on floors 1-30 and extended through F70, so the lumpy floor texture (the F5-15 density spike, etc.) does not distort the progression curve; respawn, gear price, and custom-item prices all drive off I_smooth, not raw kills.
+
+Smooth-fit mean relative error: floors 1-30 75.2% (small — tracks the well-tuned band), floors 31-100 90.7% (large by design — those floors sagged; extending the curve is the fix).
+
+Gold faucet: solve scaled the W5 floors by 1.584 (applied 1.500, clamped >= 1 so lowering gold never breaches the Luck budget). Direct-gold vs the 50% target post-scale: floors 1-30 137%, floors 31-100 61%. Respawn = 1.25·I_smooth as a 14-band schedule, restart 0.6x.
+
+| Floor | est kills | raw I(F) | smooth I(F) | respawn (shipped) |
+|---|---|---|---|---|
+| 1 | 12 | 381 | 676 | 846 |
+| 3 | 24 | 906 | 1905 | 2381 |
+| 5 | 133 | 6051 | 3082 | 3853 |
+| 7 | 200 | 9740 | 4232 | 5291 |
+| 10 | 223 | 14340 | 5923 | 7404 |
+| 15 | 230 | 18559 | 8680 | 10850 |
+| 20 | 87 | 8936 | 11382 | 14228 |
+| 25 | 48 | 5975 | 14046 | 17558 |
+| 30 | 48 | 7976 | 16679 | 20849 |
+| 40 | 48 | 11809 | 21873 | 27341 |
+| 45 | 24 | 8922 | 24440 | 30550 |
+| 50 | 48 | 18552 | 26991 | 33739 |
+| 55 | 24 | 14161 | 29528 | 36910 |
+| 60 | 48 | 53950 | 32051 | 40064 |
+
+## Pricing & variant derivation (derive_prices.py)
+
+Single combat-value price axis: weapon value = family anchor x weaponMult(level) (a DPS-equivalent), armor value = slot HP share + k_dr x DR share / (1 - totalDR) (an effective-HP equivalent). k_dr = 12.000; achieved weapon/armor median value ratio 1.46 at L50. Armor leans on the authored HP budget (a W3 asset), so the DR term has limited leverage and k_dr can saturate — the win is a BOUNDED band replacing the old weapon-unbounded / armor-capped 6x..18x gap, not perfect parity.
+
+Gold mapping price = round(combatValue^1.6 x 134.833), solved so the median on-level price tracks 2.5 x I_smooth(F) (median gear ~ 2-3x a floor of income — the gear-swap-cadence pillar). The HP cap was removed, so MaxScaledHp is no longer written; the Elite/Boss multiplier tables are retained (their re-derivation belongs to the Encounter Pacing workstream).
+
+| Floor | new median price | current price | I_smooth(F) | new/I_smooth |
+|---|---|---|---|---|
+| 1 | 7186 | 585 | 676 | 10.62 |
+| 3 | 7501 | 601 | 1905 | 3.94 |
+| 5 | 7866 | 652 | 3082 | 2.55 |
+| 7 | 8293 | 738 | 4232 | 1.96 |
+| 10 | 9067 | 860 | 5923 | 1.53 |
+| 15 | 10823 | 921 | 8680 | 1.25 |
+| 20 | 13390 | 1062 | 11382 | 1.18 |
+| 25 | 17107 | 1253 | 14046 | 1.22 |
+| 30 | 22400 | 1746 | 16679 | 1.34 |
+| 40 | 39428 | 2646 | 21873 | 1.80 |
+| 45 | 51600 | 4813 | 24440 | 2.11 |
+| 50 | 65875 | 4838 | 26991 | 2.44 |
+| 55 | 81418 | 8088 | 29528 | 2.76 |
+| 60 | 97101 | 17872 | 32051 | 3.03 |
+
+Custom big-ticket prices solved against cumulative income (30-45k tier anchored to cumI(25); ordering preserved):
+
+| Item | Buy | reachable ~floor |
+|---|---|---|
+| Immunity_Trap_Ring | 164500 | 24 |
+| Speed_Boots_I | 141000 | 22 |
+| Speed_Boots_II | 211500 | 27 |
+| Speed_Boots_III | 328500 | 34 |
+| Healing_Necklace_I | 211500 | 27 |
+| Healing_Necklace_II | 587000 | 46 |
+| Vampire_Juice | 234500 | 29 |
+| Stat_Point_Token | 35000 | 11 |
+| Palporter | 11500 | 6 |
+| Village_Warp | 23500 | 9 |
 
 ## Luck power-budget derivation (derive_luck_budget.py)
 
@@ -699,10 +766,10 @@ Total loot-value EV(50)/EV(0) per archetype (budget 6x, gear value grounded in o
 
 | archetype | L10 | L30 | L50 | worst | verdict |
 |---|---|---|---|---|---|
-| Standard | 5.79 | 5.14 | 5.26 | 5.79 | PASS |
-| Caster | 5.79 | 5.14 | 5.26 | 5.79 | PASS |
-| Tough | 5.31 | 4.80 | 4.89 | 5.31 | PASS |
-| Heavy | 4.85 | 4.29 | 4.40 | 4.85 | PASS |
-| Boss | 4.89 | 4.20 | 4.32 | 4.89 | PASS |
+| Standard | 5.18 | 4.48 | 4.61 | 5.18 | PASS |
+| Caster | 5.18 | 4.48 | 4.61 | 5.18 | PASS |
+| Tough | 4.78 | 4.22 | 4.32 | 4.78 | PASS |
+| Heavy | 4.32 | 3.74 | 3.84 | 4.32 | PASS |
+| Boss | 4.09 | 3.43 | 3.54 | 4.09 | PASS |
 
 The drop-chance curve alone is ~8x at the 0.10 base, so the budget holds only because the Luck-independent gold faucet dilutes the total; promotion is kept gentle so the rarity-mix uplift adds little. Gold quantities here are starting floors — the income pass refines them.

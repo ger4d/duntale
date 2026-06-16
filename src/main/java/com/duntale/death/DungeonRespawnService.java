@@ -4,6 +4,7 @@ import com.duntale.dungeon.DungeonInstance;
 import com.duntale.dungeon.DungeonInstanceService;
 import com.duntale.dungeon.DungeonInstanceState;
 import com.duntale.economy.GoldService;
+import com.duntale.progression.PricingRegistry;
 import com.hypixel.hytale.logger.HytaleLogger;
 import com.hypixel.hytale.server.core.Message;
 
@@ -23,17 +24,21 @@ public class DungeonRespawnService {
 
     private static final HytaleLogger LOGGER = HytaleLogger.forEnclosingClass();
 
-    /** Cost multiplier for respawning on the current floor. */
+    /** Per-floor current-floor respawn cost used when no reconciled tuning asset is loaded. */
     public static final long CURRENT_FLOOR_COST_MULTIPLIER = 500L;
 
-    /** Cost multiplier for restarting on the previous floor. */
+    /** Per-floor restart-lower cost used when no reconciled tuning asset is loaded. */
     public static final long LOWER_FLOOR_COST_MULTIPLIER = 300L;
 
     private final DungeonInstanceService dungeonInstanceService;
     private final GoldService goldService;
 
+    /** Optional source of the income-derived respawn curve; {@code null}/unloaded uses the multipliers above. */
+    @Nullable
+    private final PricingRegistry pricingRegistry;
+
     /**
-     * Creates a dungeon respawn service.
+     * Creates a dungeon respawn service using the historic flat per-floor cost multipliers.
      *
      * @param dungeonInstanceService the dungeon lifecycle service
      * @param goldService the gold service used for balance checks and charges
@@ -42,8 +47,24 @@ public class DungeonRespawnService {
             @Nonnull DungeonInstanceService dungeonInstanceService,
             @Nonnull GoldService goldService
     ) {
+        this(dungeonInstanceService, goldService, null);
+    }
+
+    /**
+     * Creates a dungeon respawn service whose costs can be driven by the reconciled tuning asset.
+     *
+     * @param dungeonInstanceService the dungeon lifecycle service
+     * @param goldService the gold service used for balance checks and charges
+     * @param pricingRegistry the pricing registry supplying the income-derived respawn curve, or {@code null}
+     */
+    public DungeonRespawnService(
+            @Nonnull DungeonInstanceService dungeonInstanceService,
+            @Nonnull GoldService goldService,
+            @Nullable PricingRegistry pricingRegistry
+    ) {
         this.dungeonInstanceService = Objects.requireNonNull(dungeonInstanceService, "dungeonInstanceService");
         this.goldService = Objects.requireNonNull(goldService, "goldService");
+        this.pricingRegistry = pricingRegistry;
     }
 
     /**
@@ -97,7 +118,11 @@ public class DungeonRespawnService {
      */
     public long currentFloorCost(int floorLevel) {
         validateFloorLevel(floorLevel);
-        return Math.multiplyExact((long) floorLevel, CURRENT_FLOOR_COST_MULTIPLIER);
+        Long scheduled = resolveScheduledCost(floorLevel);
+        // The income-derived schedule is an absolute per-floor-band cost; the flat per-floor
+        // multiplier is the safe fallback when no pricing asset (or schedule) is loaded.
+        return scheduled != null
+                ? scheduled : Math.multiplyExact((long) floorLevel, CURRENT_FLOOR_COST_MULTIPLIER);
     }
 
     /**
@@ -108,7 +133,22 @@ public class DungeonRespawnService {
      */
     public long lowerFloorCost(int floorLevel) {
         validateFloorLevel(floorLevel);
+        Long scheduled = resolveScheduledCost(floorLevel);
+        if (scheduled != null) {
+            // Restart-lower is a fraction of the income-derived current-floor cost.
+            return Math.round(scheduled * pricingRegistry.respawnRestartFraction());
+        }
         return Math.multiplyExact((long) floorLevel, LOWER_FLOOR_COST_MULTIPLIER);
+    }
+
+    /**
+     * Resolves the income-derived current-floor respawn cost from the pricing schedule, or
+     * {@code null} when no pricing asset (or schedule) is loaded and the flat fallback applies.
+     */
+    @Nullable
+    private Long resolveScheduledCost(int floorLevel) {
+        return pricingRegistry != null && pricingRegistry.isLoaded()
+                ? pricingRegistry.resolveRespawnCost(floorLevel) : null;
     }
 
     /**

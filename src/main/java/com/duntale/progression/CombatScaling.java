@@ -1,5 +1,8 @@
 package com.duntale.progression;
 
+import javax.annotation.Nonnull;
+import javax.annotation.Nullable;
+import java.util.List;
 import java.util.concurrent.ThreadLocalRandom;
 
 /**
@@ -55,6 +58,27 @@ public final class CombatScaling {
 
     /** Mutually exclusive NPC variant. Replaces the old {@code boolean elite} + {@code boolean boss} pair. */
     public enum NpcVariant { NORMAL, ELITE, BOSS }
+
+    // ── Configurable variant tables ──────────────────────────────────
+
+    /**
+     * Optional registry supplying the Elite/Boss multiplier tables from the reconciled tuning asset.
+     * Static because this class is a stateless global utility called from static contexts; wired once
+     * from the plugin's composition root and left {@code null} (the hard-coded fallback tables apply)
+     * everywhere else, including tests. Volatile so the wire-up publishes to all threads.
+     */
+    @Nullable
+    private static volatile PricingRegistry pricingRegistry;
+
+    /**
+     * Wires the registry supplying the Elite/Boss variant multiplier tables. When unset (or the asset
+     * is absent), the hard-coded tables below apply, so behavior is unchanged.
+     *
+     * @param registry the pricing registry, or {@code null} to clear it
+     */
+    public static void setPricingRegistry(@Nullable PricingRegistry registry) {
+        pricingRegistry = registry;
+    }
 
     // ── Core sigmoid ─────────────────────────────────────────────────
 
@@ -141,6 +165,10 @@ public final class CombatScaling {
 
     // Elite multipliers
     private static float eliteHpMultiplier(int level) {
+        List<PricingRegistry.VariantStep> steps = variantSteps(true);
+        if (steps != null) {
+            return resolveVariantMultiplier(level, steps, true);
+        }
         if (level >= threshold(0.75f)) return 6.5f;
         if (level >= threshold(0.50f)) return 5.5f;
         if (level >= threshold(1.0f / 3.0f)) return 4.5f;
@@ -149,6 +177,10 @@ public final class CombatScaling {
     }
 
     private static float eliteDamageMultiplier(int level) {
+        List<PricingRegistry.VariantStep> steps = variantSteps(true);
+        if (steps != null) {
+            return resolveVariantMultiplier(level, steps, false);
+        }
         if (level >= threshold(0.75f)) return 2.25f;
         if (level >= threshold(0.50f)) return 2.f;
         if (level >= threshold(1.0f / 3.0f)) return 1.75f;
@@ -158,6 +190,10 @@ public final class CombatScaling {
 
     // Boss multipliers
     private static float bossHpMultiplier(int level) {
+        List<PricingRegistry.VariantStep> steps = variantSteps(false);
+        if (steps != null) {
+            return resolveVariantMultiplier(level, steps, true);
+        }
         // Old thresholds for reference:
         // if (level >= threshold(0.75f)) return 4.75f;
         // if (level >= threshold(0.50f)) return 4.0f;
@@ -171,11 +207,45 @@ public final class CombatScaling {
     }
 
     private static float bossDamageMultiplier(int level) {
+        List<PricingRegistry.VariantStep> steps = variantSteps(false);
+        if (steps != null) {
+            return resolveVariantMultiplier(level, steps, false);
+        }
         if (level >= threshold(0.75f)) return 5.2f;
         if (level >= threshold(0.50f)) return 4.5f;
         if (level >= threshold(1.0f / 3.0f)) return 3.2f;
         if (level >= threshold(1.0f / 6.0f)) return 2.5f;
         return 2.0f;
+    }
+
+    /**
+     * Returns the configured variant steps for the requested variant, or {@code null} to use the
+     * hard-coded fallback tables (no registry wired, or it carries no steps for this variant).
+     */
+    @Nullable
+    private static List<PricingRegistry.VariantStep> variantSteps(boolean elite) {
+        PricingRegistry registry = pricingRegistry;
+        if (registry == null) {
+            return null;
+        }
+        List<PricingRegistry.VariantStep> steps = elite
+                ? registry.eliteVariantSteps() : registry.bossVariantSteps();
+        return steps.isEmpty() ? null : steps;
+    }
+
+    /**
+     * Resolves a multiplier from a highest-ratio-first step table: the first band whose start level
+     * (its {@code minLevelRatio} of the level ceiling) the level has reached. Falls back to
+     * {@code 1.0} if no band matches (only possible when no base band is authored).
+     */
+    private static float resolveVariantMultiplier(
+            int level, @Nonnull List<PricingRegistry.VariantStep> steps, boolean hp) {
+        for (PricingRegistry.VariantStep step : steps) {
+            if (level >= threshold(step.minLevelRatio())) {
+                return hp ? step.hpMult() : step.damageMult();
+            }
+        }
+        return 1.0f;
     }
 
     private static int threshold(float ratio) {

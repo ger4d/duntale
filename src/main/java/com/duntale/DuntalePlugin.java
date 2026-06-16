@@ -9,6 +9,7 @@ import com.duntale.camera.ClickToMoveTickSystem;
 import com.duntale.camera.PlayerDeathCleanupSystem;
 import com.duntale.config.asset.CustomizeCharacterConfigAsset;
 import com.duntale.config.asset.GearCurveConfigAsset;
+import com.duntale.config.asset.PricingConfigAsset;
 import com.duntale.config.asset.RarityConfigAsset;
 import com.duntale.config.asset.NpcArchetypeConfigAsset;
 import com.duntale.config.asset.RpgConfigAsset;
@@ -77,7 +78,9 @@ import com.duntale.progression.CombatScalingComponent;
 import com.duntale.progression.CombatScalingSystem;
 import com.duntale.progression.DeployableTurretScalingSystem;
 import com.duntale.progression.GearAttributeService;
+import com.duntale.progression.CombatScaling;
 import com.duntale.progression.GearCurveRegistry;
+import com.duntale.progression.PricingRegistry;
 import com.duntale.progression.GearScalingTooltipProvider;
 import com.duntale.progression.LeveledNpcSpawner;
 import com.duntale.progression.NpcArchetypeRegistry;
@@ -188,6 +191,7 @@ public class DuntalePlugin extends JavaPlugin {
     private ComponentType<EntityStore, CombatScalingComponent> combatScalingComponentType;
     private NpcArchetypeRegistry npcArchetypeRegistry;
     private GearCurveRegistry gearCurveRegistry;
+    private PricingRegistry pricingRegistry;
     private LeveledNpcSpawner leveledNpcSpawner;
     private CompanionSpawner companionSpawner;
 
@@ -515,7 +519,13 @@ public class DuntalePlugin extends JavaPlugin {
         AssetRegistry.register(RpgConfigAsset.assetStoreBuilder().build());
         AssetRegistry.register(NpcArchetypeConfigAsset.assetStoreBuilder().build());
         AssetRegistry.register(GearCurveConfigAsset.assetStoreBuilder().build());
+        AssetRegistry.register(PricingConfigAsset.assetStoreBuilder().build());
         AssetRegistry.register(RarityConfigAsset.assetStoreBuilder().build());
+
+        // Reconciled economy tuning (gold mapping, respawn curve, variant tables, custom prices,
+        // HP cap). Constructed early because the respawn service below consumes it; snapshot is
+        // populated in start() once asset stores are loaded, and empty until then (safe degrade).
+        this.pricingRegistry = new PricingRegistry();
 
         // ── RPG System ───────────────────────────────────────────────
         this.databaseProvider = new DatabaseProvider();
@@ -573,7 +583,7 @@ public class DuntalePlugin extends JavaPlugin {
         );
         this.dungeonEndPortalService = new DungeonEndPortalService();
         this.villageWarpPortalService = new VillageWarpPortalService();
-        this.dungeonRespawnService = new DungeonRespawnService(dungeonInstanceService, goldService);
+        this.dungeonRespawnService = new DungeonRespawnService(dungeonInstanceService, goldService, pricingRegistry);
         this.dungeonInstancePortalTriggerService =
             new DungeonInstancePortalTriggerService(DUNGEON_INSTANCE_PORTAL_VOLUME_ID);
         this.clickToMoveManager.setRpgService(rpgService);
@@ -593,6 +603,10 @@ public class DuntalePlugin extends JavaPlugin {
         this.merchantPriceRegistry = new MerchantPriceRegistry();
         // MerchantPriceRegistry.initialize() deferred to start() — depends on AssetCatalog
         this.merchantPriceRegistry.setRarityRegistry(rarityRegistry);
+        // Combat-value gold mapping (scale/exponent/min price/armor EHP weight); empty -> hard-coded
+        // constants (safe degrade). The gear-curve registry that drives the value axis is wired below
+        // once it is constructed.
+        this.merchantPriceRegistry.setPricingRegistry(pricingRegistry);
         // Register fixed resale prices for the authored custom items (kept across initialize()).
         CustomItems.BUY_PRICES.forEach(this.merchantPriceRegistry::registerCustomItem);
         // Register resale prices for plain merchant consumables (potions, food, arrows, etc.)
@@ -626,6 +640,11 @@ public class DuntalePlugin extends JavaPlugin {
         // hand-authored asset stats). Snapshot populated in start() once asset stores are loaded;
         // hot-reloaded via LoadedAssetsEvent. Empty until then -> legacy asset-stat scaling.
         this.gearCurveRegistry = new GearCurveRegistry();
+        // Now that the gear curves exist, route merchant pricing through the combat-value axis and
+        // hand the variant multiplier tables to the static combat-scaling utility (both degrade to
+        // their legacy/hard-coded paths while the assets are unloaded).
+        this.merchantPriceRegistry.setGearCurveRegistry(gearCurveRegistry);
+        CombatScaling.setPricingRegistry(pricingRegistry);
         // Runtime-tunable RPG config (hot-reloadable asset, in-memory snapshot).
         // On hot reload, re-assert Vitality/Stamina (entity-stat ceilings) for online players;
         // all other stat values are computed live at point of use and need no reassertion.
@@ -792,15 +811,23 @@ public class DuntalePlugin extends JavaPlugin {
     protected void start() {
         // Asset stores are fully loaded after all plugins setup() — safe to scan now
         this.assetCatalog.initialize();
-        this.merchantPriceRegistry.initialize(assetCatalog);
         // Populate the RPG config snapshot from the now-loaded asset (falls back to defaults).
         this.rpgConfig.refresh();
         // Populate the NPC archetype mapping from the now-loaded asset (falls back to legacy scaling).
         this.npcArchetypeRegistry.refresh();
         // Populate the authored gear curves from the now-loaded asset (falls back to legacy scaling).
         this.gearCurveRegistry.refresh();
+        // Populate the reconciled economy tuning from the now-loaded asset (empty -> hard-coded fallbacks).
+        this.pricingRegistry.refresh();
         // Populate the rarity tuning from the now-loaded asset (empty -> no rarity stamping).
         this.rarityRegistry.refresh();
+        // Build the price cache after the gear curves and tuning load so it uses the combat-value axis.
+        this.merchantPriceRegistry.initialize(assetCatalog);
+        // Prefer the loaded asset's custom-item prices over the setup() BUY_PRICES fallbacks.
+        applyCustomItemPrices();
+        // The on-demand gold mapping reloads itself, but the cached base prices and the fixed custom
+        // prices are pushed once — re-apply them whenever Pricing.json hot-reloads.
+        this.pricingRegistry.setReloadCallback(this::reapplyPricing);
 
         // Initialize dungeon orchestrator here — asset stores are available after all plugins setup()
         this.dungeonOrchestrator = new GenerationOrchestrator(new BlockResolver());
@@ -818,6 +845,27 @@ public class DuntalePlugin extends JavaPlugin {
         LOGGER.atInfo().log("Duntale Plugin Started!");
     }
 
+    /**
+     * Overwrites the merchant's custom-item resale prices with the loaded pricing asset's values.
+     * When the asset is absent the setup() {@link CustomItems#BUY_PRICES} registrations stand.
+     */
+    private void applyCustomItemPrices() {
+        if (pricingRegistry != null && pricingRegistry.isLoaded()) {
+            pricingRegistry.customPrices().forEach(this.merchantPriceRegistry::registerCustomItem);
+        }
+    }
+
+    /**
+     * Rebuilds the merchant base price cache and re-applies custom-item prices after a Pricing.json
+     * hot-reload, so the cached (pushed-once) numbers track the asset like the on-demand mapping does.
+     */
+    private void reapplyPricing() {
+        if (assetCatalog != null && merchantPriceRegistry != null) {
+            merchantPriceRegistry.initialize(assetCatalog);
+            applyCustomItemPrices();
+        }
+    }
+
     @Override
     protected void shutdown() {
         if (clickToMoveManager != null) {
@@ -832,6 +880,11 @@ public class DuntalePlugin extends JavaPlugin {
         if (gearCurveRegistry != null) {
             gearCurveRegistry.shutdown();
         }
+        if (pricingRegistry != null) {
+            pricingRegistry.shutdown();
+        }
+        // Clear the static variant-table hook so a restarted plugin instance does not read a stale one.
+        CombatScaling.setPricingRegistry(null);
         if (rarityRegistry != null) {
             rarityRegistry.shutdown();
         }

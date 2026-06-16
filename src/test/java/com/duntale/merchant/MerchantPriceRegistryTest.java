@@ -3,6 +3,8 @@ package com.duntale.merchant;
 import com.duntale.ThirdPartyModAvailabilityService;
 import com.duntale.items.CustomItems;
 import com.duntale.progression.AssetCatalog;
+import com.duntale.progression.CombatScaling;
+import com.duntale.progression.GearCurveRegistry;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
@@ -11,6 +13,7 @@ import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -263,12 +266,112 @@ class MerchantPriceRegistryTest {
     }
 
     @Nested
+    @DisplayName("combat-value pricing")
+    class CombatValuePricing {
+
+        @Test
+        @DisplayName("Should price two swords identically when authored curves normalize them to one family anchor")
+        void shouldNormalizeWildAssetDamageToTheFamilyAnchor() {
+            MerchantPriceRegistry registry = combatValueRegistry(
+                    List.of(
+                            new AssetCatalog.WeaponBaseRow("Weapon Sword Plain", "Sword", "Common", 30, 10f),
+                            new AssetCatalog.WeaponBaseRow("Weapon Sword Outlier", "Sword", "Common", 30, 200f)
+                    ),
+                    List.of()
+            );
+
+            long plainPrice = registry.getBuyPrice("Weapon_Sword_Plain", 30);
+            long outlierPrice = registry.getBuyPrice("Weapon_Sword_Outlier", 30);
+
+            // Both swords share the family anchor (asset baseDamage no longer drives price), so the
+            // authored 200-damage outlier prices exactly like the plain sword at the same level.
+            assertEquals(plainPrice, outlierPrice);
+        }
+
+        @Test
+        @DisplayName("Should price the family anchor scaled by the level curve through the gold mapping")
+        void shouldPriceWeaponFromAnchorAndLevelCurve() {
+            MerchantPriceRegistry registry = combatValueRegistry(
+                    List.of(new AssetCatalog.WeaponBaseRow("Weapon Sword Plain", "Sword", "Common", 30, 10f)),
+                    List.of()
+            );
+
+            double combatValue = 12.0 * CombatScaling.weaponMult(30);
+            long expected = Math.max(25L,
+                    Math.round(Math.pow(Math.max(1.0, combatValue), 1.4) * 10.0));
+
+            assertEquals(expected, registry.getBuyPrice("Weapon_Sword_Plain", 30));
+        }
+
+        @Test
+        @DisplayName("Should bound weapon vs all armor slot prices to one band under the real curves")
+        void shouldRemoveWeaponArmorAsymmetry() {
+            // Real GearCurves shares for every slot + a weapon, all on-level at L50.
+            MerchantPriceRegistry registry = combatValueRegistry(
+                    List.of(new AssetCatalog.WeaponBaseRow("Weapon Sword Plain", "Sword", "Common", 50, 30f)),
+                    List.of(
+                            new AssetCatalog.ArmorBaseRow("Armor Steel Chest", "Chest", "Common", 50, 0.09f, 0.09f, 17, null),
+                            new AssetCatalog.ArmorBaseRow("Armor Steel Legs", "Legs", "Common", 50, 0.06f, 0.06f, 12, null),
+                            new AssetCatalog.ArmorBaseRow("Armor Steel Head", "Head", "Common", 50, 0.05f, 0.05f, 10, null),
+                            new AssetCatalog.ArmorBaseRow("Armor Steel Hands", "Hands", "Common", 50, 0.04f, 0.04f, 8, null))
+            );
+
+            List<Long> prices = List.of(
+                    registry.getBuyPrice("Weapon_Sword_Plain", 50),
+                    registry.getBuyPrice("Armor_Steel_Chest", 50),
+                    registry.getBuyPrice("Armor_Steel_Legs", 50),
+                    registry.getBuyPrice("Armor_Steel_Head", 50),
+                    registry.getBuyPrice("Armor_Steel_Hands", 50));
+
+            prices.forEach(p -> assertTrue(p > 0L));
+            // The single combat-value axis bounds weapon and every armor slot to one band, replacing
+            // the old weapon-unbounded / armor-capped 6x..18x asymmetry. Perfect parity is not claimed
+            // (armor value leans on the HP budget); the load-bearing property is boundedness.
+            double ratio = (double) prices.stream().max(Long::compareTo).orElseThrow()
+                    / prices.stream().min(Long::compareTo).orElseThrow();
+            assertTrue(ratio < 5.0, "expected weapon/armor prices within ~5x, was " + ratio);
+        }
+
+        @Test
+        @DisplayName("Should keep armor combat value rising with level via the effective-HP curve")
+        void shouldRaiseArmorValueWithLevel() {
+            MerchantPriceRegistry registry = combatValueRegistry(
+                    List.of(),
+                    List.of(new AssetCatalog.ArmorBaseRow("Armor Steel Chest", "Chest", "Common", 50, 0.09f, 0.09f, 17, null))
+            );
+
+            long lowPrice = registry.getBuyPrice("Armor_Steel_Chest", 15);
+            long highPrice = registry.getBuyPrice("Armor_Steel_Chest", 60);
+
+            assertTrue(highPrice > lowPrice);
+        }
+
+        @Test
+        @DisplayName("Should fall back to the legacy asset-stat axis when curves are unloaded")
+        void shouldFallBackWhenCurvesUnloaded() {
+            MerchantPriceRegistry registry = new MerchantPriceRegistry();
+            registry.setGearCurveRegistry(GearCurveRegistry.forTest(GearCurveRegistry.Snapshot.EMPTY));
+            registry.initialize(new TestAssetCatalog(
+                    List.of(
+                            new AssetCatalog.WeaponBaseRow("Weapon Sword Plain", "Sword", "Common", 30, 10f),
+                            new AssetCatalog.WeaponBaseRow("Weapon Sword Outlier", "Sword", "Common", 30, 200f)
+                    ),
+                    List.of()
+            ));
+
+            // Curves unloaded: asset baseDamage still drives price, so the outlier is priced higher.
+            assertTrue(registry.getBuyPrice("Weapon_Sword_Outlier", 30)
+                    > registry.getBuyPrice("Weapon_Sword_Plain", 30));
+        }
+    }
+
+    @Nested
     @DisplayName("custom item resale")
     class CustomItemResale {
 
         @Test
-        @DisplayName("Should sell a registered custom item at 80% of its fixed buy price, level-independent")
-        void shouldSellRegisteredCustomItemAtEightyPercentOfBuyPrice() {
+        @DisplayName("Should sell a registered custom item at 50% of its fixed buy price, level-independent")
+        void shouldSellRegisteredCustomItemAtFiftyPercentOfBuyPrice() {
             MerchantPriceRegistry registry = new MerchantPriceRegistry();
             registry.registerCustomItem(CustomItems.VAMPIRE_JUICE, 50_000L);
 
@@ -437,6 +540,36 @@ class MerchantPriceRegistryTest {
         MerchantPriceRegistry registry = new MerchantPriceRegistry();
         registry.initialize(new TestAssetCatalog(weapons, armor));
         return registry;
+    }
+
+    private static MerchantPriceRegistry combatValueRegistry(
+            List<AssetCatalog.WeaponBaseRow> weapons,
+            List<AssetCatalog.ArmorBaseRow> armor
+    ) {
+        MerchantPriceRegistry registry = new MerchantPriceRegistry();
+        registry.setGearCurveRegistry(loadedGearCurves());
+        registry.initialize(new TestAssetCatalog(weapons, armor));
+        return registry;
+    }
+
+    /**
+     * A loaded gear-curve registry mirroring the committed {@code GearCurves.json} values: a uniform
+     * melee anchor of 12 (also the default for unmapped families), the four real armor slot DR/HP
+     * shares, and the on-level DR/HP budgets. Built from a real snapshot — the codebase uses
+     * hand-rolled test doubles rather than a mocking framework.
+     */
+    @Nonnull
+    private static GearCurveRegistry loadedGearCurves() {
+        Map<String, Float> slotShares = Map.of(
+                "Chest", 0.40f, "Legs", 0.25f, "Head", 0.20f, "Hands", 0.15f);
+        return GearCurveRegistry.forTest(new GearCurveRegistry.Snapshot(
+                Map.of("Sword", 12.0f),  // weapon anchors (others resolve to the default below)
+                12.0f,                    // default weapon anchor
+                Map.of(),                 // rarity nudges (unused by base pricing)
+                slotShares,               // armor slot DR shares (real GearCurves.json values)
+                0.10f, 0.55f,             // DR budget min/max
+                slotShares,               // armor slot HP shares (mirror DR shares)
+                30.0f, 250.0f));          // HP budget min/max
     }
 
     private static final class TestAssetCatalog extends AssetCatalog {

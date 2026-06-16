@@ -64,7 +64,7 @@ public final class GearCurveRegistry {
      * @return a registry serving {@code snapshot}
      */
     @Nonnull
-    static GearCurveRegistry forTest(@Nonnull Snapshot snapshot) {
+    public static GearCurveRegistry forTest(@Nonnull Snapshot snapshot) {
         return new GearCurveRegistry(snapshot);
     }
 

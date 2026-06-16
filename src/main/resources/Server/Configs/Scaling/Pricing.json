@@ -1,0 +1,161 @@
+{
+  "GoldMappingScale": 134.833,
+  "GoldMappingExponent": 1.6,
+  "ArmorEhpDrWeight": 12.0,
+  "MinBuyPrice": 25,
+  "RespawnRestartFraction": 0.6,
+  "EliteVariantSteps": [
+    {
+      "MinLevelRatio": 0.75,
+      "HpMult": 6.5,
+      "DamageMult": 2.25
+    },
+    {
+      "MinLevelRatio": 0.5,
+      "HpMult": 5.5,
+      "DamageMult": 2.0
+    },
+    {
+      "MinLevelRatio": 0.3333,
+      "HpMult": 4.5,
+      "DamageMult": 1.75
+    },
+    {
+      "MinLevelRatio": 0.1667,
+      "HpMult": 3.5,
+      "DamageMult": 1.5
+    },
+    {
+      "MinLevelRatio": 0.0,
+      "HpMult": 2.5,
+      "DamageMult": 1.25
+    }
+  ],
+  "BossVariantSteps": [
+    {
+      "MinLevelRatio": 0.75,
+      "HpMult": 25.0,
+      "DamageMult": 5.2
+    },
+    {
+      "MinLevelRatio": 0.5,
+      "HpMult": 22.5,
+      "DamageMult": 4.5
+    },
+    {
+      "MinLevelRatio": 0.3333,
+      "HpMult": 17.5,
+      "DamageMult": 3.2
+    },
+    {
+      "MinLevelRatio": 0.1667,
+      "HpMult": 15.0,
+      "DamageMult": 2.5
+    },
+    {
+      "MinLevelRatio": 0.0,
+      "HpMult": 10.0,
+      "DamageMult": 2.0
+    }
+  ],
+  "CustomItemPrices": [
+    {
+      "ItemId": "Immunity_Trap_Ring",
+      "Buy": 164500
+    },
+    {
+      "ItemId": "Speed_Boots_I",
+      "Buy": 141000
+    },
+    {
+      "ItemId": "Speed_Boots_II",
+      "Buy": 211500
+    },
+    {
+      "ItemId": "Speed_Boots_III",
+      "Buy": 328500
+    },
+    {
+      "ItemId": "Healing_Necklace_I",
+      "Buy": 211500
+    },
+    {
+      "ItemId": "Healing_Necklace_II",
+      "Buy": 587000
+    },
+    {
+      "ItemId": "Vampire_Juice",
+      "Buy": 234500
+    },
+    {
+      "ItemId": "Stat_Point_Token",
+      "Buy": 35000
+    },
+    {
+      "ItemId": "Palporter",
+      "Buy": 11500
+    },
+    {
+      "ItemId": "Village_Warp",
+      "Buy": 23500
+    }
+  ],
+  "RespawnSchedule": [
+    {
+      "MinFloor": 1,
+      "Cost": 846
+    },
+    {
+      "MinFloor": 3,
+      "Cost": 2381
+    },
+    {
+      "MinFloor": 5,
+      "Cost": 3853
+    },
+    {
+      "MinFloor": 7,
+      "Cost": 5291
+    },
+    {
+      "MinFloor": 10,
+      "Cost": 7404
+    },
+    {
+      "MinFloor": 15,
+      "Cost": 10850
+    },
+    {
+      "MinFloor": 20,
+      "Cost": 14228
+    },
+    {
+      "MinFloor": 25,
+      "Cost": 17558
+    },
+    {
+      "MinFloor": 30,
+      "Cost": 20849
+    },
+    {
+      "MinFloor": 40,
+      "Cost": 27341
+    },
+    {
+      "MinFloor": 45,
+      "Cost": 30550
+    },
+    {
+      "MinFloor": 50,
+      "Cost": 33739
+    },
+    {
+      "MinFloor": 55,
+      "Cost": 36910
+    },
+    {
+      "MinFloor": 60,
+      "Cost": 40064
+    }
+  ]
+}

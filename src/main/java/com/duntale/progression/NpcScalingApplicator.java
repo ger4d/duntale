@@ -36,7 +36,6 @@ public class NpcScalingApplicator {
     private static final String LEVEL_SCALE_MODIFIER_KEY = "Duntale_LevelScale";
     private static final int FALLBACK_BASE_HP = 20;
     private static final int MIN_SCALED_HP = 1;
-    private static final int MAX_SCALED_HP = 10_000;
     private static final float MIN_LEGACY_DAMAGE_MULTIPLIER = 1.0f;
 
     private final ComponentType<EntityStore, CombatScalingComponent> combatScalingType;
@@ -47,6 +46,10 @@ public class NpcScalingApplicator {
 
     /**
      * Creates a new applicator.
+     *
+     * <p>Scaled HP is no longer clamped to an upper ceiling: it is exactly what the scaling formula
+     * yields (the curve saturates, so the top boss resolves to a designed maximum on its own), with
+     * only a lower floor of {@link #MIN_SCALED_HP}.
      *
      * @param combatScalingType the registered combat scaling component type
      * @param archetypeRegistry  the archetype-anchor registry resolving role normalization
@@ -249,7 +252,7 @@ public class NpcScalingApplicator {
     private static int computeTargetHp(int baseHp, int level, @Nonnull CombatScaling.NpcVariant variant) {
         int targetHp = CombatScaling.npcScaledHp(baseHp, level, variant);
         targetHp = Math.round(CombatScaling.applyVariance(targetHp));
-        targetHp = Math.max(targetHp, MIN_SCALED_HP);
-        return Math.min(targetHp, MAX_SCALED_HP);
+        // No upper clamp: the scaling curve saturates, so HP tops out at a designed maximum on its own.
+        return Math.max(targetHp, MIN_SCALED_HP);
     }
 }

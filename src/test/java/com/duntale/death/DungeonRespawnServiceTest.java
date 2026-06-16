@@ -12,6 +12,9 @@ import com.duntale.dungeon.FloorConfigService;
 import com.duntale.dungeon.PartyService;
 import com.duntale.economy.GoldRepository;
 import com.duntale.economy.GoldService;
+import com.duntale.progression.PricingRegistry;
+import com.duntale.progression.PricingRegistry.RespawnBand;
+import com.duntale.progression.PricingRegistry.Snapshot;
 import com.hypixel.hytale.server.core.Message;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -22,6 +25,7 @@ import org.junit.jupiter.api.io.TempDir;
 import java.nio.file.Path;
 import java.sql.SQLException;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -79,6 +83,21 @@ class DungeonRespawnServiceTest {
     void shouldCalculateCosts() {
         assertEquals(1500L, service.currentFloorCost(3));
         assertEquals(900L, service.lowerFloorCost(3));
+    }
+
+    @Test
+    @DisplayName("Should derive paid option costs from the pricing respawn schedule when loaded")
+    void shouldDeriveCostsFromPricingAsset() {
+        // Per-floor-band schedule: floor 4 resolves the [4, ...) band cost of 3000; restart is 0.5x.
+        PricingRegistry pricing = PricingRegistry.forTest(new Snapshot(
+                10.0, 1.4, 1.0, 25L, 0.5,
+                List.of(new RespawnBand(1, 1_000L), new RespawnBand(4, 3_000L)),
+                List.of(), List.of(), Map.of(), true));
+        DungeonRespawnService derived =
+                new DungeonRespawnService(dungeonInstanceService, goldService, pricing);
+
+        assertEquals(3000L, derived.currentFloorCost(4));
+        assertEquals(1500L, derived.lowerFloorCost(4));
     }
 
     @Test

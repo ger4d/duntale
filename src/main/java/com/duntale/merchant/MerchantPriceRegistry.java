@@ -4,6 +4,8 @@ import com.duntale.loot.Rarity;
 import com.duntale.loot.RarityRegistry;
 import com.duntale.progression.AssetCatalog;
 import com.duntale.progression.CombatScaling;
+import com.duntale.progression.GearCurveRegistry;
+import com.duntale.progression.PricingRegistry;
 import com.hypixel.hytale.logger.HytaleLogger;
 
 import javax.annotation.Nonnull;
@@ -18,16 +20,21 @@ import java.util.logging.Level;
 /**
  * Computes and caches buy/sell prices for all weapons and armor.
  *
- * <p>Prices are derived from {@link AssetCatalog}'s real combat stats at the
- * requested dungeon level instead of the old item-level-squared heuristic.
- * The model intentionally follows the same values players see in tooltip power
- * and armor DR calculations:
+ * <p>Prices are derived from a single combat-value axis at the requested dungeon level. With the
+ * authored {@link GearCurveRegistry} curves loaded, weapon value is the family per-hit anchor (a
+ * DPS-equivalent) and armor value is an effective-HP equivalent, so weapon and armor prices share
+ * one scale instead of the old weapon-unbounded / armor-capped asymmetry. Without the curves the
+ * model degrades to the legacy asset-stat scoring:
  * <pre>
- * weapon buyPrice = gold(scale(baseDamage × CombatScaling.weaponMult(level)))
- * armor buyPrice  = gold(scale(avgEffectiveDR + healthBonus))
- * fallback        = gold(scale(itemLevel × sqrt(quality))) for utility items
- * sellPrice = floor(buyPrice × SELL_RATIO)
+ * weapon combatValue = anchor(family) × CombatScaling.weaponMult(level)
+ * armor combatValue  = hpShare·hpBudget(level) + k_dr·drShare·drBudget(level) / (1 − totalDR(level))
+ * buyPrice           = max(minBuyPrice, gold(combatValue))   gold(v) = round(v^exponent × scale)
+ * legacy fallback    = baseDamage × weaponMult(level)  /  avgEffectiveDR + healthBonus
+ * sellPrice          = floor(buyPrice × SELL_RATIO)
  * </pre>
+ *
+ * <p>The gold-mapping scale/exponent, minimum buy price, and armor effective-HP DR weight come from
+ * the {@link PricingRegistry} when its asset is loaded, falling back to the constants here otherwise.
  *
  * <p>Initialise once at plugin startup via {@link #initialize(AssetCatalog)}.
  * Base item-level filtering remains available for merchant catalog selection,
@@ -55,11 +62,14 @@ public class MerchantPriceRegistry {
             int healthBonus
     ) {}
 
-    /** Sell price as a fraction of buy price (80% = 20% gold sink). */
-    static final double SELL_RATIO = 0.80;
+    /** Sell price as a fraction of buy price (50% = 50% gold sink). */
+    static final double SELL_RATIO = 0.50;
 
-    /** Minimum buy price to avoid near-zero gear prices. */
+    /** Minimum buy price to avoid near-zero gear prices (fallback when no pricing asset is loaded). */
     private static final long MIN_BUY_PRICE = 25L;
+
+    /** Default weight of the armor effective-HP DR term (fallback when no pricing asset is loaded). */
+    private static final double DEFAULT_ARMOR_EHP_DR_WEIGHT = 1.0;
 
     /** Representative on-curve gear item used to anchor {@link #referenceGearValue(int, Rarity)}. */
     private static final String REFERENCE_GEAR_ITEM = "Weapon_Sword_Iron";
@@ -98,6 +108,20 @@ public class MerchantPriceRegistry {
     private RarityRegistry rarityRegistry;
 
     /**
+     * Authored gear curves driving the combat-value price axis; {@code null}/unloaded falls back to
+     * the legacy asset-stat scoring path so behavior is unchanged.
+     */
+    @Nullable
+    private GearCurveRegistry gearCurveRegistry;
+
+    /**
+     * Reconciled gold-mapping tuning; {@code null}/unloaded falls back to the hard-coded scale,
+     * exponent, minimum buy price, and armor effective-HP DR weight constants.
+     */
+    @Nullable
+    private PricingRegistry pricingRegistry;
+
+    /**
      * Wires the rarity registry used by {@link #rarityPriceMult(Rarity)} and
      * {@link #referenceGearValue(int, Rarity)}. Until set, the multiplier resolves to {@code 1.0}.
      *
@@ -105,6 +129,51 @@ public class MerchantPriceRegistry {
      */
     public void setRarityRegistry(@Nonnull RarityRegistry rarityRegistry) {
         this.rarityRegistry = rarityRegistry;
+    }
+
+    /**
+     * Wires the authored gear-curve registry that drives the combat-value price axis. Until set (or
+     * while its asset is unloaded), pricing uses the legacy asset-stat scoring path.
+     *
+     * @param gearCurveRegistry the gear-curve registry
+     */
+    public void setGearCurveRegistry(@Nonnull GearCurveRegistry gearCurveRegistry) {
+        this.gearCurveRegistry = gearCurveRegistry;
+    }
+
+    /**
+     * Wires the pricing registry supplying the gold-mapping scale/exponent, minimum buy price, and
+     * armor effective-HP DR weight. Until set (or while its asset is unloaded), the hard-coded
+     * constants apply.
+     *
+     * @param pricingRegistry the pricing registry
+     */
+    public void setPricingRegistry(@Nonnull PricingRegistry pricingRegistry) {
+        this.pricingRegistry = pricingRegistry;
+    }
+
+    private boolean combatValuePricingActive() {
+        return gearCurveRegistry != null && gearCurveRegistry.isLoaded();
+    }
+
+    private boolean pricingAssetLoaded() {
+        return pricingRegistry != null && pricingRegistry.isLoaded();
+    }
+
+    private double goldMappingScale() {
+        return pricingAssetLoaded() ? pricingRegistry.goldMappingScale() : SCORE_TO_GOLD_SCALE;
+    }
+
+    private double goldMappingExponent() {
+        return pricingAssetLoaded() ? pricingRegistry.goldMappingExponent() : SCORE_TO_GOLD_EXPONENT;
+    }
+
+    private long minBuyPrice() {
+        return pricingAssetLoaded() ? pricingRegistry.minBuyPrice() : MIN_BUY_PRICE;
+    }
+
+    private double armorEhpDrWeight() {
+        return pricingAssetLoaded() ? pricingRegistry.armorEhpDrWeight() : DEFAULT_ARMOR_EHP_DR_WEIGHT;
     }
 
     /**
@@ -133,8 +202,8 @@ public class MerchantPriceRegistry {
         long base = getBuyPrice(REFERENCE_GEAR_ITEM, level);
         if (base <= 0L) {
             double score = REFERENCE_BASE_DAMAGE * CombatScaling.weaponMult(CombatScaling.clampLevel(level));
-            base = Math.max(MIN_BUY_PRICE,
-                    Math.round(Math.pow(Math.max(1.0, score), SCORE_TO_GOLD_EXPONENT) * SCORE_TO_GOLD_SCALE));
+            base = Math.max(minBuyPrice(),
+                    Math.round(Math.pow(Math.max(1.0, score), goldMappingExponent()) * goldMappingScale()));
         }
         return Math.round(base * rarityPriceMult(rarity));
     }
@@ -235,7 +304,7 @@ public class MerchantPriceRegistry {
     }
 
     /**
-     * Returns the sell price for the given item (80% of buy price).
+     * Returns the sell price for the given item ({@link #SELL_RATIO} of buy price).
      *
      * @param itemId the item asset ID
      * @return the sell price in gold, or {@code 0} if the item is not in the registry
@@ -360,11 +429,24 @@ public class MerchantPriceRegistry {
             case ARMOR -> computeArmorScore(profile, pricingLevel);
         };
         double boundedScore = Math.max(1.0, score);
-        long computed = Math.round(Math.pow(boundedScore, SCORE_TO_GOLD_EXPONENT) * SCORE_TO_GOLD_SCALE);
-        return Math.max(MIN_BUY_PRICE, computed);
+        long computed = Math.round(Math.pow(boundedScore, goldMappingExponent()) * goldMappingScale());
+        return Math.max(minBuyPrice(), computed);
     }
 
+    /**
+     * Scores a weapon's combat value. With authored curves loaded this is the family per-hit anchor
+     * scaled by the level curve (a DPS-equivalent — melee cadence is a single Agility throttle, so
+     * per-hit is proportional to DPS), which normalizes wildly authored asset damage to one axis.
+     * Without curves it degrades to the legacy asset-damage path.
+     */
     private double computeWeaponScore(@Nonnull PriceProfile profile, int pricingLevel) {
+        if (combatValuePricingActive() && profile.family() != null) {
+            float anchor = gearCurveRegistry.weaponAnchor(profile.family());
+            if (anchor > 0f) {
+                return anchor * CombatScaling.weaponMult(pricingLevel);
+            }
+        }
+
         if (profile.baseDamage() > 0f) {
             return profile.baseDamage() * CombatScaling.weaponMult(pricingLevel);
         }
@@ -373,7 +455,19 @@ public class MerchantPriceRegistry {
                 * zeroStatWeaponFamilyMultiplier(profile.family());
     }
 
+    /**
+     * Scores an armor piece's combat value. With authored curves loaded this is an effective-HP
+     * equivalent: the slot's flat-HP share plus its damage-reduction share leveraged by the
+     * full-set effective-HP multiplier {@code 1 / (1 - totalDR)}, so armor value keeps climbing with
+     * the DR budget instead of plateauing at the combined cap. Without curves it degrades to the
+     * legacy resist-percent + health path.
+     */
     private double computeArmorScore(@Nonnull PriceProfile profile, int pricingLevel) {
+        double combatValue = computeArmorCombatValue(profile.slot(), pricingLevel);
+        if (combatValue > 0.0) {
+            return combatValue;
+        }
+
         double physDr = profile.physResist() > 0f ? CombatScaling.armorDR(profile.physResist(), pricingLevel) : 0.0;
         double projDr = profile.projResist() > 0f ? CombatScaling.armorDR(profile.projResist(), pricingLevel) : 0.0;
 
@@ -396,6 +490,30 @@ public class MerchantPriceRegistry {
 
         return computeFallbackTierScore(profile.itemLevel(), profile.quality())
                 * armorFallbackSlotMultiplier(profile.slot());
+    }
+
+    /**
+     * Computes an armor slot's effective-HP combat value from the authored curves, or {@code 0} when
+     * the curves are unloaded or the slot is unmapped (legacy fallback applies).
+     */
+    private double computeArmorCombatValue(@Nullable String slot, int pricingLevel) {
+        if (!combatValuePricingActive() || slot == null || !gearCurveRegistry.hasArmorHp()) {
+            return 0.0;
+        }
+        Float hpShare = gearCurveRegistry.armorHpShare(slot);
+        Float drShare = gearCurveRegistry.slotShare(slot);
+        if (hpShare == null || drShare == null) {
+            return 0.0;
+        }
+        double hpTerm = CombatScaling.armorBudgetHp(
+                hpShare, pricingLevel, gearCurveRegistry.hpBudgetMin(), gearCurveRegistry.hpBudgetMax());
+        double slotDr = CombatScaling.armorBudgetDR(
+                drShare, pricingLevel, gearCurveRegistry.drBudgetMin(), gearCurveRegistry.drBudgetMax());
+        // Effective-HP leverage uses the full on-level set's total DR, capped at the combined limit.
+        double totalDr = Math.min(CombatScaling.MAX_ARMOR_DR, CombatScaling.armorBudgetDR(
+                1.0f, pricingLevel, gearCurveRegistry.drBudgetMin(), gearCurveRegistry.drBudgetMax()));
+        double ehpDrTerm = armorEhpDrWeight() * slotDr / (1.0 - totalDr);
+        return hpTerm + ehpDrTerm;
     }
 
     private static int defaultPricingLevel(@Nonnull PriceProfile profile) {
