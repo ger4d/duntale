@@ -115,8 +115,13 @@ class NpcScalingApplicatorTest {
 
         assertEquals(1.0f, baseline.difficultyMult());
         assertEquals(2.0f, harder.difficultyMult());
-        // Damage carries the 2x factor (within the +/-5% variance applied independently to each).
-        assertWithinVariance(baseline.damageMultiplier() * 2.0f, harder.damageMultiplier());
+        // Damage folds in the difficulty factor. Compare each profile to its DETERMINISTIC expected
+        // (npcDamageMult x the 20/40 archetype corrective ratio x difficultyMult) rather than to the
+        // other profile, since each profile gets an independent +/-5% variance draw (comparing them
+        // would compound two variances and flake).
+        float baseDamage = CombatScaling.npcDamageMult(30, CombatScaling.NpcVariant.NORMAL) * (20.0f / 40.0f);
+        assertWithinVariance(baseDamage * 1.0f, baseline.damageMultiplier());
+        assertWithinVariance(baseDamage * 2.0f, harder.damageMultiplier());
     }
 
     @Test
