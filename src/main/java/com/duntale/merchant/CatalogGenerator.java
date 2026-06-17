@@ -90,17 +90,17 @@ public class CatalogGenerator {
             // Only crude arrows: the bow/crossbow ammo-consume interaction accepts
             // Weapon_Arrow_Crude exclusively, so higher-tier arrows are unusable and
             // were removed from the buy pool.
-            new ConsumableDef("Weapon_Arrow_Crude", 5),
-            new ConsumableDef("Food_Kebab_Meat", 25),
-            new ConsumableDef("Food_Pie_Meat", 50),
-            new ConsumableDef("Potion_Stamina", 75),
-            new ConsumableDef("Potion_Antidote", 40),
-            new ConsumableDef("Weapon_Deployable_Turret", 120_000, 1),
-            new ConsumableDef("Weapon_Deployable_Healing_Totem", 125_000, 1),
-            new ConsumableDef("Weapon_Deployable_Slowness_Totem", 100_000, 1),
-            new ConsumableDef("Upgrade_Backpack_1", 25_000, 1),
-            new ConsumableDef("Upgrade_Backpack_2", 50_000, 1),
-            new ConsumableDef("Upgrade_Backpack_3", 75_000, 1),
+            new ConsumableDef("Weapon_Arrow_Crude", 100),
+            new ConsumableDef("Food_Kebab_Meat", 500),
+            new ConsumableDef("Food_Pie_Meat", 1000),
+            // new ConsumableDef("Potion_Stamina", 75),
+            // new ConsumableDef("Potion_Antidote", 40),
+            new ConsumableDef("Weapon_Deployable_Turret", 225_000, 1),
+            new ConsumableDef("Weapon_Deployable_Healing_Totem", 475_000, 1),
+            new ConsumableDef("Weapon_Deployable_Slowness_Totem", 150_000, 1),
+            new ConsumableDef("Upgrade_Backpack_1", 125_000, 1),
+            new ConsumableDef("Upgrade_Backpack_2", 250_000, 1),
+            new ConsumableDef("Upgrade_Backpack_3", 375_000, 1),
             // ── Custom utility items ──
             // Prices are resolved at catalog-build time from MerchantPriceRegistry (which is
             // overwritten from Pricing.json after asset load). The static BUY_PRICES values here
