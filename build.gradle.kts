@@ -21,7 +21,7 @@ repositories {
 
 dependencies {
     compileOnly("com.hypixel.hytale:Server:0.6.0-pre.3")
-    compileOnly(files("../DynamicTooltipsLib/build/libs/DynamicTooltipsLib-1.5.1.jar"))
+    compileOnly(files("../DynamicTooltipsLib/build/libs/DynamicTooltipsLib-1.6.1.jar"))
     compileOnly(files("../dungeon-gen/build/libs/dungeon-gen-1.0.0-SNAPSHOT.jar"))
     
     // SQLite JDBC driver
